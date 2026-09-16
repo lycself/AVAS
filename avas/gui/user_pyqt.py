@@ -235,7 +235,7 @@ class MainWindow(QMainWindow):
         self.run_control_groupbox = QGroupBox()
         layout = QHBoxLayout()
 
-        run_btn_size = 20
+        run_btn_size = 28
         # ▶ Run 按钮
         self.run_btn = QPushButton('▶')
         self.run_btn.setFixedSize(run_btn_size, run_btn_size)

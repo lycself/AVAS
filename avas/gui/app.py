@@ -14,7 +14,7 @@ import sys
 import traceback
 
 from PyQt5.QtCore import Qt, QSettings
-from PyQt5.QtGui import QFont, QGuiApplication
+from PyQt5.QtGui import QFont, QFontDatabase, QGuiApplication
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
 ORG_NAME = "AVAS"
@@ -42,13 +42,37 @@ def _install_excepthook():
     sys.excepthook = exception_handler
 
 
-def _apply_font_size(app, settings):
-    """Optional user override (points); default keeps the platform font."""
+# Real UI fonts to try, in order.  CJK-capable families first so Chinese text
+# does not fall back to a raster font.
+PREFERRED_FAMILIES = [
+    "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI",       # Windows
+    "PingFang SC", "Helvetica Neue",                            # macOS
+    "Noto Sans CJK SC", "Noto Sans", "DejaVu Sans", "Arial",    # Linux / generic
+]
+DEFAULT_POINT_SIZE = 10
+
+
+def _apply_font(app, settings):
+    """Give the application an explicit, readable font.
+
+    Qt's Windows platform theme resolves the default widget font from the
+    system "message font"; on Chinese Windows with display scaling this comes
+    back as *SimSun 5 pt* (measured), which is why the old GUI was unreadable
+    on high-DPI screens even though the menu bar (which uses a separate theme
+    font) looked fine.  Picking a real UI family and size here makes every
+    widget inherit something sane.  The size can be changed from
+    Settings > Font size (stored as ``ui/fontPointSize``).
+    """
+    families = set(QFontDatabase().families())
+    font = app.font()
+    for family in PREFERRED_FAMILIES:
+        if family in families:
+            font.setFamily(family)
+            break
     size = settings.value("ui/fontPointSize", 0, type=int)
-    if size and size > 0:
-        font = app.font()
-        font.setPointSize(size)
-        app.setFont(font)
+    font.setPointSize(size if size and size > 0 else DEFAULT_POINT_SIZE)
+    font.setStyleStrategy(QFont.PreferAntialias)
+    app.setFont(font)
 
 
 def main(argv=None, language=None):
@@ -64,7 +88,7 @@ def main(argv=None, language=None):
 
     from avas.i18n import install_translator
     install_translator(app, lang)
-    _apply_font_size(app, settings)
+    _apply_font(app, settings)
     _install_excepthook()
 
     # imported after the translator is installed so tr() strings resolve

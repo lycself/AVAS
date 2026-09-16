@@ -60,7 +60,7 @@ class PageError(QWidget):
         self.cb_dyn_error = QCheckBox(self.tr("Dynamic error"))
         self.cb_dyn_error.stateChanged.connect(self.cb_error_change)
 
-        self.cb_stat_dyn_error = QCheckBox(self.tr("Static error & Dynamic error"))
+        self.cb_stat_dyn_error = QCheckBox(self.tr("Static error && Dynamic error"))
         self.cb_stat_dyn_error.stateChanged.connect(self.cb_error_change)
 
         hbox_error_type.addWidget(self.cb_stat_error)
@@ -72,7 +72,7 @@ class PageError(QWidget):
         group_box_seed = QGroupBox("")
         layout_seed = QHBoxLayout()
         label_seed = QLabel(self.tr("seed"))
-        label_seed.setFixedSize(180, 12)  # 设置宽度和高度
+        label_seed.setFixedWidth(180)  # 设置宽度和高度
         # label_charge.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_seed = MyQLineEdit("50")

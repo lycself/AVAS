@@ -641,7 +641,7 @@
         <translation>静态误差</translation>
     </message>
     <message>
-        <source>Static error &amp; Dynamic error</source>
+        <source>Static error &amp;&amp; Dynamic error</source>
         <translation>静态误差 + 动态误差</translation>
     </message>
     <message>

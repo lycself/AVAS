@@ -91,7 +91,7 @@ class PageBeam(QWidget):
         hbox_charge = QHBoxLayout()
 
         label_charge = QLabel(self.tr("Charge"))
-        label_charge.setFixedSize(90, 12)  # 设置宽度和高度
+        label_charge.setFixedWidth(90)  # 设置宽度和高度
         label_charge.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_charge = MyQLineEdit("")
@@ -105,7 +105,7 @@ class PageBeam(QWidget):
         hbox_mass = QHBoxLayout()
 
         label_mass = QLabel(self.tr("Mass"))
-        label_mass.setFixedSize(90, 12)  # 设置宽度和高度
+        label_mass.setFixedWidth(90)  # 设置宽度和高度
         label_mass.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_mass = MyQLineEdit("")
@@ -120,7 +120,7 @@ class PageBeam(QWidget):
         hbox_current = QHBoxLayout()
 
         label_current = QLabel(self.tr("Current"))
-        label_current.setFixedSize(90, 12)  # 设置宽度和高度
+        label_current.setFixedWidth(90)  # 设置宽度和高度
         label_current.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_current = MyQLineEdit("")
@@ -135,7 +135,7 @@ class PageBeam(QWidget):
         hbox_particel_number = QHBoxLayout()
 
         label_particel_number = QLabel(self.tr("Num of particle"))
-        label_particel_number.setFixedSize(90, 12)  # 设置宽度和高度
+        label_particel_number.setFixedWidth(90)  # 设置宽度和高度
         label_particel_number.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_particel_number = MyQLineEdit("")
@@ -149,7 +149,7 @@ class PageBeam(QWidget):
         hbox_frequency = QHBoxLayout()
 
         label_frequency = QLabel(self.tr("Frequency"))
-        label_frequency.setFixedSize(90, 12)  # 设置宽度和高度
+        label_frequency.setFixedWidth(90)  # 设置宽度和高度
         label_frequency.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_frequency = MyQLineEdit("")
@@ -163,7 +163,7 @@ class PageBeam(QWidget):
         hbox_energy = QHBoxLayout()
 
         label_energy = QLabel(self.tr("Energy"))
-        label_energy.setFixedSize(90, 12)  # 设置宽度和高度
+        label_energy.setFixedWidth(90)  # 设置宽度和高度
         label_energy.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_energy = MyQLineEdit("")
@@ -386,7 +386,7 @@ class PageBeam(QWidget):
         hbox_displacePos = QHBoxLayout()
 
         label_displacePos = QLabel(self.tr("Position Deviation"))
-        label_displacePos.setFixedSize(150, 12)  # 设置宽度和高度
+        label_displacePos.setFixedWidth(150)  # 设置宽度和高度
         label_displacePos.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_displacePos_x = MyQLineEdit("")
@@ -404,7 +404,7 @@ class PageBeam(QWidget):
         hbox_displaceDpos = QHBoxLayout()
 
         label_displaceDpos = QLabel(self.tr("Momentum Deviation"))
-        label_displaceDpos.setFixedSize(150, 12)  # 设置宽度和高度
+        label_displaceDpos.setFixedWidth(150)  # 设置宽度和高度
         label_displaceDpos.setAlignment(Qt.AlignCenter)  # 设置水平和垂直居中
 
         self.text_displaceDpos_x = MyQLineEdit("")
