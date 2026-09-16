@@ -6,23 +6,23 @@
 
 ## 中文说明
 
-AVAS 是一个直线加速器束流动力学模拟程序：C++ 计算内核（`avas/engine/`）+ Python 前后处理 + PyQt5 图形界面 + 命令行工具。
+AVAS 是一个直线加速器束流动力学模拟程序：C++ 计算内核（`avas/engine/`）+ Python 前后处理 + 桌面图形界面（pywebview + 网页前端）+ 命令行工具。
 
 ### Python 版本
 
 | 版本 | 状态 |
 |------|------|
-| 3.9  | 已验证（开发和测试所用版本） |
-| 3.10 / 3.11 | 支持，推荐新装环境使用 |
-| 3.12 | 支持（需要 numba ≥ 0.59） |
-| 3.13 及以上 | 未验证，`pyproject.toml` 中已限制为 `<3.13` |
-| 3.8 及以下 | 不支持 |
+| 3.11 | 已验证（开发和测试所用版本） |
+| 3.12 / 3.13 | 支持 |
+| 3.10 及以下 | 不支持（`pyproject.toml` 要求 `>=3.11`） |
 
 注意事项：
 
 * 必须是 **64 位** Python，计算内核 `avas/engine/AVAS.dll` 是 64 位库，32 位解释器加载会失败。
-* 不要把系统里现成的 Anaconda base 环境当作运行环境：它自带的 numpy / numba / PyQt 版本经常互相不匹配，请按下面的方法建立项目自己的 `.venv`。
+* 不要把系统里现成的 Anaconda base 环境当作运行环境：它自带的 numpy / numba 等版本经常互相不匹配，请按下面的方法建立项目自己的 `.venv`。
 * Linux 上使用 `avas/engine/libAVAS.so`，其余要求相同。
+* 图形界面用 Windows 自带的 **Microsoft Edge WebView2** 显示（Windows 11 已内置，Windows 10 通常随 Edge 更新安装）。
+  缺少时 AVAS 会提示安装：打包版附带微软的安装程序，源码运行时会打开微软下载页面。
 
 ### 安装：在项目目录下手动创建 `.venv`
 
@@ -90,68 +90,74 @@ avas info
 avas gui
 ```
 
-界面采用 VS Code 式布局：左侧导航栏、中间页面、下方日志面板、底部状态栏。按工作流分为七页：
+界面是一个普通的桌面窗口（pywebview + Edge WebView2），里面用网页技术绘制，不需要打开浏览器。布局与 VS Code 相同：
+顶部菜单栏和工具按钮、左侧导航栏、中间页面、下方日志面板、底部状态栏。按工作流分为七页：
 
-1. **Project** 新建 / 打开 / 最近项目，显示当前项目摘要。
-2. **Beam** 束流参数、分布、Twiss，或从 .dst 文件读入。
-3. **Lattice** 顶部选择**运行使用的结构文件**：InputFile 中所有 AVAS 格式的结构（不限文件名，如 `lattice_init.txt`、
-   `48Ca_280MeV.txt`）都可以选，选择记在 `ini.ini` 的 `[lattice] source`，界面和 `avas run` 都按它运行。
-   左边是文本（查找替换、折叠、注释），右边按物理参数编辑同一个文件：
-   * **束线示意图**：沿 z 画出全部元件（射频腔、静磁/静电场图元件、四极铁、螺线管、二极铁、校正铁、漂移段），
-     叠加场里的元件嵌套显示；滚轮缩放、拖动平移、点击选中、双击复位。
-   * **结构树**：按 `!name` 显示元件名，按叠加场、`section { }`、`lattice … lattice_end` 以及 `;;;buncher1;;;`
-     这类注释分组；显示类型、参数摘要和起点 z，可搜索、可只看元件 / 命令 / 有问题的行。
-   * **属性表单**：选中元件后按物理量逐项编辑（长度 m、孔径 m、场类型下拉、相位含义 V3 下拉、频率 Hz、相位 °、
-     Ke、Kb、场图文件下拉并显示 .bsx/.bsy/.bsz 等分量是否齐全），显示起止位置和二极铁自动计算的弧长。
-   * **参数表**：按关键字列出所有同类元件，表头是物理量和单位，枚举值用下拉；可多选单元格「批量设置」。
-   * **检查**：按使用说明检查参数个数和数值、枚举取值、叠加场规则（第一条全 0、每个元件前一条 superpose、必须结束、
-     最多一个射频腔）、校正铁长度为 0、首末元件避免矩阵模型、场图文件是否存在。
-   * 所有修改都直接改写文本中的对应一行（保留注释和名称写法），可在文本编辑器里撤销。
-4. **Settings** 模拟类型、步长、多线程、相位扫描、空间电荷（求解器 / 网格 / 网格边长）、场文件目录、纵向限制、边界、密度输出，以及误差分析模式。
-   页面不认识的 `input.txt` 关键字在保存时原样保留。
-5. **Files** `InputFile/` 下的全部文件，**按内容识别类型**并分组（内核输入 / 其他结构文件 / 粒子数据 / 场图 / 其他），
-   每类文件用显示物理含义的视图打开：
-   * AVAS 结构文件（任意文件名）：与结构页相同的物理参数编辑器，可「设为运行结构」；`lattice.txt` 只读显示。
-   * `beam.txt`、`input.txt`：关键字表，列出每个关键字的含义、各个值的单位和说明（取自使用说明），枚举值下拉，
-     可添加 / 删除关键字；`ini.ini`：节 / 键 / 值 / 含义。
-   * `boundary.txt`、`scanData.txt`（行名为对应射频腔）、`SeParticle.txt`：带单位的表格。
-   * `.dst` / `.edst`：粒子数、流强、频率、静止质量、平均能量、Twiss 参数（与束流页「从文件读取参数」一致）和
-     x-x'、y-y'、φ-W 相空间图，可「设为初始束流」。
-   * 场图（.edx/.bdx/.bsx/.esx 等，文本或二进制）：网格、长度、横向范围、同名分量是否齐全、被哪些元件引用，
-     以及沿 z 的轴上场和截面最大场曲线。
-   * TraceWin `.dat` 结构：只读的元件表（单位 mm）；TraceWin 的 `.ini` 工程文件标明 AVAS 不读取。
-6. **Run** 一键运行：自动保存并检查全部页面。进度、剩余时间直接来自计算内核的输出行（与终端看到的一致），
-   运行前会拦住粒子数 < 2 这类必然失败的输入。
-7. **Results** 左边选择分析项，右边以标签页嵌入图形（包络、发射度、损失、能量、相移、同步相位、腔压、误差分析、密度、接受度等），可保存图片；相空间查看器和 plt 步查看器以独立窗口打开。
+1. **Project** 新建 / 打开 / 最近项目（单击打开，可从列表移除），显示当前项目摘要；可关闭项目。
+2. **Beam** 束流参数、分布、Twiss，或从 .dst 文件读入（可「从文件填入参数」）。保存时只改写页面管理的关键字，
+   `randomseed`、`initpos` 等其他关键字和注释原样保留。「预览 rms 椭圆」按填写的 α、β、ε 画出 x/y/z 三个相平面。
+3. **Lattice** 顶部选择**运行使用的结构文件**（记在 `ini.ini` 的 `[lattice] source`，界面和 `avas run` 都按它运行）。
+   左边是文本编辑器（Monaco，即 VS Code 的编辑器）：语法着色、按元件编号或行号、折叠（section、叠加场、周期、注释分组）、
+   查找替换、`Ctrl+/` 注释、按手册的关键字补全与悬停说明、问题直接标在对应行上。右边按物理参数编辑同一个文件：
+   * **束线示意图**：沿 z 画出全部元件，滚轮缩放、拖动平移、点击选中、双击复位，悬停显示元件信息。
+   * **结构树**：按 `!name` 显示元件名，按叠加场、`section { }`、`lattice … lattice_end` 以及 `;;;buncher1;;;` 注释分组，
+     可搜索、可只看元件 / 命令 / 有问题的行。
+   * **属性表单**：带单位和下拉选项，场图显示 .bsx/.bsy/.bsz 等分量是否齐全；显示起止位置和二极铁弧长。
+   * **参数表**：按关键字列出同类元件，选中元件时自动切到它的关键字；可多选单元格「批量设置」。
+   * **检查**：参数个数和数值、枚举取值、叠加场规则、校正铁长度、首末元件、场图文件。
+   * 所有修改都改写文本中的对应一行（一次修改一步撤销），`Ctrl+Z` 可撤销。
+4. **Settings** 模拟类型、步长、多线程、相位扫描、空间电荷、场文件目录、纵向限制、边界、密度输出，以及误差分析模式。
+5. **Files** `InputFile/` 下的全部文件，按内容识别类型并分组，每类用显示物理含义的视图打开（结构编辑器、关键字表、
+   ini 表、boundary / scanData / SeParticle 表格、.dst 相空间图、场图曲线、TraceWin 结构只读表），「表格 / 文本」两个
+   标签页编辑同一内容，数据行上的注释保留。右键菜单：重命名、创建副本、移到回收站、在资源管理器中显示、用默认程序打开、
+   复制路径；工具栏可新建文件、把外部文件复制进 InputFile。
+6. **Run** 一键运行：先检查并保存有修改的页面，再在子进程中运行 `avas run`；进度、剩余时间（秒 / 分钟 / 小时都能识别）、
+   位置、误差分析的步数实时显示，内核输出进入日志面板。
+7. **Results** 左边选择分析项，右边以标签页显示**可交互的图**（拖动放大、双击复原、悬停读数）：包络、发射度、损失、能量、
+   相移、同步相位、腔压、误差分析、密度、接受度。粒子文件查看器和 plt 步查看器是 4 个相空间密度图 + rms 椭圆 +
+   百分比发射度文字，放大后自动按新范围重新统计密度；改坐标、改百分比立即重画。「保存图片」用 matplotlib 输出
+   白底的论文用图（PNG / PDF / SVG）。可以切换到项目 OutputFile 以外的结果文件夹。工具：扩充粒子数、plt 步转 dst。
 
-布局与外观：
+外观与操作：
 
-* 侧边栏：拖动右侧分隔条调整宽度；拖到很窄时自动收成图标栏，再往外拖即展开。`Ctrl+B`、双击分隔条、
-  工具栏右侧的布局按钮都可以切换；图标栏模式下点击当前页图标也会展开。
-* 日志面板：拖动上方分隔条调整高度，`Ctrl+J` 或面板右上角 × 隐藏；面板上的按钮可清空、最大化（双击分隔条同样可以）。
-* 状态栏：左侧是项目名（点击回到 Project 页）、运行模式、日志中的错误 / 警告数（点击打开日志）；右侧是最后一条消息，
-  运行时显示实时进度，整条状态栏变为蓝色。
-* 主题：**View → Theme** 选择 跟随系统 / 浅色 / 深色（默认跟随 Windows 的应用颜色模式，系统切换后自动跟随），
-  状态栏最右边的按钮一键切换浅色 / 深色，即时生效。深色模式下 Windows 标题栏同步变深。
-* 图形：界面里的图随主题配色；**保存图片（包括 matplotlib 工具栏的保存）始终导出白底的浅色样式**，可直接用于论文 / PPT。
-  已打开的相空间 / plt 查看器窗口在下次打开时才会换色。
-* 图标统一使用 VS Code 的 Codicons（随 `qtawesome` 安装，无需额外文件）。
+* 主题：**视图 → 主题** 选择 跟随系统 / 浅色 / 深色，状态栏最右边按钮一键切换；切换在一帧内完成（约 20 ms）。
+* 缩放：**视图 → 界面缩放**（90 – 150 %，`Ctrl+=` / `Ctrl+-` / `Ctrl+0`）；**设置 → 语言** 即时切换中文 / English。
+* 快捷键：`Ctrl+S` 保存全部、`F5` 运行、`Shift+F5` 停止、`Ctrl+O` / `Ctrl+N` 打开 / 新建项目、`Ctrl+B` 侧边栏、
+  `Ctrl+J` 日志面板、`Ctrl+1` … `Ctrl+7` 切换页面。
+* 有未保存修改的页面在侧边栏显示圆点；打开其他项目、关闭窗口前会询问是否保存；运行中关闭窗口会先确认。
+* 设置保存在 `%LOCALAPPDATA%\AVAS\gui.json`，日志在 `%LOCALAPPDATA%\AVAS\logs`。
 
-其他要点：
+### 开发界面
 
-* 高分屏：已启用 Qt 高 DPI 缩放并显式指定界面字体，150 % / 200 % 显示器下字号正常。
-* 缩放：**View → UI scale**（90 – 150 %，`Ctrl+=` / `Ctrl+-` / `Ctrl+0`）即时缩放整个界面，包括页面、表格、日志。
-* 语言：**Settings → Language** 即时切换中文 / English。
-* 设置保存在系统用户配置中（Windows 注册表 `HKCU\Software\AVAS`），日志在 `%LOCALAPPDATA%\AVAS\logs`。
-* 模拟在子进程 `avas run ...` 中执行，界面逐行读取其 stdout；结果文件里的 `-nan(ind)`（例如粒子太少时的 rms 尺寸）按 NaN 处理，不再中断读取。
+界面源码在 `frontend/`（React + TypeScript + Vite），编译结果在 `avas/gui/web/`（已提交到仓库，运行 AVAS 不需要 Node.js）。
+修改界面需要 Node.js：
+
+```bash
+cd frontend && npm install && npm run build
+```
+
+`python -m avas.gui.devserver` 可以在普通浏览器里打开界面调试（`http://127.0.0.1:8765/index.html?devrpc`，文件对话框不可用）。
+后端接口在 `avas/gui/services/`，每个页面调用的函数都在 `tests/test_gui.py` 中有测试。
+
+### 打包独立程序
+
+```bash
+python packaging/fetch_webview2.py
+```
+
+```bash
+pyinstaller packaging/avas.spec
+```
+
+第一条命令从微软官方地址下载 WebView2 安装程序（约 1.7 MB）；`dist/AVAS/` 中包含 `AVAS.exe`（命令行）、
+`AVASGui.exe`（无控制台窗口的界面）和该安装程序，在缺少 WebView2 的电脑上启动时会提示安装。
 
 ### 目录结构
 
 ```
 avas/            Python 包
   cli/           命令行入口（avas run / plot / gui / info）
-  gui/           PyQt5 界面：main_window.py 外壳，pages/ 七个工作流页面，widgets/ 通用控件，
-                 dialogs/ 相空间查看器等对话框，lattice_editor/ 结构文件编辑器
+  gui/           桌面界面后端：app.py 窗口入口，services/ 各页面调用的接口，web/ 编译好的前端
   api/           basic.py：模拟与画图的统一入口；qt/：界面用接口
   core/          ctypes 封装的 C++ 计算内核
   sim/           模拟流程：多粒子、包络、误差、匹配、接受度
@@ -160,8 +166,8 @@ avas/            Python 包
   utils/         读写与配置工具
   engine/        AVAS.dll / libAVAS.so 及依赖库
   static/        原子质量表、场表
-  i18n/          界面翻译（avas_zh_CN.ts，运行时直接读取；.qm 可选）
   gpu/ hpc/      GPU 内核与 HPC 作业脚本
+frontend/        界面前端源码（React + TypeScript）
 examples/        示例项目（hwr010）
 tests/           pytest 冒烟测试
 scripts/         个人分析脚本（不属于软件本体）
@@ -171,16 +177,8 @@ docs/            使用说明与更新记录
 
 ### 翻译维护
 
-界面文字全部通过 `self.tr("...")` 标记。修改 `avas/i18n/avas_zh_CN.ts`（可用 Qt Linguist 或文本编辑器）即可，
-程序运行时直接读取 `.ts`。如需编译成 `.qm`（可选，加载稍快）：
-
-```bash
-lrelease avas/i18n/avas_zh_CN.ts
-```
-
-注意：目录里若存在过期的 `.qm`，它会优先于 `.ts` 被加载，新增的翻译就不会显示；改完 `.ts` 后要么重新编译，要么删掉 `.qm`。
-
-没有 `lrelease` 时程序会直接读取 `.ts` 文件，功能不受影响。
+界面文字以英文写在前端代码中（`t("...")`），中文翻译在 `frontend/src/i18n/zh_CN.json`（英文原文 → 中文）。
+修改后重新编译前端（`npm run build`）。手册中的关键字、参数说明是 `avas/data/schema.py` 中的中英文对照。
 
 ### 引用
 
@@ -192,19 +190,17 @@ lrelease avas/i18n/avas_zh_CN.ts
 
 ## English
 
-AVAS is a linear-accelerator beam-dynamics code: a C++ engine (`avas/engine/`), Python pre/post-processing, a PyQt5 GUI and a command-line interface.
+AVAS is a linear-accelerator beam-dynamics code: a C++ engine (`avas/engine/`), Python pre/post-processing, a desktop GUI (pywebview + web front end) and a command-line interface.
 
 ### Python version
 
 | Version | Status |
 |---------|--------|
-| 3.9 | verified (used for development and the test suite) |
-| 3.10 / 3.11 | supported, recommended for new environments |
-| 3.12 | supported (needs numba ≥ 0.59) |
-| 3.13+ | untested; `pyproject.toml` pins `<3.13` |
-| ≤ 3.8 | not supported |
+| 3.11 | verified (used for development and the test suite) |
+| 3.12 / 3.13 | supported |
+| ≤ 3.10 | not supported (`pyproject.toml` requires `>=3.11`) |
 
-A **64-bit** interpreter is required because the engine `avas/engine/AVAS.dll` (`libAVAS.so` on Linux) is a 64-bit library. Avoid running from an Anaconda *base* environment, whose bundled numpy / numba / PyQt versions are often inconsistent; create the project `.venv` instead.
+A **64-bit** interpreter is required because the engine `avas/engine/AVAS.dll` (`libAVAS.so` on Linux) is a 64-bit library. Avoid running from an Anaconda *base* environment, whose bundled numpy / numba versions are often inconsistent; create the project `.venv` instead. The GUI is rendered by Microsoft Edge WebView2 (built into Windows 11); when it is missing AVAS offers to install it.
 
 ### Install: create `.venv` in the project directory
 
@@ -250,7 +246,21 @@ avas info
 
 ### GUI
 
-`avas gui` opens a seven-page workflow (collapsible sidebar on the left, `Ctrl+B`): **Project** (new / open / recent), **Beam**, **Lattice** (choose which AVAS lattice of InputFile/ the run uses; text editor plus a physical-parameter editor on the same file: beamline schematic, element tree with names and groups, property form with units and drop-downs, per-keyword parameter table, checks from the user manual), **Settings** (tracking options incl. multithreading, phase scan, space-charge grid, and the error-study mode; unknown `input.txt` keywords survive a save), **Files** (every file in `InputFile/`, recognised by content: lattices of any name open in the structure editor, beam/input keywords with meaning and units, ini settings, boundary/scanData/SeParticle tables, .dst beam parameters and phase space, field-map grid and longitudinal profile, TraceWin lattices read-only), **Run** (saves and checks everything, then streams the engine's own progress lines: percent, ETA, elapsed) and **Results** (analyses in embedded plot tabs; the particle-file and plt-step viewers open in their own windows). The layout follows VS Code: a resizable side bar (drag the sash; dragging it narrow snaps to an icon strip, `Ctrl+B` toggles), a resizable log panel (`Ctrl+J`), and a status bar with project, run mode, error/warning counts and live progress. **View → Theme** offers follow-system / light / dark (live switch, dark Windows title bar); plots follow the theme on screen but saved images are always light. Icons are VS Code Codicons via `qtawesome`. High-DPI scaling is enabled and an explicit UI font is set; **View → UI scale** (90–150 %, `Ctrl+=` / `Ctrl+-`) and **Settings → Language** apply immediately. Settings are stored per user (`HKCU\Software\AVAS` on Windows); logs go to `%LOCALAPPDATA%\AVAS\logs`. The simulation runs as a child `avas run` process; `-nan(ind)` tokens in result files are read as NaN instead of aborting.
+`avas gui` (or `avas-gui`) opens a desktop window (pywebview + Edge WebView2; no browser involved) with a VS Code-like layout: menu bar, side bar, pages, log panel, status bar. Seven pages follow the workflow: **Project**, **Beam** (saving keeps keywords the page does not manage, and comments), **Lattice** (run-lattice selection; Monaco text editor with highlighting, folding, completion, hover help and problem markers, side by side with the physical-parameter editor: beamline schematic, element tree, property form, per-keyword parameter table), **Settings**, **Files** (content-aware views of everything in `InputFile/`, table and text tabs on the same content, rename / duplicate / recycle bin / import), **Run** (child `avas run` process, live progress incl. min/h ETAs, engine output in the log) and **Results** (interactive Plotly plots; phase-space viewers with density re-binning on zoom and percent emittances; publication-quality export through matplotlib; any results folder). Theme switching (system / light / dark) takes one frame (~20 ms); UI scale 90–150 %; Chinese / English switch instantly. Unsaved pages are marked and prompted for before closing or switching projects. Settings: `%LOCALAPPDATA%\AVAS\gui.json`; logs: `%LOCALAPPDATA%\AVAS\logs`.
+
+The front end lives in `frontend/` (React + TypeScript + Vite); its build output `avas/gui/web/` is committed, so running AVAS needs no Node.js. Rebuild with `cd frontend && npm install && npm run build`. `python -m avas.gui.devserver` serves the GUI to an ordinary browser for development. Back-end calls are in `avas/gui/services/` and tested in `tests/test_gui.py`.
+
+### Stand-alone build
+
+```bash
+python packaging/fetch_webview2.py
+```
+
+```bash
+pyinstaller packaging/avas.spec
+```
+
+`dist/AVAS/` then holds `AVAS.exe` (command line), `AVASGui.exe` (GUI without a console) and the WebView2 bootstrapper that is offered on machines without the runtime.
 
 ### Tests
 

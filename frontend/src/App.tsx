@@ -4,10 +4,14 @@ import { DialogLayer, MenuLayer, ToastLayer, TooltipLayer } from "./components/o
 import { Spinner } from "./components/ui";
 import { Shell } from "./shell/Shell";
 import { initLog } from "./shell/LogPanel";
-import { initApp, useApp } from "./store/app";
+import { initApp, setLanguage, setPage, setTheme, useApp } from "./store/app";
+import { runSimulation, saveAll } from "./actions";
 import "./styles/shell.css";
 import "./styles/pages.css";
 import "./styles/lattice.css";
+
+// For automated UI checks (tests drive the window through evaluate_js).
+(window as any).__avasDebug = { useApp, setPage, setTheme, setLanguage, runSimulation, saveAll };
 
 export function App() {
   const ready = useApp((s) => s.ready);

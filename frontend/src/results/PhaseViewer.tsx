@@ -51,6 +51,25 @@ function basename(p: string) {
   return p.split(/[\\/]/).pop() ?? p;
 }
 
+/** In dark mode empty pixels take the plot background instead of white. */
+function darkScale(scale: [number, string][]): [number, string][] {
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--editor-bg").trim() || "#1f1f1f";
+  const hex = (c: string) => {
+    let v = c.replace("#", "");
+    if (v.length === 3) v = v.split("").map((x) => x + x).join("");
+    return [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16));
+  };
+  const b = hex(bg);
+  const edge = scale.find(([t]) => t >= 0.1) ?? scale[scale.length - 1];
+  const e = hex(edge[1]);
+  return scale.map(([t, c]) => {
+    if (t >= 0.1) return [t, c];
+    const w = t / 0.1;
+    const mix = b.map((bv, i) => Math.round(bv + (e[i] - bv) * w));
+    return [t, `#${mix.map((v) => v.toString(16).padStart(2, "0")).join("")}`];
+  });
+}
+
 function toRows(img: Float32Array, w: number, h: number) {
   const rows: number[][] = [];
   for (let r = 0; r < h; r++) rows.push(Array.from(img.subarray(r * w, (r + 1) * w)));
@@ -155,7 +174,7 @@ export function PhaseViewer({ source, outputDir, refreshKey }: { source: Source;
         zmin: 0,
         zmax: 1,
         zsmooth: false,
-        colorscale: data.colorscale,
+        colorscale: dark ? darkScale(data.colorscale) : data.colorscale,
         showscale: true,
         colorbar: { thickness: 10, len: 0.38, x: col === 0 ? 0.43 : 1.0, y: row === 0 ? 0.8 : 0.2, tickfont: { size: 10 } },
         xaxis: `x${s}`,

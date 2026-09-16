@@ -133,7 +133,7 @@ export default function LatticePage() {
         hint={tt("The lattice file used for the run. Edit it as text on the left or by physical parameters on the right; both show the same file. Parameter meanings and checks follow the user manual.")}
       />
       <div className="row" style={{ gap: 8 }}>
-        <span className="muted">{tt("Lattice used for the run")}</span>
+        <span className="muted nowrap">{tt("Lattice used for the run")}</span>
         <Select
           value={loaded.name}
           style={{ minWidth: 260 }}

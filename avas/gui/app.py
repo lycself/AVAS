@@ -153,10 +153,14 @@ def main(argv=None, language=None):
 
     geo = s.get("ui/window") or {}
     dark = resolve_theme(s.get("ui/theme")) == "dark"
-    kwargs = dict(width=int(geo.get("width") or 1400), height=int(geo.get("height") or 900),
-                  min_size=MIN_SIZE, background_color="#1f1f1f" if dark else "#ffffff",
+    width, height = int(geo.get("width") or 1400), int(geo.get("height") or 900)
+    screen = _primary_screen()
+    if screen is not None:                       # never larger than the screen it opens on
+        width = min(width, max(MIN_SIZE[0], screen[0] - 40))
+        height = min(height, max(MIN_SIZE[1], screen[1] - 80))
+    kwargs = dict(width=width, height=height, min_size=MIN_SIZE, background_color="#1f1f1f" if dark else "#ffffff",
                   text_select=True, maximized=bool(geo.get("maximized")))
-    if geo.get("x") is not None and geo.get("y") is not None and _on_some_screen(geo):
+    if geo.get("x") is not None and geo.get("y") is not None and _on_some_screen(geo, width, height):
         kwargs.update(x=int(geo["x"]), y=int(geo["y"]))
 
     win = webview.create_window(APP_TITLE, url, js_api=bridge.Api(), **kwargs)
@@ -175,12 +179,22 @@ def main(argv=None, language=None):
     return 0
 
 
-def _on_some_screen(geo):
+def _primary_screen():
+    try:
+        import webview
+        screen = webview.screens[0]
+        return screen.width, screen.height
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _on_some_screen(geo, width, height):
+    """The saved position keeps the whole window on one screen."""
     try:
         import webview
         for screen in webview.screens:
-            if screen.x - 50 <= geo["x"] < screen.x + screen.width - 100 and \
-                    screen.y - 50 <= geo["y"] < screen.y + screen.height - 100:
+            if screen.x <= geo["x"] and geo["x"] + width <= screen.x + screen.width and \
+                    screen.y <= geo["y"] and geo["y"] + height <= screen.y + screen.height:
                 return True
     except Exception:  # noqa: BLE001
         return True
