@@ -1,3 +1,4 @@
+from avas.utils.tool import to_float
 from avas.utils.readfile import read_txt
 import os
 import matplotlib.pyplot as plt
@@ -16,7 +17,7 @@ class EaAnalysis():
         v = errors_par_tot.pop("step_err")
 
 
-        errors_par_tot = {int(k): [float(i) for i in v] for k, v in errors_par_tot.items()}
+        errors_par_tot = {int(k): [to_float(i) for i in v] for k, v in errors_par_tot.items()}
         # print(errors_par_tot)
         # print(errors_par_tot[-1])
 

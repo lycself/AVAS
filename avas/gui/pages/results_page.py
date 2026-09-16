@@ -62,7 +62,7 @@ class ResultsPage(QWidget):
     # ------------------------------------------------------------------ ui
     def _build(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 18, 24, 18)
+        root.setContentsMargins(32, 24, 32, 24)
         root.setSpacing(10)
         root.addWidget(page_header(self.tr("Results"),
                                    self.tr("Plots are drawn from OutputFile/ of the current project. "
@@ -169,7 +169,7 @@ class ResultsPage(QWidget):
         self.plots.add_plot(self.tr("Synchronous phase"), draw)
 
     def open_cavity_voltage(self):
-        lattice = self.project.input_file("lattice_mulp.txt")
+        lattice = self.project.lattice_path()
         info, _ = read_lattice_mulp_with_name(lattice)
         fields = [row[9] for row in info if row and row[0] == "field" and float(row[4]) == 1]
         if not fields:

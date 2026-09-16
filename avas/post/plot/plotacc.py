@@ -1,4 +1,5 @@
 
+from avas.paths import lattice_source_path
 import numpy as np
 import os
 import pandas as pd
@@ -7,6 +8,7 @@ from avas.data.beamset import BeamsetParameter
 import math
 from avas.constants import c_light, Pi
 from avas.data.latticeparameter import LatticeParameter
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from avas.sim.calacceptance import Acceptance
 from matplotlib.colors import LinearSegmentedColormap
@@ -15,7 +17,7 @@ class PlotAcc(Acceptance):
         self.project_path = project_path
         self.plt_path = os.path.join(project_path, "OutputFile", "BeamSet.plt")
         if project_path:
-            self.latttice_mulp_path = os.path.join(project_path, 'InputFile', 'lattice_mulp.txt')
+            self.latttice_mulp_path = lattice_source_path(os.path.join(project_path, "InputFile"))
 
     def run(self, kind):
         loss_min_emit, _, _,  _  = self.cal_accptance(kind)
@@ -46,7 +48,7 @@ class PlotAcc(Acceptance):
             y = loss_particles[col_y].values
 
             # 散点图
-            ax1.scatter(x, y, s=1, c='k')
+            ax1.scatter(x, y, s=1, c=mpl.rcParams["text.color"])
 
             # 计算可视化范围
             margin = 1.2

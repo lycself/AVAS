@@ -119,7 +119,7 @@ class PlotPlt():
             , x_coor_data, y_coor_data,   #数据
                 picture_title[index][0], picture_title[index][1], font1, this_twiss)
         fig.text(0.01, 0.95, f'Particle Number  {self.particle_number},       Energy {self.mean_energy:.2f} MeV',
-                 fontsize=14, color='black')
+                 fontsize=14, color=plt.rcParams["text.color"])
 
 
         # fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.9])

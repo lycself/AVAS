@@ -41,6 +41,29 @@ def test_run_decoupled_dirs(run_dirs):
     assert os.path.isfile(os.path.join(out, "avas_run.json"))
 
 
+def test_run_with_other_lattice_file(run_dirs, monkeypatch):
+    """--lattice FILE (or [lattice] source in ini.ini) decides which lattice is simulated."""
+    import json
+    from avas import paths
+    inp, _out = run_dirs
+    monkeypatch.delenv(paths.LATTICE_ENV_VAR, raising=False)
+    with open(os.path.join(inp, "lattice_mulp.txt"), encoding="utf-8") as fh:
+        base = fh.read()
+    alt = base.replace("start", "start\ndrift 0.1 0.02 0", 1)
+    with open(os.path.join(inp, "lattice_long.txt"), "w", encoding="utf-8") as fh:
+        fh.write(alt)
+    out = os.path.join(WORK, "Results_lattice")
+    assert main(["run", "--input", inp, "--output", out, "--lattice", "lattice_long.txt"]) == 0
+    monkeypatch.delenv(paths.LATTICE_ENV_VAR, raising=False)
+    with open(os.path.join(out, "avas_run.json"), encoding="utf-8") as fh:
+        assert json.load(fh)["lattice"] == "lattice_long.txt"
+    with open(os.path.join(inp, "lattice.txt"), encoding="utf-8") as fh:
+        generated = fh.read()
+    assert "drift 0.1 0.02 0" in generated              # the engine got the chosen file
+    last = [line.split() for line in open(os.path.join(out, "DataSet.txt"), encoding="utf-8") if line.strip()][-1]
+    assert last  # simulation produced data
+
+
 @pytest.mark.parametrize("kind", ["emittance_x", "rms_x", "loss", "energy", "syn_phase"])
 def test_plot_dataset(run_dirs, kind):
     inp, out = run_dirs

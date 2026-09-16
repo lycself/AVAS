@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 import sys
 
 from avas.core.MultiParticle import MultiParticle
@@ -28,7 +29,7 @@ class SimMode():
         self.ini_path = os.path.join(self.project_path, "InputFile", "ini.ini")
         self.beam_path = os.path.join(self.project_path, "InputFile", "beam.txt")
         self.input_path = os.path.join(self.project_path, "InputFile", "input.txt")
-        self.lattice_mulp_path = os.path.join(self.project_path, "InputFile", "lattice_mulp.txt")
+        self.lattice_mulp_path = lattice_source_path(os.path.join(self.project_path, "InputFile"))
         self.runsignal = os.path.join(self.project_path, "OutputFile", 'runsignal.txt')
 
 

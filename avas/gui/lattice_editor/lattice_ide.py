@@ -15,6 +15,7 @@ from PyQt5.QtGui import (
 from PyQt5.QtCore import QRegExp
 from avas.gui.lattice_editor. latticeideuseclass import FindReplaceDialog, SearchDialog, SyntaxHighlighter
 import avas.constants as global_varible
+from avas.gui import theme
 from PyQt5.QtGui import QFont, QFontDatabase
 
 class LineNumberArea(QWidget):
@@ -111,6 +112,12 @@ class CodeEditor(QPlainTextEdit):
         self.on_text_changed()
 
         self.index_v1 = 0
+        theme.notifier().changed.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self):
+        self.highlighter.apply_theme()
+        self.highlight_current_line()
+        self.line_number_area.update()
 
     # def set_font_size(self, size):
     #     """ 修改 CodeEditor 的字体大小 """
@@ -199,7 +206,7 @@ class CodeEditor(QPlainTextEdit):
         extra_selections = []
         if not self.isReadOnly():
             selection = QTextEdit.ExtraSelection()
-            selection.format.setBackground(QColor(50, 50, 50, 50))
+            selection.format.setBackground(theme.qcolor("current_line"))
             selection.format.setProperty(QTextFormat.FullWidthSelection, True)
             selection.cursor = self.textCursor()
             selection.cursor.clearSelection()
@@ -241,7 +248,7 @@ class CodeEditor(QPlainTextEdit):
         self.index_v1 += 1
         # print(224, "绘制区域", self.index_v1)
         painter = QPainter(self.line_number_area)
-        painter.fillRect(event.rect(), Qt.lightGray)
+        painter.fillRect(event.rect(), theme.qcolor("editor_bg"))
 
         block = self.firstVisibleBlock()
         top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
@@ -253,7 +260,7 @@ class CodeEditor(QPlainTextEdit):
 
             # 绘制折叠标记
             if text.startswith("section"):
-                painter.setPen(Qt.red)
+                painter.setPen(theme.qcolor("syn_fold"))
                 painter.drawText(5, int(top), self.line_number_area.width() - 10,
                                  int(self.fontMetrics().height()), Qt.AlignmentFlag.AlignLeft, "▶")
 
@@ -262,7 +269,7 @@ class CodeEditor(QPlainTextEdit):
 
             # 绘制行号
             if block.isVisible() and logical_number != -1:
-                painter.setPen(Qt.black)
+                painter.setPen(theme.qcolor("gutter_fg"))
                 painter.drawText(0, int(top), self.line_number_area.width() - 5,
                                  int(self.fontMetrics().height()), Qt.AlignmentFlag.AlignRight, str(logical_number))
 

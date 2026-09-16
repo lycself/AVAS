@@ -5,7 +5,7 @@ Responsibilities that used to live in the old root ``main.py``:
 * enable Qt high-DPI scaling *before* the ``QApplication`` exists, so the UI
   is readable on 150 % / 200 % Windows displays;
 * install the UI translation chosen in *Settings > Language*;
-* apply the optional user font size;
+* apply the user's UI scale (font size + style sheet);
 * show uncaught exceptions in a dialog instead of silently dying.
 """
 import multiprocessing
@@ -49,7 +49,22 @@ PREFERRED_FAMILIES = [
     "PingFang SC", "Helvetica Neue",                            # macOS
     "Noto Sans CJK SC", "Noto Sans", "DejaVu Sans", "Arial",    # Linux / generic
 ]
-DEFAULT_POINT_SIZE = 10
+
+
+def ui_scale(settings):
+    """UI scale in percent from QSettings (``ui/uiScale``).
+
+    Older builds stored an absolute ``ui/fontPointSize``; it is converted once
+    so an existing preference is not lost.
+    """
+    from avas.gui.theme import DEFAULT_POINT_SIZE, DEFAULT_SCALE, SCALES
+    scale = settings.value("ui/uiScale", 0, type=int)
+    if not scale:
+        old_pt = settings.value("ui/fontPointSize", 0, type=int)
+        scale = int(round(old_pt / DEFAULT_POINT_SIZE * 100)) if old_pt else DEFAULT_SCALE
+        scale = min(SCALES, key=lambda s: abs(s - scale))
+        settings.setValue("ui/uiScale", scale)
+    return scale
 
 
 def _apply_font(app, settings):
@@ -60,19 +75,30 @@ def _apply_font(app, settings):
     back as *SimSun 5 pt* (measured), which is why the old GUI was unreadable
     on high-DPI screens even though the menu bar (which uses a separate theme
     font) looked fine.  Picking a real UI family and size here makes every
-    widget inherit something sane.  The size can be changed from
-    Settings > Font size (stored as ``ui/fontPointSize``).
+    widget inherit something sane.  The size follows *View > UI scale*.
     """
+    from avas.gui.theme import base_point_size
     families = set(QFontDatabase().families())
     font = app.font()
     for family in PREFERRED_FAMILIES:
         if family in families:
             font.setFamily(family)
             break
-    size = settings.value("ui/fontPointSize", 0, type=int)
-    font.setPointSize(size if size and size > 0 else DEFAULT_POINT_SIZE)
+    font.setPointSizeF(base_point_size(ui_scale(settings)))
     font.setStyleStrategy(QFont.PreferAntialias)
     app.setFont(font)
+
+
+def apply_ui_scale(app, settings):
+    """(Re)apply font, theme (light / dark / follow system) and style sheet for the stored UI scale.
+
+    Setting a new style sheet re-polishes every existing widget, which is what
+    makes a live scale change take effect everywhere (a bare ``setFont`` after
+    the windows exist only reaches widgets created later, e.g. popup menus).
+    """
+    from avas.gui.theme import apply_theme
+    _apply_font(app, settings)
+    apply_theme(app, ui_scale(settings), settings.value("ui/theme", "system", type=str))
 
 
 def main(argv=None, language=None):
@@ -86,12 +112,10 @@ def main(argv=None, language=None):
     settings = QSettings(ORG_NAME, APP_NAME)
     lang = language or settings.value("ui/language", "en")
 
-    from avas.gui.theme import apply_theme
-    apply_theme(app)
+    apply_ui_scale(app, settings)
 
     from avas.i18n import install_translator
     install_translator(app, lang)
-    _apply_font(app, settings)
     _install_excepthook()
 
     # imported after the translator is installed so tr() strings resolve

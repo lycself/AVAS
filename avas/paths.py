@@ -43,3 +43,54 @@ def resolve_io_dirs(project_path=None, input_file=None, output_file=None):
     input_dir = input_file or (os.path.join(project_path, "InputFile") if project_path else None)
     output_dir = output_file or (os.path.join(project_path, "OutputFile") if project_path else None)
     return input_dir, output_dir
+
+
+# --------------------------------------------------------------------------- lattice source
+DEFAULT_LATTICE = "lattice_mulp.txt"
+LATTICE_ENV_VAR = "AVAS_LATTICE"
+
+
+def lattice_source_name(input_dir):
+    """File name (inside *input_dir*) of the lattice used for the run.
+
+    Priority: ``$AVAS_LATTICE`` (set by ``avas run --lattice``), then
+    ``[lattice] source`` in ``ini.ini`` (chosen on the Lattice page), then
+    ``lattice_mulp.txt``.
+    """
+    override = os.environ.get(LATTICE_ENV_VAR, "").strip()
+    if override:
+        return override
+    ini = os.path.join(input_dir, "ini.ini") if input_dir else ""
+    if ini and os.path.isfile(ini):
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.optionxform = str
+        try:
+            cfg.read(ini, encoding="utf-8")
+            name = cfg.get("lattice", "source", fallback="").strip()
+        except configparser.Error:
+            name = ""
+        if name:
+            return name
+    return DEFAULT_LATTICE
+
+
+def lattice_source_path(input_dir):
+    """Absolute path of the lattice used for the run (see :func:`lattice_source_name`)."""
+    name = lattice_source_name(input_dir)
+    return name if os.path.isabs(name) else os.path.join(input_dir, name)
+
+
+def set_lattice_source(input_dir, name):
+    """Store *name* as ``[lattice] source`` in ``ini.ini``, keeping everything else."""
+    import configparser
+    ini = os.path.join(input_dir, "ini.ini")
+    cfg = configparser.ConfigParser()
+    cfg.optionxform = str
+    if os.path.isfile(ini):
+        cfg.read(ini, encoding="utf-8")
+    if not cfg.has_section("lattice"):
+        cfg.add_section("lattice")
+    cfg.set("lattice", "source", "" if name == DEFAULT_LATTICE else name)
+    with open(ini, "w", encoding="utf-8") as fh:
+        cfg.write(fh)

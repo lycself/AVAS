@@ -1,5 +1,6 @@
 """Simulation settings page: ``input.txt`` plus the ``ini.ini`` run options."""
 import logging
+import os
 
 from PyQt5.QtWidgets import QCheckBox, QGroupBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
@@ -18,11 +19,12 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.project = project
         self._device = "cpu"
+        self._had_threads_key = False
         self._build()
 
     def _build(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 18, 24, 18)
+        root.setContentsMargins(32, 24, 32, 24)
         root.setSpacing(12)
         root.addWidget(page_header(self.tr("Simulation settings"),
                                    self.tr("Tracking options written to input.txt, and the run mode stored in ini.ini.")))
@@ -47,6 +49,14 @@ class SettingsPage(QWidget):
         mform.addRow(self.tr("Output every N steps (plt)"), self.edit_dump)
         self.edit_seed = int_edit()
         mform.addRow(self.tr("Random seed of input beam"), self.edit_seed)
+        self.cb_threads = QCheckBox(self.tr("Multi-threaded tracking (multithreading)"))
+        self.cb_threads.setToolTip(self.tr("Lets the engine use several CPU cores for one run."))
+        mform.addRow("", self.cb_threads)
+        self.rg_scan = RadioGroup([("default", self.tr("engine default")), (0, self.tr("off")),
+                                   (1, self.tr("scan")), (2, self.tr("from scanData.txt"))])
+        self.rg_scan.setToolTip(self.tr("scanphase keyword: 0 = fixed phases, 1 = scan cavity phases, "
+                                        "2 = read entry phases from scanData.txt. 'engine default' leaves it out."))
+        mform.addRow(self.tr("Phase scan"), self.rg_scan)
         model.setLayout(mform)
         left.addWidget(model)
 
@@ -58,6 +68,10 @@ class SettingsPage(QWidget):
         sform.addRow("", self.cb_sc)
         self.rg_sc_method = RadioGroup([("FFT", "FFT"), ("SPICNIC", "SPICNIC")])
         sform.addRow(self.tr("Solver"), self.rg_sc_method)
+        self.edit_grid = [int_edit("", 70) for _ in range(3)]
+        sform.addRow(self.tr("Grid Nx Ny Nz"), self._triple(self.edit_grid, self.tr("empty = engine default")))
+        self.edit_mesh = [float_edit("", 70) for _ in range(3)]
+        sform.addRow(self.tr("Mesh size (x 2 rms)"), self._triple(self.edit_mesh, self.tr("empty = engine default")))
         sc.setLayout(sform)
         left.addWidget(sc)
 
@@ -107,8 +121,45 @@ class SettingsPage(QWidget):
         self._toggle_sc(False)
         self._toggle_error("")
 
+    @staticmethod
+    def _triple(edits, hint):
+        row = QWidget()
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        for e in edits:
+            lay.addWidget(e)
+        lab = QLabel(hint)
+        lab.setObjectName("soft")
+        lay.addWidget(lab)
+        lay.addStretch(1)
+        return row
+
+    @staticmethod
+    def _read_triple(edits, conv):
+        vals = [e.text().strip() for e in edits]
+        if not all(vals):
+            return None
+        try:
+            return [conv(v) for v in vals]
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _fill_triple(edits, values):
+        if values in (None, ""):
+            vals = []
+        elif isinstance(values, (list, tuple)):
+            vals = list(values)
+        else:
+            vals = [values]
+        for i, e in enumerate(edits):
+            e.setText(safe_str(vals[i], "") if i < len(vals) else "")
+
     def _toggle_sc(self, on):
         self.rg_sc_method.setEnabled(on)
+        for e in self.edit_grid + self.edit_mesh:
+            e.setEnabled(on)
 
     def _toggle_error(self, mode):
         self.edit_err_seed.setEnabled(bool(mode))
@@ -136,6 +187,11 @@ class SettingsPage(QWidget):
         self.cb_density.setChecked(safe_int(p.get("pchistogram_start"), 0) == 1)
         self.edit_density_grid.setText(safe_str(p.get("pchistogram_grid"), "300"))
         self._device = p.get("device") or "cpu"
+        self._had_threads_key = p.get("multithreading") is not None
+        self.cb_threads.setChecked(safe_int(p.get("multithreading"), 0) == 1)
+        self.rg_scan.set_value("default" if p.get("scanphase") is None else safe_int(p.get("scanphase"), 0))
+        self._fill_triple(self.edit_grid, p.get("numofgrid"))
+        self._fill_triple(self.edit_mesh, p.get("meshrms"))
 
         ini = IniConfig().create_from_file(item)
         if isinstance(ini, dict) and ini.get("code", 0) == 0:
@@ -161,12 +217,25 @@ class SettingsPage(QWidget):
             "spacechargelong": None,
             "spacechargetype": None,
             "device": self._device,
+            # keywords absent from input.txt keep the engine's own default: only write
+            # them when the user asked for a value (or turned a previously set one off)
+            "multithreading": 1 if self.cb_threads.isChecked() else (0 if self._had_threads_key else None),
+            "scanphase": None if self.rg_scan.value() in (None, "default") else self.rg_scan.value(),
+            "numofgrid": self._read_triple(self.edit_grid, int),
+            "meshrms": self._read_triple(self.edit_mesh, float),
         }
 
     def validate(self):
         errors = []
         if not self.edit_step.text():
             errors.append(self.tr("Settings: steps per βλ is missing"))
+        for edits, name in ((self.edit_grid, "numofgrid"), (self.edit_mesh, "meshrms")):
+            vals = [e.text().strip() for e in edits]
+            if any(vals) and not all(vals):
+                errors.append(self.tr("Settings: %s needs all three values (or none)") % name)
+        if (self.rg_scan.value() == 2 and self.project.is_open
+                and not os.path.isfile(self.project.input_file("scanData.txt"))):
+            errors.append(self.tr("Settings: phase scan mode 2 needs InputFile/scanData.txt"))
         if self.error_mode() and not self.edit_err_seed.text():
             errors.append(self.tr("Settings: error seed is missing"))
         return errors

@@ -11,6 +11,8 @@ from PyQt5.QtCore import Qt  # noqa: E402
 from PyQt5.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QPushButton, QTabWidget,  # noqa: E402
                              QVBoxLayout, QWidget)
 
+from avas.gui import plot_style, theme  # noqa: E402
+
 log = logging.getLogger("avas.gui")
 
 
@@ -24,6 +26,7 @@ class PlotTab(QWidget):
     def __init__(self, draw_fn, options_widget=None, parent=None):
         super().__init__(parent)
         self.draw_fn = draw_fn
+        self.stale = False
         self.fig = Figure(figsize=(7, 4.5), dpi=100)
         self.canvas = FigureCanvas(self.fig)
         self.canvas.setFocusPolicy(Qt.ClickFocus)
@@ -54,7 +57,10 @@ class PlotTab(QWidget):
         lay.addWidget(self.status)
 
     def refresh(self):
+        self.stale = False
         self.fig.clf()
+        self.fig.set_facecolor(matplotlib.rcParams["figure.facecolor"])
+        self.fig.set_edgecolor(matplotlib.rcParams["figure.edgecolor"])
         self.status.setText("")
         try:
             self.draw_fn(self.fig)
@@ -68,15 +74,23 @@ class PlotTab(QWidget):
             self.fig.clf()
             ax = self.fig.add_subplot(111)
             ax.axis("off")
-            ax.text(0.5, 0.5, str(exc), ha="center", va="center", wrap=True, color="#b91c1c")
+            ax.text(0.5, 0.5, str(exc), ha="center", va="center", wrap=True, color=theme.color("danger"))
             self.status.setText(str(exc))
         self.canvas.draw_idle()
 
     def save_image(self):
+        """Saved images always use the light (publication) style, see avas.gui.plot_style."""
         path, _ = QFileDialog.getSaveFileName(self, self.tr("Save image"), "", "PNG (*.png);;PDF (*.pdf);;SVG (*.svg)")
         if path:
             self.fig.savefig(path, dpi=200, bbox_inches="tight")
             log.info("saved %s", path)
+
+    def on_theme_changed(self):
+        plot_style.refresh_toolbar_icons(self.toolbar)
+        if self.isVisible():
+            self.refresh()
+        else:
+            self.stale = True
 
 
 class PlotArea(QTabWidget):
@@ -88,6 +102,8 @@ class PlotArea(QTabWidget):
         self.setMovable(True)
         self.setDocumentMode(True)
         self.tabCloseRequested.connect(self._close)
+        self.currentChanged.connect(self._on_current_changed)
+        theme.notifier().changed.connect(self._on_theme_changed)
         self._placeholder = QLabel(self.tr("Pick an item on the left to open a plot here."))
         self._placeholder.setAlignment(Qt.AlignCenter)
         self._placeholder.setObjectName("muted")
@@ -113,6 +129,17 @@ class PlotArea(QTabWidget):
         self.add_widget(title, tab)
         tab.refresh()
         return tab
+
+    def _on_theme_changed(self):
+        for i in range(self.count()):
+            w = self.widget(i)
+            if isinstance(w, PlotTab):
+                w.on_theme_changed()
+
+    def _on_current_changed(self, index):
+        w = self.widget(index)
+        if isinstance(w, PlotTab) and w.stale:
+            w.refresh()
 
     def refresh_all(self):
         for i in range(self.count()):

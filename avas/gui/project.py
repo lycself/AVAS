@@ -4,6 +4,7 @@ import os
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
+from avas import paths
 from avas.api.qt.api import judge_if_is_avas_project
 from avas.api.qt.createbasicfile import CreateBasicProject
 
@@ -13,6 +14,7 @@ MAX_RECENT = 8
 
 class Project(QObject):
     changed = pyqtSignal()  # emitted after open/create/close
+    lattice_changed = pyqtSignal(str)   # the lattice used for the run was switched
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -41,6 +43,37 @@ class Project(QObject):
 
     def output_file(self, name):
         return os.path.join(self.output_dir, name)
+
+    # ------------------------------------------------------------------ lattice source
+    def lattice_name(self):
+        """File name of the lattice used for the run (``[lattice] source`` in ini.ini)."""
+        return paths.lattice_source_name(self.input_dir) if self.is_open else paths.DEFAULT_LATTICE
+
+    def lattice_path(self):
+        return paths.lattice_source_path(self.input_dir) if self.is_open else ""
+
+    def set_lattice_name(self, name):
+        paths.set_lattice_source(self.input_dir, name)
+        self.lattice_changed.emit(name)
+
+    def field_dirs(self):
+        """Where field maps are looked up: InputFile, InputFile/field and ini.ini's fieldSource."""
+        if not self.is_open:
+            return []
+        dirs = [self.input_dir, os.path.join(self.input_dir, "field")]
+        ini = os.path.join(self.input_dir, "ini.ini")
+        if os.path.isfile(ini):
+            import configparser
+            cfg = configparser.ConfigParser()
+            cfg.optionxform = str
+            try:
+                cfg.read(ini, encoding="utf-8")
+                src = cfg.get("project", "fieldSource", fallback="").strip()
+            except configparser.Error:
+                src = ""
+            if src:
+                dirs.insert(0, src if os.path.isabs(src) else os.path.join(self.input_dir, src))
+        return [d for d in dirs if os.path.isdir(d)]
 
     def item(self):
         """The ``{"projectPath": ...}`` dict the config classes expect."""

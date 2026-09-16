@@ -63,8 +63,11 @@ def resolve_input_dir(path):
 
 
 def check_input_files(input_dir):
-    missing = [f for f in ("input.txt", "beam.txt", "lattice_mulp.txt")
-               if not os.path.isfile(os.path.join(input_dir, f))]
+    from avas.paths import lattice_source_path
+    missing = [f for f in ("input.txt", "beam.txt") if not os.path.isfile(os.path.join(input_dir, f))]
+    lattice = lattice_source_path(input_dir)
+    if not os.path.isfile(lattice):
+        missing.append(os.path.basename(lattice))
     if missing:
         raise CliError(f"missing input files in {input_dir}: {', '.join(missing)}")
 
@@ -116,6 +119,9 @@ def cmd_run(args):
     matplotlib.use("Agg")  # simulations never need a window
 
     input_dir = resolve_input_dir(args.input)
+    from avas.paths import LATTICE_ENV_VAR, lattice_source_name
+    if args.lattice:
+        os.environ[LATTICE_ENV_VAR] = args.lattice      # read by every module via avas.paths
     check_input_files(input_dir)
     output_dir = _abs(args.output)
     os.makedirs(output_dir, exist_ok=True)
@@ -149,6 +155,7 @@ def cmd_run(args):
         "mode": mode,
         "device": device,
         "seed": seed,
+        "lattice": lattice_source_name(input_dir),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "running",
     }
@@ -156,6 +163,7 @@ def cmd_run(args):
 
     print(f"[avas] mode={mode} device={device}")
     print(f"[avas] input : {input_dir}")
+    print(f"[avas] lattice: {lattice_source_name(input_dir)}")
     print(f"[avas] output: {output_dir}")
 
     from avas.api import basic as api
@@ -303,11 +311,14 @@ def build_parser():
     # run ------------------------------------------------------------------
     p_run = sub.add_parser("run", help="run a simulation", description="Run a multi-particle simulation.")
     p_run.add_argument("-i", "--input", required=True, metavar="DIR",
-                       help="input directory (contains input.txt, beam.txt, lattice_mulp.txt) "
+                       help="input directory (contains input.txt, beam.txt and the lattice) "
                             "or a project directory containing InputFile/")
     p_run.add_argument("-o", "--output", required=True, metavar="DIR",
                        help="output directory (created if missing)")
     p_run.add_argument("-f", "--field", metavar="DIR", help="field-map directory (default: input dir)")
+    p_run.add_argument("-l", "--lattice", metavar="FILE",
+                       help="lattice file inside the input dir (default: [lattice] source in ini.ini, "
+                            "else lattice_mulp.txt)")
     p_run.add_argument("-m", "--mode", choices=SIM_MODES, default="auto",
                        help="basic | stat | dyn | stat_dyn error study; auto = read ini.ini, else basic")
     p_run.add_argument("-d", "--device", choices=["cpu", "gpu"], help="compute device (default: ini.ini or cpu)")

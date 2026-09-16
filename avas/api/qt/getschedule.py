@@ -1,4 +1,5 @@
 #获取模拟的进度条
+from avas.paths import lattice_source_path
 from PyQt5.QtWidgets import QWidget
 import os
 from avas.data.datasetparameter import DatasetParameter
@@ -12,7 +13,7 @@ class GetSchedule():
     def __init__(self, item):
         self.project_path = item["projectPath"]
         self.ini_path = os.path.join(self.project_path, "InputFile", "ini.ini")
-        self.lattice_mulp_path = os.path.join(self.project_path, 'InputFile', 'lattice_mulp.txt')
+        self.lattice_mulp_path = lattice_source_path(os.path.join(self.project_path, "InputFile"))
 
     def get_mode(self):
         item = {"projectPath": self.project_path}

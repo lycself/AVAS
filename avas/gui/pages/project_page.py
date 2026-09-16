@@ -19,7 +19,7 @@ class ProjectPage(QWidget):
 
     def _build(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 18, 24, 18)
+        root.setContentsMargins(32, 24, 32, 24)
         root.setSpacing(12)
         root.addWidget(page_header(self.tr("Project"),
                                    self.tr("An AVAS project is a directory with InputFile/ (beam, lattice, settings) "
@@ -99,7 +99,7 @@ class ProjectPage(QWidget):
             return
         self.lbl_path.setText(self.project.path)
         present = []
-        for name in ("beam.txt", "input.txt", "lattice_mulp.txt", "ini.ini"):
+        for name in ("beam.txt", "input.txt", self.project.lattice_name(), "boundary.txt", "scanData.txt", "ini.ini"):
             ok = os.path.isfile(self.project.input_file(name))
             present.append(f"{'✓' if ok else '✗'} {name}")
         self.lbl_inputs.setText("    ".join(present))

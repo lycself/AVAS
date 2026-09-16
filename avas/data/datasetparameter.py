@@ -1,8 +1,10 @@
+from avas.paths import lattice_source_path
 import os.path
 import sys
 import time
 
 from avas.utils.readfile import read_dst, read_txt, read_dst_fast
+from avas.utils.tool import to_float, to_int
 import math
 
 from avas.constants import Pi, c_light
@@ -53,12 +55,14 @@ class DatasetParameter():
         # else:
         #     pass
 
-        self.num_of_particle = float(dataset_info[0][28])
+        # the engine writes NaN as '-nan(ind)' (e.g. rms sizes of a 1-particle beam);
+        # to_float() keeps such rows instead of aborting the whole read
+        self.num_of_particle = to_float(dataset_info[0][28])
 
-        dataset_info = [[float(j) for j in i] for i in dataset_info]
+        dataset_info = [[to_float(j) for j in i] for i in dataset_info]
 
 
-        self.dataset_index = [int(i[39]) for i in dataset_info]
+        self.dataset_index = [to_int(i[39]) for i in dataset_info]
 
         # random.seed(40)
         # for i in range(1, len(dataset_info)):
@@ -125,8 +129,8 @@ class DatasetParameter():
 
         self.pz = [i[6] for i in dataset_info]
 
-        self.x_1 = [self.px[i] / self.pz[i] for i in range(len(self.pz))]  # rad
-        self.y_1 = [self.py[i] / self.pz[i] for i in range(len(self.pz))]
+        self.x_1 = [self.px[i] / self.pz[i] if self.pz[i] else math.nan for i in range(len(self.pz))]  # rad
+        self.y_1 = [self.py[i] / self.pz[i] if self.pz[i] else math.nan for i in range(len(self.pz))]
 
         self.alpha_x = [i[7] for i in dataset_info]
         self.alpha_y = [i[8] for i in dataset_info]
@@ -194,7 +198,7 @@ class DatasetParameter():
         return True
 
     def get_lattice_end_index(self):
-        lattice_mulp_path = os.path.join(self.input_dir, 'lattice_mulp.txt')
+        lattice_mulp_path = lattice_source_path(self.input_dir)
         lattice_obj = LatticeParameter(lattice_mulp_path)
         lattice_obj.get_parameter()
         total_length = lattice_obj.total_length
@@ -214,9 +218,13 @@ class DatasetParameter():
         self.phi = []
         self.phi_phi = []
         for i in range(len(self.rms_z)):
-            gammaaaa = self.ek[i] / self.BaseMassInMeV + 1
-            beta.append(math.sqrt(1 - 1.0 / gammaaaa / gammaaaa))
-            v = self.rms_z[i] / (beta[-1] * c_light) * self.freq * 360
+            try:
+                gammaaaa = self.ek[i] / self.BaseMassInMeV + 1
+                beta.append(math.sqrt(1 - 1.0 / gammaaaa / gammaaaa))
+                v = self.rms_z[i] / (beta[-1] * c_light) * self.freq * 360
+            except (ValueError, ZeroDivisionError, OverflowError):
+                beta.append(math.nan)
+                v = math.nan
             self.phi.append(v)
             self.phi_phi.append(-1 * v)
 

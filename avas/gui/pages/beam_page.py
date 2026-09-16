@@ -29,7 +29,7 @@ class BeamPage(QWidget):
     # ------------------------------------------------------------------ ui
     def _build(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 18, 24, 18)
+        root.setContentsMargins(32, 24, 32, 24)
         root.setSpacing(12)
         root.addWidget(page_header(self.tr("Beam"),
                                    self.tr("Initial beam: either generated from the parameters below or read from a particle (.dst) file.")))
@@ -265,6 +265,11 @@ class BeamPage(QWidget):
             errors.append(self.tr("Beam: charge is missing"))
         if self.cb_use_dst.isChecked() and not self.edit_dst.text().strip():
             errors.append(self.tr("Beam: no particle file selected"))
+        if not self.cb_use_dst.isChecked():
+            n = safe_int(self.edit_number.text(), 0)
+            if n < 2:
+                # rms sizes / emittances of a single particle are NaN and every result plot would be empty
+                errors.append(self.tr("Beam: multi-particle tracking needs at least 2 particles (currently %d)") % n)
         return errors
 
     def save(self):

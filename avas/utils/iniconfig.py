@@ -13,13 +13,13 @@ class IniConfig():
         {"project": {"project_path": "",
                      "fieldSource": "",
                      },
-        "lattice":{"length": 0},
+        "lattice":{"length": 0, "source": ""},
          "input": {"sim_type": "mulp", "device": "cpu"},
          "match": {"cal_input_twiss": 0, "match_with_twiss": 0, "use_initial_value": 0},
          "error": {"error_type": "", "seed": 0, "if_normal": 1},
          }
 
-        self.str_keys = ["sim_type", "project_path", "fieldSource",  "error_type",  "device"]
+        self.str_keys = ["sim_type", "project_path", "fieldSource",  "error_type",  "device", "source"]
     # def initialize_ini(self):
 
 
@@ -52,11 +52,15 @@ class IniConfig():
         config.read(path, encoding='utf-8')  # 确保文件以正确的编码读取
 
         for section in config.sections():
+            target = self.ini_parameter.setdefault(section, {})   # keep sections this class does not know
             for key, value in config.items(section):
-                if key not in self.str_keys:
-                    self.ini_parameter[section][key] = int(value)
+                if key in self.str_keys:
+                    target[key] = value
                 else:
-                    self.ini_parameter[section][key] = value
+                    try:
+                        target[key] = int(value)
+                    except ValueError:
+                        target[key] = value
 
 
 

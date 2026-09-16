@@ -21,8 +21,12 @@ class InputConfig():
                                 }
 
         self.int_keys = ["spacecharge", "steppercycle", "dumpperiodicity",
-                         "spacechargelong", "spacechargetype", "pchistogram_start", "pchistogram_grid", "longlimits_start", "boundary", "randomseed"]
+                         "spacechargelong", "spacechargetype", "pchistogram_start", "pchistogram_grid", "longlimits_start", "boundary", "randomseed",
+                         "multithreading", "scanphase", "secondarybeam"]
         self.float_keys = ["longlimits_phase", "longlimits_energy"]
+        # keywords whose value is a list of numbers (kept as lists, converted element-wise)
+        self.int_list_keys = ["numofgrid"]
+        self.float_list_keys = ["meshrms"]
 
 
         self.mulp_keys = ["sim_type", "scmethod", "spacecharge", "steppercycle", "dumpperiodicity", ]
@@ -41,10 +45,11 @@ class InputConfig():
 
         res = {}
         for i in input_lis:
+            key = i[0].lower()          # the engine reads keywords case-insensitively
             if len(i) == 2:
-                res[i[0]] = i[1]
+                res[key] = i[1]
             else:
-                res[i[0]] = i[1:]
+                res[key] = i[1:]
 
 
         return res
@@ -186,12 +191,22 @@ class InputConfig():
 
     def convert_v(self, k, v):
         if k in self.int_keys:
+            if isinstance(v, list):      # tolerate "key v1 v2" written for a scalar keyword
+                v = v[0] if v else None
             v = convert_to_othertype_dict(k, v, int)
             return v
 
         if k in self.float_keys:
+            if isinstance(v, list):
+                v = v[0] if v else None
             v = convert_to_othertype_dict(k, v, float)
             return v
+
+        if k in self.int_list_keys or k in self.float_list_keys:
+            target = int if k in self.int_list_keys else float
+            if not isinstance(v, list):
+                v = [v]
+            return [convert_to_othertype_dict(k, x, target) for x in v]
 
         else:
             return v

@@ -1,6 +1,7 @@
 """改文件定义了图像的初始类"""
 import sys
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.path import Path
@@ -198,7 +199,8 @@ class CompoundShape():
         shapes = []
 
         # 创建正方形
-        square = patches.Rectangle(square_origin, length, height, linewidth=1, edgecolor="black", facecolor=facecolor)
+        square = patches.Rectangle(square_origin, length, height, linewidth=1, edgecolor=mpl.rcParams["axes.edgecolor"],
+                                   facecolor=facecolor)
 
         shapes.append(square)
         ratio = 0.9

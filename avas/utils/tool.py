@@ -143,6 +143,42 @@ def safe_float(v, default=0.0):
     except ValueError:
         return default
 
+
+# Strings the C/C++ engine (MSVC runtime) writes for non-finite numbers.
+_NAN_TOKENS = {"nan", "-nan", "+nan", "nan(ind)", "-nan(ind)", "+nan(ind)", "nan(snan)", "-nan(snan)",
+               "1.#ind", "-1.#ind", "1.#qnan", "-1.#qnan", "1.#snan", "-1.#snan", "ind", "-ind"}
+_INF_TOKENS = {"inf": math.inf, "+inf": math.inf, "-inf": -math.inf, "infinity": math.inf,
+               "-infinity": -math.inf, "1.#inf": math.inf, "-1.#inf": -math.inf}
+
+
+def to_float(text):
+    """``float()`` that also understands ``-nan(ind)``, ``1.#INF`` and friends.
+
+    The native engine prints NaN as ``-nan(ind)`` on Windows, which the plain
+    ``float()`` rejects.  Anything that cannot be parsed becomes ``nan`` so a
+    single bad token never aborts reading a whole result file.
+    """
+    if isinstance(text, (int, float)):
+        return float(text)
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        pass
+    key = str(text).strip().lower()
+    if key in _NAN_TOKENS:
+        return math.nan
+    if key in _INF_TOKENS:
+        return _INF_TOKENS[key]
+    return math.nan
+
+
+def to_int(text, default=0):
+    """``int()`` via :func:`to_float`; NaN/inf fall back to *default*."""
+    v = to_float(text)
+    if math.isnan(v) or math.isinf(v):
+        return default
+    return int(v)
+
 def safe_int(v, default=0):
     try:
         if v is None:

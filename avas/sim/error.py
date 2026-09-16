@@ -5,6 +5,7 @@
 
 #    get_goal：修改参数，添加end，然后写入lattice
 #    根据诊断命令，计算loss
+from avas.paths import lattice_source_path
 import sys
 from avas.paths import resolve_io_dirs
 from scipy.optimize import minimize
@@ -68,7 +69,7 @@ class Error():
             project_path, item.get("input_file"), item.get("output_file"))
         os.makedirs(self.output_path, exist_ok=True)
 
-        self.lattice_mulp_path = os.path.join(self.input_path, 'lattice_mulp.txt')
+        self.lattice_mulp_path = lattice_source_path(self.input_path)
         self.lattice_path = os.path.join(self.input_path, 'lattice.txt')
 
         self.error_middle_path = os.path.join(self.output_path, 'error_middle')

@@ -206,36 +206,40 @@ class SearchDialog(QDialog):
             self.editor.find(search_text, QTextDocument.FindCaseSensitively)
 
 class SyntaxHighlighter(QSyntaxHighlighter):
+    # command -> colour token of avas.gui.theme (VS Code Light+ / Dark+ like)
+    COMMAND_TOKENS = {
+        "drift": "syn_default",
+        "field": "syn_field",
+        "steerer": "syn_magnet",
+        "quad": "syn_magnet",
+        "edge": "syn_magnet",
+        "solenoid": "syn_magnet",
+        "bend": "syn_magnet",
+        "start": "syn_bound",
+        "end": "syn_bound",
+    }
+
     def __init__(self, parent):
         super().__init__(parent)
         self.rules = []
+        self.gray_format = QTextCharFormat()
+        self.apply_theme()
 
-        # 定义不同命令的颜色
-        self.command_formats = {
-            'drift': QColor("black"),
-
-            'field': QColor("green"),
-
-            "steerer": QColor("blue"),
-            "quad": QColor("blue"),
-            "edge": QColor("blue"),
-            "solenoid": QColor("blue"),
-            "bend": QColor("blue"),
-
-            "start": QColor("red"),
-            "end": QColor("red"),
-        }
-
-        for command, color in self.command_formats.items():
+    def apply_theme(self):
+        """(Re)build the formats from the active theme and re-highlight."""
+        from avas.gui import theme
+        self.rules = []
+        for command, token in self.COMMAND_TOKENS.items():
             fmt = QTextCharFormat()
-            fmt.setForeground(color)
+            fmt.setForeground(theme.qcolor(token))
             # 让匹配到的整行变色
             # 注意这里是 ^command.*$，即以 command 开头的一整行都着色
             self.rules.append((QRegExp(f"^{command}.*$"), fmt))
 
         # end 之后的颜色（灰色）
         self.gray_format = QTextCharFormat()
-        self.gray_format.setForeground(QColor("gray"))
+        self.gray_format.setForeground(theme.qcolor("syn_inactive"))
+        self.rehighlight()
 
         # 约定：blockState=1 表示已经遇到过 "end"
         #      blockState=0 表示还没遇到 "end"

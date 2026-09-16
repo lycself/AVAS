@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 import sys
 
 import numpy as np
@@ -17,7 +18,7 @@ class Acceptance():
         self.project_path = project_path
         self.plt_path = os.path.join(project_path, "OutputFile", "BeamSet.plt")
         if project_path:
-            self.latttice_mulp_path = os.path.join(project_path, 'InputFile', 'lattice_mulp.txt')
+            self.latttice_mulp_path = lattice_source_path(os.path.join(project_path, "InputFile"))
 
     def get_para(self, num):
         obj = BeamsetParameter(self.plt_path)

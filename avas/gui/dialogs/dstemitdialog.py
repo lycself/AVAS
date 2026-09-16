@@ -201,14 +201,16 @@ class DstEmitDialog(QDialog):
         text_browser = QTextBrowser()
         text_browser.setObjectName("text_browser")
         text_browser.setLineWrapMode(QTextEdit.NoWrap)
-        text_browser.setStyleSheet("""
-            QTextBrowser {
-                background: white;
-                border: 1px solid #bfbfbf;
+        from avas.gui import theme
+        text_browser.setStyleSheet(f"""
+            QTextBrowser {{
+                background: {theme.color("editor_bg")};
+                color: {theme.color("fg")};
+                border: 1px solid {theme.color("border_strong")};
                 font-family: "Courier New", "Consolas", monospace;
                 font-size: 23px;
                 padding: 8px;
-            }
+            }}
         """)
         layout.addWidget(text_browser)
 

@@ -58,8 +58,28 @@ class TsTranslator(QTranslator):
         return text if text is not None else source_text
 
 
+_current = {"language": "en"}
+
+
 def available_languages():
     return dict(LANGUAGES)
+
+
+def current_language():
+    """Language code last passed to :func:`install_translator` ("en" before any call)."""
+    return _current["language"]
+
+
+def pick(text):
+    """Choose from a bilingual ``(english, chinese)`` pair for the current language.
+
+    Used for domain documentation that lives in data tables (element and
+    keyword descriptions taken from the user manual) rather than in ``tr()``.
+    """
+    if isinstance(text, str):
+        return text
+    en, zh = text
+    return zh if current_language().lower().startswith("zh") and zh else en
 
 
 def install_translator(app, language):
@@ -69,6 +89,7 @@ def install_translator(app, language):
     object as ``app._avas_translators``).
     """
     translators = []
+    _current["language"] = language or "en"
     if not language or language.lower() in ("en", "en_us", "english"):
         app._avas_translators = translators
         return translators

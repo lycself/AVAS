@@ -1,5 +1,6 @@
 
 
+from avas.paths import lattice_source_path
 from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QToolBar, QVBoxLayout, QWidget, QPushButton, \
     QStackedWidget, QMenu, QLabel, QLineEdit, QTextEdit,  QGridLayout, QHBoxLayout,  QFrame, QFileDialog, QGroupBox, \
     QComboBox, QSizePolicy, QDialog, QCheckBox, QButtonGroup, QMessageBox
@@ -433,7 +434,7 @@ class CavityVoltageDialog(QDialog):
         event.accept()
 
     def get_feld(self):
-        lattice_path = os.path.join(self.project_path, "InputFile", "lattice_mulp.txt")
+        lattice_path = lattice_source_path(os.path.join(self.project_path, "InputFile"))
         all_info, _ = read_lattice_mulp_with_name(lattice_path)
 
         for i in all_info:

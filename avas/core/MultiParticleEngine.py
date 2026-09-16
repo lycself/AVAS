@@ -1,5 +1,6 @@
 
 import ctypes
+import sys
 
 import os
 from ctypes import POINTER, c_char_p, cdll
@@ -8,8 +9,32 @@ import platform
 from avas.paths import ENGINE_DIR
 
 
+def _unbuffer_c_stdout():
+    """Make the C runtime's ``stdout`` unbuffered (Windows, shared UCRT).
+
+    AVAS.dll reports progress with ``printf``/``std::cout``.  When the GUI runs
+    the simulation in a child process those writes go to a pipe, and the MSVC
+    runtime then buffers them in 4 KiB blocks - the progress would arrive in
+    bursts many seconds apart.  The DLL links the dynamic UCRT (see its
+    ``api-ms-win-crt-stdio`` import), so switching the shared ``stdout`` FILE
+    to ``_IONBF`` here makes every line show up immediately.  Harmless on a
+    console and silently skipped when anything is missing.
+    """
+    if platform.system() != "Windows" or sys.stdout is None or sys.stdout.isatty():
+        return
+    try:
+        ucrt = ctypes.CDLL("ucrtbase")
+        ucrt.__acrt_iob_func.restype = ctypes.c_void_p
+        ucrt.setvbuf.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_size_t]
+        _IONBF = 4
+        ucrt.setvbuf(ucrt.__acrt_iob_func(1), None, _IONBF, 0)
+    except (OSError, AttributeError):
+        pass
+
+
 class MultiParticleEngine():
     def __init__(self):
+        _unbuffer_c_stdout()
         self.dll_dir = ENGINE_DIR
         self.dll_path = os.path.join(ENGINE_DIR, 'AVAS.dll')
         self.so_path = os.path.join(ENGINE_DIR, 'libAVAS.so')

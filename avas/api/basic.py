@@ -1,5 +1,6 @@
 # -- coding: utf-8 --
 
+from avas.paths import lattice_source_path
 from avas.core.MultiParticle import MultiParticle
 
 from avas.post.plot.plotdataset import PlotDataSet
@@ -56,7 +57,7 @@ def basic_mulp(**item):
 
     multiparticle_obj = MultiParticle(item)
 
-    lattice_mulp_path = os.path.join(input_dir, 'lattice_mulp.txt')
+    lattice_mulp_path = lattice_source_path(input_dir)
     lattice_path = os.path.join(input_dir, 'lattice.txt')
     write_mulp_to_lattice_only_sim2(lattice_mulp_path, lattice_path)
 
@@ -499,7 +500,7 @@ def plot_cavity_voltage(project_path, ratio, show_=1, fig=None, platform="qt", i
     """
 
     input_dir, _ = resolve_io_dirs(project_path, input_dir, None)
-    lattice_mulp_path = os.path.join(input_dir, 'lattice_mulp.txt')
+    lattice_mulp_path = lattice_source_path(input_dir)
     v = PlotCavityVoltage(lattice_mulp_path, ratio)
     v.get_x_y()
     res = v.run(show_, fig)
@@ -541,7 +542,7 @@ def plot_cavity_syn_phase(**item):
     need_data = default_item.get("needData")
 
     input_dir, _ = resolve_io_dirs(project_path, default_item.get("inputDir"), None)
-    lattice_mulp_path = os.path.join(input_dir, 'lattice_mulp.txt')
+    lattice_mulp_path = lattice_source_path(input_dir)
     v = PlotCavitySynPhase(lattice_mulp_path)
     v.get_x_y()
 

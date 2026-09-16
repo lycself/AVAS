@@ -1,3 +1,4 @@
+from avas.utils.tool import to_float
 from avas.post.plot.initialplot import PicturePlot_2D, CompoundShape, PicturePlot_2ax
 from avas.utils.readfile import read_txt
 import os
@@ -22,7 +23,7 @@ class PlotErrout(PicturePlot_2D):
         data = read_txt(self.err_par_path, out='list')[1:]
 
 
-        data = [[float(j) for j in i] for i in data]
+        data = [[to_float(j) for j in i] for i in data]
 
         self.x = [int(i[0]) for i in data]
         # if self.picture_type == 1:
@@ -206,7 +207,7 @@ class PlotErr_emit_loss(PicturePlot_2ax):
 
     def get_x_y(self):
         data = read_txt(self.err_par_path, out='list')[1:]
-        data = [[float(j) for j in i] for i in data]
+        data = [[to_float(j) for j in i] for i in data]
 
         x = [int(i[0]) for i in data]
 

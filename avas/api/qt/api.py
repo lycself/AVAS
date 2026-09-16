@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 import re
 import sys
 
@@ -260,6 +261,14 @@ def write_to_file_input_ini(item, param):
                  }
 
     input_obj = InputConfig()
+    # start from the current input.txt so keywords the page does not know
+    # about (numofgrid, meshrms, secondarybeam, ...) survive a save
+    existing = os.path.join(item["projectPath"], "InputFile", "input.txt")
+    if os.path.isfile(existing):
+        try:
+            input_obj.create_from_file(item)
+        except Exception:  # noqa: BLE001 - a broken file is simply rewritten
+            input_obj = InputConfig()
     input_res = input_obj.set_param(**input_param)
     if input_res["code"] == -1:
         code = -1
@@ -269,6 +278,9 @@ def write_to_file_input_ini(item, param):
         return output
 
     ini_obj = IniConfig()
+    # keep the other ini.ini sections (error mode, lattice source, ...) instead of resetting them
+    if os.path.isfile(os.path.join(item["projectPath"], "InputFile", "ini.ini")):
+        ini_obj.create_from_file(item)
     ini_res = ini_obj.set_param(**ini_param)
     if ini_res["code"] == -1:
         code = -1
@@ -461,7 +473,7 @@ def project_check(item):
 
 
     #检查lattice
-    lattice_mulp_path = os.path.join(propject_path, "InputFile", "lattice_mulp.txt")
+    lattice_mulp_path = lattice_source_path(os.path.join(propject_path, "InputFile"))
     lattice_obj = JudgeLattice(lattice_mulp_path)
 
 

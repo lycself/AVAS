@@ -1,4 +1,5 @@
 
+from avas.paths import lattice_source_path
 from avas.data.beamset import BeamsetParameter
 import math
 from avas.constants import c_light, Pi
@@ -12,7 +13,7 @@ class Plttozcode():
         self.project_path = project_path
         self.plt_path = pltpath
         if project_path:
-            self.latttice_mulp_path = os.path.join(project_path, 'InputFile', 'lattice_mulp.txt')
+            self.latttice_mulp_path = lattice_source_path(os.path.join(project_path, "InputFile"))
     def get_all_step(self):
         obj = BeamsetParameter(self.plt_path)
         all_step =obj.get_step()

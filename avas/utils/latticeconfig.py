@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 from avas.utils.readfile import read_txt
 from avas.utils.tool import write_to_txt, convert_dic2lis
 from avas.utils.tool import format_output
@@ -23,7 +24,7 @@ class LatticeConfig():
             if sim_type == "env":
                 path = os.path.join(item.get("projectPath"), "InputFile", "lattice_env.txt")
             else:
-                path = os.path.join(item.get("projectPath"), "InputFile", "lattice_mulp.txt")
+                path = lattice_source_path(os.path.join(item.get("projectPath"), "InputFile"))
         else:
             path = other_path
 
@@ -69,7 +70,7 @@ class LatticeConfig():
             if sim_type == "env":
                 path = os.path.join(item.get("projectPath"), "InputFile", "lattice_env.txt")
             else:
-                path = os.path.join(item.get("projectPath"), "InputFile", "lattice_mulp.txt")
+                path = lattice_source_path(os.path.join(item.get("projectPath"), "InputFile"))
         else:
             path = other_path
 

@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -30,7 +31,7 @@ class PlotDataSet(PicturePlot_2D):
         # self.beam_path = self.project_path + r'\InputFile' + r'\beam.txt'
         self.input_dir = input_dir or (os.path.join(self.project_path, "InputFile") if self.project_path else None)
         if self.input_dir:
-            self.lattice_mulp_path = os.path.join(self.input_dir, 'lattice_mulp.txt')
+            self.lattice_mulp_path = lattice_source_path(self.input_dir)
         # self.lattice_mulp_path = self.project_path + r'\InputFile' + r'\lattice_mulp.txt'
         # self.input_path = self.project_path + r'\InputFile' + r'\input.txt'
         # self.dataset_path = os.path.join(self.project_path, "OutputFile", "Dataset.txt" )
@@ -338,7 +339,8 @@ class PlotDataSet(PicturePlot_2D):
 
 
         self.labels = self.labels + [None, None]
-        self.colors += ["black", "black"]
+        edge = matplotlib.rcParams["axes.edgecolor"]
+        self.colors += [edge, edge]
 
         self.patch_list = patch_list
 

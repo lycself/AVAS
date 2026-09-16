@@ -1,4 +1,5 @@
 """Small reusable widgets and helpers shared by the pages."""
+import inspect
 import logging
 import os
 import traceback
@@ -6,7 +7,9 @@ import traceback
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QDoubleValidator, QIntValidator
 from PyQt5.QtWidgets import (QButtonGroup, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QMessageBox, QPushButton, QRadioButton, QStyle, QVBoxLayout, QWidget)
+                             QMessageBox, QPushButton, QRadioButton, QVBoxLayout, QWidget)
+
+from avas.gui import icons
 
 log = logging.getLogger("avas.gui")
 
@@ -22,8 +25,21 @@ def report_error(parent, exc, title=None):
 
 
 def guarded(func):
-    """Decorator for slots: exceptions become a message box + log entry."""
+    """Decorator for slots: exceptions become a message box + log entry.
+
+    Surplus positional arguments are dropped, the way PyQt treats a plain
+    method: ``button.clicked`` sends ``checked``, which ``def save(self)`` must
+    not receive.  (The wrapper itself takes ``*args``, so PyQt cannot do it.)
+    """
+    params = inspect.signature(func).parameters.values()
+    if any(p.kind == p.VAR_POSITIONAL for p in params):
+        max_args = None
+    else:
+        max_args = sum(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD) for p in params)
+
     def inner(*args, **kwargs):
+        if max_args is not None:
+            args = args[:max_args]
         try:
             return func(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001 - GUI boundary
@@ -157,8 +173,9 @@ class PathPicker(QWidget):
         self.edit = QLineEdit()
         self.edit.setReadOnly(read_only)
         self.edit.textChanged.connect(self.changed)
-        icon = self.style().standardIcon(QStyle.SP_DirOpenIcon if mode == "dir" else QStyle.SP_DialogOpenButton)
-        self.button = QPushButton(icon, "")
+        self.button = QPushButton("")
+        icons.bind(self.button, "folder-opened" if mode == "dir" else "go-to-file")
+        self.button.setToolTip(self.tr("Browse..."))
         self.button.setFixedWidth(34)
         self.button.clicked.connect(self.browse)
         lay.addWidget(self.edit, 1)

@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 import os.path
 
 import avas.constants as global_varible
@@ -17,7 +18,7 @@ class DiagInfo():
         input_file = self.input_file
         output_file = self.output_file
 
-        lattice_mulp_path = os.path.join(input_file, "lattice_mulp.txt")
+        lattice_mulp_path = lattice_source_path(input_file)
 
         dataset_path = os.path.join(output_file, "DataSet.txt")
 

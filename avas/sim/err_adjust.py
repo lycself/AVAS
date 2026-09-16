@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 from scipy.optimize import minimize
 
 import numpy as np
@@ -25,7 +26,7 @@ class Adjust_Error():
         self.diag_res = {}
         self.project_path = project_path
         self.input_path, self.output_path = resolve_io_dirs(project_path, input_path, output_path)
-        self.lattice_mulp_path = os.path.join(self.input_path, "lattice_mulp.txt")
+        self.lattice_mulp_path = lattice_source_path(self.input_path)
         self.lattice_path = os.path.join(self.input_path, "lattice.txt")
         self.error_elemment_command = global_varible.error_elemment_command
 

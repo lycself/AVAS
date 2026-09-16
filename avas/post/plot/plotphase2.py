@@ -263,7 +263,7 @@ class PlotPhase2:
 
 
         fig.text(0.01, 0.95, f'Particle Number  {particle_number},       Energy {energy:.2f} MeV',
-                 fontsize=14, color='black')
+                 fontsize=14, color=plt.rcParams["text.color"])
 
 
         # fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.9])

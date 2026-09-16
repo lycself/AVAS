@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 import matplotlib.pyplot as plt
 from avas.utils.readfile import read_txt, read_dst, read_lattice_mulp_with_name
 from avas.post.plot.initialplot import PicturelBar_2D, PicturePlot_2D
@@ -89,7 +90,7 @@ class PlotPhaseAdvance(PicturePlot_2D):
         self.project_path = project_path
         input_dir, output_dir = resolve_io_dirs(project_path, input_dir, output_dir)
         self.beam_path = os.path.join(input_dir, 'beam.txt')
-        self.lattice_mulp_path = os.path.join(input_dir, 'lattice_mulp.txt')
+        self.lattice_mulp_path = lattice_source_path(input_dir)
         self.input_path = os.path.join(input_dir, 'input.txt')
         self.dataset_path = os.path.join(output_dir, 'DataSet.txt')
         self.picture_type = picture_type

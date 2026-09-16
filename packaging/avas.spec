@@ -19,6 +19,7 @@ datas = []
 datas += collect_data_files("avas", subdir="engine")
 datas += collect_data_files("avas", subdir="static")
 datas += collect_data_files("avas", subdir="i18n")
+datas += collect_data_files("qtawesome")          # icon fonts (codicons) used by the GUI
 
 block_cipher = None
 

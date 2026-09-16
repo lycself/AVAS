@@ -1,3 +1,4 @@
+from avas.paths import lattice_source_path
 import sys
 # sys.path.append(r'C:\Users\anxin\Desktop\AVAS_control')
 
@@ -28,7 +29,7 @@ class EA():
     def __init__(self, project_path):
         self.project_path = project_path
 
-        self.lattice_mulp_path = os.path.join(self.project_path, 'InputFile', 'lattice_mulp.txt')
+        self.lattice_mulp_path = lattice_source_path(os.path.join(self.project_path, "InputFile"))
         self.lattice_path = os.path.join(self.project_path, 'InputFile', 'lattice.txt')
 
         self.input_path = os.path.join(self.project_path, 'InputFile')
