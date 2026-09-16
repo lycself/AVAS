@@ -3,7 +3,7 @@ import sys
 import time
 
 from PyQt5.QtCore import QTimer, QObject
-from PyQt5.QtWidgets import QActionGroup
+from PyQt5.QtWidgets import QActionGroup, QScrollArea
 from PyQt5.QtWidgets import QMainWindow, QAction, QToolBar, QVBoxLayout, QWidget, QPushButton, \
     QStackedWidget,QMenu, QLabel, QLineEdit, QTextEdit,  QGridLayout, QHBoxLayout,  QFrame, QFileDialog, QMessageBox,\
     QApplication, QGroupBox
@@ -26,7 +26,7 @@ from avas.gui.page_tool import PageTool
 
 from avas.gui.page_data import PageData
 import multiprocessing
-from avas.gui.user_defined import treat_err
+from avas.gui.user_defined import treat_err, set_background
 from avas.gui.page_acc import PageAccept
 from send2trash import send2trash
 from avas.utils.iniconfig import IniConfig
@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
         self.setGeometry(800, 500, 600, 700)
         self.setWindowTitle(self.tr('AVAS'))
         self.setWindowIcon(QIcon('web.png'))
-        self.setStyleSheet("background-color: rgb(253, 253, 253);")  # Replace RGB values with your desired color
+        set_background(self, 253, 253, 253)
         main_layout = QVBoxLayout(self)
 
         menubar = self.menuBar()
@@ -377,7 +377,13 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(toolbar)
         central_layout.addLayout(hbox)  # 将带有边框的框架添加到布局中
         central_layout.addWidget(line_frame)  # 将表示线的框架添加到布局中
-        central_layout.addWidget(self.stacked_widget)  # 将堆叠小部件添加到布局中
+        # pages live in a scroll area: the window may be shrunk below the page
+        # height and the content scrolls instead of forcing a minimum size
+        self.page_scroll = QScrollArea()
+        self.page_scroll.setWidgetResizable(True)
+        self.page_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_scroll.setWidget(self.stacked_widget)
+        central_layout.addWidget(self.page_scroll)
 
         self.page_input.input_signal.connect(self.get_input_signal)
         #
@@ -430,16 +436,36 @@ class MainWindow(QMainWindow):
             font_menu.addAction(act)
 
     def _set_language(self, code):
+        """Switch UI language immediately by rebuilding the main window."""
+        if code == self.settings.value('ui/language', 'en'):
+            return
+        if self.sim_thread is not None:
+            QMessageBox.information(self, self.tr('Language'),
+                                    self.tr('Please stop the running simulation before changing the language.'))
+            return
         self.settings.setValue('ui/language', code)
         self.settings.sync()
-        QMessageBox.information(self, self.tr('Language'),
-                                self.tr('The language will change after AVAS is restarted.'))
+
+        from avas.i18n import install_translator
+        app = QApplication.instance()
+        for tr_ in getattr(app, '_avas_translators', []):
+            app.removeTranslator(tr_)
+        install_translator(app, code)
+
+        # every page builds its texts in initUI() from tr(), so a fresh window
+        # comes up fully translated; project path is restored from QSettings
+        new_window = MainWindow()
+        new_window.setGeometry(self.geometry())
+        app._avas_main_window = new_window
+        self._silent_close = True
+        self.close()
 
     def _set_font_size(self, size):
+        """Apply the font size immediately (0 = default)."""
         self.settings.setValue('ui/fontPointSize', size)
         self.settings.sync()
-        QMessageBox.information(self, self.tr('Font size'),
-                                self.tr('The font size will change after AVAS is restarted.'))
+        from avas.gui.app import _apply_font
+        _apply_font(QApplication.instance(), self.settings)
 
     def create_project(self):
         desktop_path = QStandardPaths.writableLocation(QStandardPaths.DesktopLocation)
@@ -668,6 +694,9 @@ class MainWindow(QMainWindow):
 
 #####################################
     def closeEvent(self, event):
+        if getattr(self, "_silent_close", False):
+            event.accept()
+            return
 
         reply = QMessageBox.question(self, self.tr('Message'),
                                      self.tr("Are you sure to quit?"), QMessageBox.Yes |
@@ -730,10 +759,8 @@ class MainWindow(QMainWindow):
         current_page_name = self.stacked_widget.widget(index).objectName()
         # print(current_page_name)
         # 如果当前页面是 'data'，则设置窗口大小
-        if current_page_name == 'page_data':
-            self.resize(1200, 700)  # 修改为适当的尺寸
-        else:
-            self.resize(600, 700)  # 恢复到默认尺寸或其他尺寸
+        if current_page_name == 'page_data' and self.width() < 1200:
+            self.resize(1200, self.height())
 
 if __name__ == '__main__':
     from avas.gui.app import main

@@ -8,7 +8,7 @@ import os
 from PyQt5.QtCore import QStandardPaths, QCoreApplication, pyqtSignal, QTimer
 from avas.api.basic import change_particle_number
 
-from avas.gui.user_defined import treat_err
+from avas.gui.user_defined import treat_err, set_background
 import multiprocessing
 
 
@@ -24,7 +24,7 @@ class PageMatch (QWidget):
 
     def initUI(self):
         # print(self.project_path)
-        self.setStyleSheet("background-color: rgb(250, 250, 250);")
+        set_background(self, 250, 250, 250)
 
         layout = QHBoxLayout()
 

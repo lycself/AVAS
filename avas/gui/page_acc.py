@@ -7,7 +7,7 @@ import os
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from avas.utils.readfile import read_txt, read_dst
-from avas.gui.user_defined import treat_err, treat_err2, gray240
+from avas.gui.user_defined import treat_err, treat_err2, gray240, set_background
 from avas.api.basic import cal_acceptance
 from avas.api.basic import plot_acc
 
@@ -23,7 +23,7 @@ class PageAccept(QWidget):
 
     def initUI(self):
         # print(self.project_path)
-        self.setStyleSheet("background-color: rgb(250, 250, 250);")
+        set_background(self, 250, 250, 250)
 
         layout = QHBoxLayout()
 

@@ -1,4 +1,5 @@
 import os.path
+from avas.gui.user_defined import set_background
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QToolBar, QVBoxLayout, QWidget, QPushButton, \
     QStackedWidget, QMenu, QLabel, QLineEdit, QTextEdit, QGridLayout, QHBoxLayout, QFrame, QFileDialog, QGroupBox, \
@@ -29,7 +30,7 @@ class PageData(QWidget):
         # print(self.project_path)
         self.resize(1200, 650)
 
-        self.setStyleSheet("background-color: rgb(250, 250, 250);")
+        set_background(self, 250, 250, 250)
 
         layout = QHBoxLayout()
 

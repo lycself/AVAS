@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QToolBar, QVBoxL
     QComboBox, QSizePolicy, QCheckBox, QMessageBox
 
 import os
-from avas.gui.user_defined import MyQLineEdit
+from avas.gui.user_defined import MyQLineEdit, set_background
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from avas.utils.readfile import read_txt, read_dst
@@ -26,7 +26,7 @@ class PageInput(QWidget):
 
     def initUI(self):
         # print(self.project_path)
-        self.setStyleSheet("background-color: rgb(250, 250, 250);")
+        set_background(self, 250, 250, 250)
 
         layout = QHBoxLayout()
 

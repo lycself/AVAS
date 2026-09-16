@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QToolBar, QVBoxL
 import os
 from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtCore import QStandardPaths
-from avas.gui.user_defined import MyQLineEdit
+from avas.gui.user_defined import MyQLineEdit, set_background
 
 from PyQt5.QtCore import Qt
 from avas.utils.readfile import read_txt, read_dst
@@ -39,7 +39,7 @@ class PageBeam(QWidget):
 
     def initUI(self):
         # print(self.project_path)
-        self.setStyleSheet("background-color: rgb(250, 250, 250);")
+        set_background(self, 250, 250, 250)
 
         layout = QHBoxLayout()
 

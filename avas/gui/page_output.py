@@ -1,4 +1,5 @@
 import sys
+from avas.gui.user_defined import set_background
 from PyQt5.QtWidgets import QApplication, QMainWindow, QProgressBar, QVBoxLayout, QWidget
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal
 from avas.data.datasetparameter import DatasetParameter
@@ -41,7 +42,7 @@ class PageOutput(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setStyleSheet("background-color: rgb(250, 250, 250);")
+        set_background(self, 250, 250, 250)
 
         layout = QVBoxLayout()
 

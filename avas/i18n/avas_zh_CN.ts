@@ -151,6 +151,10 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Please stop the running simulation before changing the language.</source>
+        <translation>请先停止正在运行的模拟，再切换语言。</translation>
+    </message>
+    <message>
         <source>AVAS</source>
         <translation>AVAS</translation>
     </message>
@@ -197,14 +201,6 @@
     <message>
         <source>System default</source>
         <translation>系统默认</translation>
-    </message>
-    <message>
-        <source>The font size will change after AVAS is restarted.</source>
-        <translation>重新启动 AVAS 后字号设置生效。</translation>
-    </message>
-    <message>
-        <source>The language will change after AVAS is restarted.</source>
-        <translation>重新启动 AVAS 后语言设置生效。</translation>
     </message>
     <message>
         <source>accept</source>

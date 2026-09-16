@@ -94,7 +94,8 @@ def main(argv=None, language=None):
     # imported after the translator is installed so tr() strings resolve
     from avas.gui.user_pyqt import MainWindow
 
-    window = MainWindow()  # noqa: F841 - keeps the window alive
+    # kept on the app object so the window can replace itself (language switch)
+    app._avas_main_window = MainWindow()
     return app.exec_()
 
 
