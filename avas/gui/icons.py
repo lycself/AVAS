@@ -15,7 +15,8 @@ import tempfile
 
 import qtawesome as qta
 from PyQt5 import sip
-from PyQt5.QtCore import QSize
+from PyQt5.QtCore import QRectF, QSize, Qt
+from PyQt5.QtGui import QColor, QPainter, QPixmap
 
 from avas.gui import theme
 
@@ -60,6 +61,8 @@ def style_images(mode):
         "arrow_down_disabled": ("chevron-down", "fg_soft"),
         "close": ("close", "fg_muted"),
         "close_hover": ("close", "fg_strong"),
+        "check": ("check", "on_accent"),
+        "check_disabled": ("check", "fg_soft"),
     }
     paths = {}
     for key, (name, token) in specs.items():
@@ -68,7 +71,26 @@ def style_images(mode):
         if not os.path.isfile(path):
             qta.icon(f"msc.{name}", color=color).pixmap(QSize(32, 32)).save(path)
         paths[key] = path.replace("\\", "/")
+    for key, token in (("radio_dot", "accent"), ("radio_dot_disabled", "fg_soft")):
+        color = tokens[token]
+        path = os.path.join(folder, f"{key}_{color.lstrip('#')}.png")
+        if not os.path.isfile(path):
+            _dot_pixmap(color).save(path)
+        paths[key] = path.replace("\\", "/")
     return paths
+
+
+def _dot_pixmap(color, size=32):
+    """A filled circle, half the picture wide: the centre of a checked radio button."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(color))
+    p.drawEllipse(QRectF(size * 0.25, size * 0.25, size * 0.5, size * 0.5))
+    p.end()
+    return pm
 
 
 def unbind(target):

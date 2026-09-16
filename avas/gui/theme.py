@@ -314,6 +314,7 @@ def build_stylesheet(scale=DEFAULT_SCALE, mode="light", images=None):
     def px_(x):
         return f"{max(1, int(round(x * scale / 100.0)))}px"
 
+    ind = max(8, int(round(16 * scale / 100.0)))     # check / radio indicator, px
     img = images or {}
     extra = ""
     if img:
@@ -328,6 +329,10 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url({img['arrow_down'
 QTabBar::close-button {{ image: url({img['close']}); subcontrol-position: right; width: {px_(14)};
                          height: {px_(14)}; border-radius: {px_(3)}; margin-left: {px_(4)}; }}
 QTabBar::close-button:hover {{ image: url({img['close_hover']}); background: {c['list_hover']}; }}
+QCheckBox::indicator:checked {{ image: url({img['check']}); }}
+QCheckBox::indicator:checked:disabled {{ image: url({img['check_disabled']}); }}
+QRadioButton::indicator:checked {{ image: url({img['radio_dot']}); }}
+QRadioButton::indicator:checked:disabled {{ image: url({img['radio_dot_disabled']}); }}
 """
 
     return extra + f"""
@@ -473,8 +478,18 @@ QComboBox::drop-down {{ border: none; width: {px_(22)}; }}
 QComboBox QAbstractItemView {{ border: 1px solid {c['border_strong']}; background: {c['editor_bg']}; color: {c['fg']};
                                selection-background-color: {c['accent']}; selection-color: {c['on_accent']};
                                outline: none; }}
-QCheckBox, QRadioButton {{ background: transparent; }}
-QCheckBox::indicator, QRadioButton::indicator {{ width: {px_(15)}; height: {px_(15)}; }}
+QCheckBox, QRadioButton {{ background: transparent; spacing: {px_(8)}; }}
+/* indicators are drawn in full here: Fusion's own frame vanishes on the dark surfaces */
+QCheckBox::indicator, QRadioButton::indicator {{
+    width: {ind}px; height: {ind}px; border: 1px solid {c['fg_soft']}; background: {c['input_bg']};
+}}
+QCheckBox::indicator {{ border-radius: {px_(3)}; }}
+QRadioButton::indicator {{ border-radius: {ind // 2 + 1}px; }}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {c['accent']}; }}
+QCheckBox::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; }}
+QRadioButton::indicator:checked {{ border-color: {c['accent']}; }}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+    border-color: {c['border_strong']}; background: {c['sidebar_bg']}; }}
 
 QTableWidget, QTableView, QTreeWidget, QTreeView, QListWidget, QListView {{
     border: 1px solid {c['border']}; border-radius: {px_(4)}; background: {c['editor_bg']}; color: {c['fg']};
