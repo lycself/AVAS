@@ -314,16 +314,13 @@ def cal_twiss(item):
     beta = item["beta"]
 
 
-    average_x = np.mean(x)
-    average_x1 = np.mean(x1)
-    sigma_x = np.average([(i - average_x) ** 2 for i in x])
-    sigma_x1 = np.average([(i - average_x1) ** 2 for i in x1])
-
-    sigma_xx1 = np.average([(x[i] - average_x) * (x1[i] - average_x1) for i in range(len(x))])
-    # print("sigma_x =", sigma_x)
-    # print("sigma_x1 =", sigma_x1)
-    # print("sigma_xx1 =", sigma_xx1)
-    # print("expr =", sigma_x * sigma_x1 - sigma_xx1 * sigma_xx1)
+    x = np.asarray(x, dtype=float)
+    x1 = np.asarray(x1, dtype=float)
+    dx = x - x.mean()
+    dx1 = x1 - x1.mean()
+    sigma_x = float(np.mean(dx * dx))
+    sigma_x1 = float(np.mean(dx1 * dx1))
+    sigma_xx1 = float(np.mean(dx * dx1))
 
     epsilon_x = math.sqrt(sigma_x * sigma_x1 - sigma_xx1 * sigma_xx1)
 

@@ -1,1 +1,0 @@
-import{J as e,W as t}from"./index-De9k_Qcu.js";import{i as n,n as r,r as i}from"./common-C3hMv0fc.js";var a=t();function o(){let t=e();return n()?(0,a.jsx)(`div`,{className:`page`,children:(0,a.jsx)(`div`,{className:`page-inner`,children:(0,a.jsx)(i,{title:t(`ResultsPage`),hint:`(work in progress)`})})}):(0,a.jsx)(r,{})}export{o as default};

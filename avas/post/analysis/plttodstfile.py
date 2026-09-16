@@ -33,10 +33,11 @@ class Plttozcode():
         part_dict = obj.one_step_dict
         part_list = obj.one_step_list
 
+        step_type = part_dict.get("type", part_dict.get("tpye"))     # get_one_parameter stores "type"
         exist_part_dstform_one_step = []
         all_part_dstform_one_step = []
 
-        if part_dict["tpye"] == 0:
+        if step_type == 0:
             for particle in part_list:
                 if particle[5] > 0 and (particle[6] ==0 or particle[6]==2):
 
@@ -68,7 +69,7 @@ class Plttozcode():
                 else:
                     all_part_dstform_one_step.append([])
 
-        if part_dict["tpye"] == 1:
+        if step_type == 1:
             print("tcode开始")
             t_average = numpy.mean(numpy.array([i[4] for i in part_list if i[6] == 1]))
             for particle in part_list:
@@ -114,7 +115,7 @@ class Plttozcode():
                 data0utFile.write(struct.pack('c', b'\x7D'))  # skip1
                 data0utFile.write(struct.pack('c', b'\x64'))  # skip2
 
-                data0utFile.write(struct.pack('i', self.np))
+                data0utFile.write(struct.pack('i', len(exist_part_dstform_one_step)))   # only alive particles are written
                 data0utFile.write(struct.pack('d', self.Ib))  # mA
                 data0utFile.write(struct.pack('d', self.freq/10**6))  # MHz
 

@@ -61,7 +61,8 @@ class PlotCavitySynPhase(PicturePlot_2D):
 
 
     def get_x_y(self,):
-        all_info = read_txt(self.lattice_mulp_path, out='list')
+        # named lines ("cav1 : field ...") count too, as in the cavity-voltage plot
+        all_info, _ = read_lattice_mulp_with_name(self.lattice_mulp_path)
         x = []
         y = []
         index = 1

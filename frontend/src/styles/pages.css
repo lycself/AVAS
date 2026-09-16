@@ -85,3 +85,23 @@
 .data-grid td.cursor { box-shadow: inset 0 0 0 1px var(--accent); }
 .info-table { border-collapse: collapse; }
 .info-table td { padding: 2px 16px 2px 0; vertical-align: top; }
+.results-layout { flex: 1 1 auto; display: flex; min-height: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.results-tree { width: 250px; flex: none; overflow: auto; background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 6px 0; }
+.results-tree .files-item { padding-left: 16px; }
+.results-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.results-tab { flex: 1 1 auto; min-height: 0; flex-direction: column; }
+.plot-tab, .phase-viewer { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.plot-options { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); min-height: 38px; }
+.plot-options.wrap { flex-wrap: wrap; }
+.opt { display: inline-flex; align-items: center; gap: 6px; }
+.opt.wrap { flex-wrap: wrap; }
+.plane-pick { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
+.plane-pick .select select { padding-right: 22px; }
+.plot-body { flex: 1 1 auto; position: relative; min-height: 240px; }
+.plot-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--danger); padding: 24px; text-align: center; }
+.plot-error .codicon { font-size: 18px; }
+.plot-footer { display: flex; gap: 28px; padding: 6px 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.phase-body { flex: 1 1 auto; display: flex; min-height: 0; }
+.phase-plot { flex: 1 1 auto; position: relative; min-width: 0; min-height: 360px; }
+.twiss-text { width: 300px; flex: none; margin: 0; padding: 10px 12px; overflow: auto; border-left: 1px solid var(--border); font-size: 12px; line-height: 1.55; background: var(--panel-bg); white-space: pre-wrap; }
+.tool-panel { padding: 20px 24px; }

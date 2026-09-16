@@ -16,12 +16,13 @@ class TreatPlt():
 
         self.plt_path = item.get("plt_path")
         self.project_path = item.get("project_path")
+        self.dataset_path = item.get("dataset_path")      # optional: DataSet.txt outside <project>/OutputFile
 
 
 
     def get_dataset_plt_base_info(self):
         #
-        dataset_path = os.path.join(self.project_path, "OutputFile", "DataSet.txt")
+        dataset_path = self.dataset_path or os.path.join(self.project_path, "OutputFile", "DataSet.txt")
 
         dataset_obj = DatasetParameter(dataset_path)
         dataset_obj.get_parameter()

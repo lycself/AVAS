@@ -151,12 +151,12 @@ class PlotDensityLevel(PicturePlot_2D):
             edge_max_90 = [i[0] for i in edge_max]
             edge_max_99 = [i[1] for i in edge_max]
             edge_max_999 = [i[2] for i in edge_max]
-            edge_max_9999 = [i[2] for i in edge_max]
+            edge_max_9999 = [i[3] for i in edge_max]
 
             edge_min_90 = [i[0] for i in edge_min]
             edge_min_99 = [i[1] for i in edge_min]
             edge_min_999 = [i[2] for i in edge_min]
-            edge_min_9999 = [i[2] for i in edge_min]
+            edge_min_9999 = [i[3] for i in edge_min]
 
             self.y = [
                 edge_max_90,
@@ -202,7 +202,7 @@ class PlotDensityLevel(PicturePlot_2D):
                 edge_max_90 = [i[0] for i in edge_max]
                 edge_max_99 = [i[1] for i in edge_max]
                 edge_max_999 = [i[2] for i in edge_max]
-                edge_max_9999 = [i[2] for i in edge_max]
+                edge_max_9999 = [i[3] for i in edge_max]
 
 
 
@@ -277,7 +277,6 @@ class PlotDensityProcess(PicturePlot_2D):
         lost_lis = data["lost_lis"]
         maxlost_lis = data["maxlost_lis"]
         minlost_lis = data["minlost_lis"]
-        print(rms_size_lis[:10])
         if picture_type == "centroid":
             if density_plane == "x":
                 self.y = [i[0] for i in moy]
@@ -297,9 +296,9 @@ class PlotDensityProcess(PicturePlot_2D):
             elif density_plane == "y":
                 self.y = [i[1] for i in rms_size_lis]
             elif density_plane == "r":
-                self.y = [i[2] for i in rms_size_lis]
+                raise ValueError("the density file stores rms sizes for x, y and z only (no r)")
             elif density_plane == "z":
-                self.y = [i[3] for i in rms_size_lis]
+                self.y = [i[2] for i in rms_size_lis]
             self.y = np.array(self.y) * 1000
             self.ylabel = f"Rms size  {density_plane.upper()} (mm)"
             self.xlabel = "z(m)"
@@ -333,7 +332,7 @@ class PlotDensityProcess(PicturePlot_2D):
             y2 = [i[2] * 10**6 for i in emit]
             self.y = [y0, y1, y2]
             self.labels = [r"$\varepsilon_{xx'}$", r"$\varepsilon_{yy'}$", r"$\varepsilon_{zz'}$"]
-            self.ylabel = r"$Rms emittanace (\pi.mm.mrad)$"
+            self.ylabel = r"Rms emittance ($\pi$.mm.mrad)"
             self.xlabel = "z(m)"
             self.set_legend = 1
         elif picture_type == "lost":

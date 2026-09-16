@@ -1,3 +1,4 @@
+import numpy as np
 import sys
 
 import math
@@ -50,77 +51,29 @@ class PercentEmit():
 
 
     def get_size(self, x, x1, alpha_x, beta_x, gamma_x):
-        #计算全发射度
         return gamma_x * x ** 2 + 2 * alpha_x * x * x1 + beta_x * x1 ** 2
 
-    # 得到任意一个平面的百分比发射度
     def get_any_emit(self, x, y, ratio, coefficient):
-        t0 = time.time()
-        #########################################################
+        """Twiss and emittances of the *ratio* fraction of particles inside the rms ellipse (numpy)."""
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
         alpha_100, beta_100, gamma_100, epsilon_100, norm_epsilon_100 = self.cal_twiss_emitt(x, y, coefficient)
+        size = self.get_size(x, y, alpha_100, beta_100, gamma_100)
+        index = min(int(ratio * self.number), len(size) - 1)
+        threshold = np.sort(size)[index]
+        keep = size <= threshold
+        any_x, any_y = x[keep], y[keep]
+        alpha_percent, beta_percent, gamma_percent, epsilon_percent, norm_epsilon_percent =             self.cal_twiss_emitt(any_x, any_y, coefficient)
+        all_epsilon_100 = float(np.max(self.get_size(any_x, any_y, alpha_100, beta_100, gamma_100)))
+        all_epsilon_percent = float(np.max(self.get_size(any_x, any_y, alpha_percent, beta_percent, gamma_percent)))
+        return [alpha_percent, beta_percent, gamma_percent,
+                norm_epsilon_percent, norm_epsilon_100,
+                all_epsilon_percent, all_epsilon_100,
+                epsilon_percent, epsilon_100]
 
-        t1 = time.time()
-        #print(t1-t0, "计算twiss时间")
-
-        size_list = []
-        for i in range(len(self.x_list)):
-            size = self.get_size(x[i], y[i], alpha_100, beta_100, gamma_100)
-            size_list.append(size)
-        index = int(ratio * self.number)
-
-
-        t2 = time.time()
-        #print(t2-t1, "get_size时间")
-
-        if index >= len(size_list):
-            index = len(size_list) - 1
-
-        size = sorted(size_list)[index]
-
-        indices = [i for i, x in enumerate(size_list) if x <= size]
-
-        any_x_list = [x[i] for i in indices]
-        any_y_list = [y[i] for i in indices]
-        # #print(len(any_x_list))
-        # 根据百分比的例子计算rms的twiss参数
-        alpha_percent, beta_percent, gamma_percent, epsilon_percent, norm_epsilon_percent = list(self.cal_twiss_emitt(any_x_list, any_y_list, coefficient))
-
-
-        t3 = time.time()
-        #print(t3-t2, "百分比计算twiss参数时间")
-        ###########################################################
-
-        # 根据100%twiss参数，计算的全发射度
-        all_epsilon_100 = self.get_all_epsilon(any_x_list, any_y_list, alpha_100, beta_100, gamma_100)
-
-        t4 = time.time()
-        #print(t4-t3, "获取全发射度参数时间")
-
-        ###########################################################
-        # 根据百分比twiss参数，计算全发射度
-        all_epsilon_percent = self.get_all_epsilon(any_x_list, any_y_list, alpha_percent, beta_percent, gamma_percent)
-        t5 = time.time()
-        #print(t5-t4, "百分比计算twiss参数计算发射度时间")
-
-        ###########################################################
-        res = [alpha_percent, beta_percent, gamma_percent,
-               norm_epsilon_percent, norm_epsilon_100,
-               all_epsilon_percent,  all_epsilon_100,
-               epsilon_percent, epsilon_100]
-
-
-        return res
-
-    # 得到任意一个平面的全发射度
     def get_all_epsilon(self, x, x1, alpha_x, beta_x, gamma_x):
-        #计算最大全发射度
-        all_size = []
-        for i in range(len(x)):
-            all_size.append(self.get_size(x[i], x1[i], alpha_x, beta_x, gamma_x))
+        return float(np.max(self.get_size(np.asarray(x, dtype=float), np.asarray(x1, dtype=float), alpha_x, beta_x, gamma_x)))
 
-        return max(all_size)
-
-    # 得到几个平面的百分比发射度
     def get_percent_emit(self, item):
         # item = {
         #     "ratio": ,
@@ -171,7 +124,7 @@ class PercentEmit():
         self.x_list = this_dst_dict[picture_type[0]]
         self.y_list = this_dst_dict[picture_type[1]]
 
-        if len(set(self.x_list)) == 1 or len(set(self.y_list)) == 1:
+        if np.ptp(np.asarray(self.x_list, dtype=float)) == 0 or np.ptp(np.asarray(self.y_list, dtype=float)) == 0:
             return [0] * 11
 
 
@@ -188,8 +141,8 @@ class PercentEmit():
         norm_all_epsilon_percent = no_norm_all_epsilon_percent
         norm_all_epsilon_100 = no_norm_all_epsilon_100
         if coefficient != 0:
-            norm_all_epsilon_percent = self.beta * self.gamma ** coefficient * no_norm_all_epsilon_100
-            norm_all_epsilon_100 = self.beta * self.gamma ** coefficient * no_norm_all_epsilon_percent
+            norm_all_epsilon_percent = self.beta * self.gamma ** coefficient * no_norm_all_epsilon_percent
+            norm_all_epsilon_100 = self.beta * self.gamma ** coefficient * no_norm_all_epsilon_100
 
 
         #最终返回的是rms发射度

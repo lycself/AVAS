@@ -66,6 +66,8 @@ def cla_twiss_output_standard(item):
         #     all_epsilon_100,
         #     all_epsilon_percent,
         # )
+        normalised = "z1" in pic or "x1" in pic or "y1" in pic
+        norm_mark = " [ Norm. ]" if normalised else ""
         twiss_dict[tuple(pic)] = [
             alpha_percent, beta_percent, gamma_percent,
             norm_epsilon_percent, norm_epsilon_100,   #归一化发射度
@@ -76,8 +78,8 @@ def cla_twiss_output_standard(item):
         # 下面就是你“目标格式”的那一段：每个 picture_type 一块
         lines.extend([
             f"{type_title_dict[pic[0]]} - {type_title_dict[pic[1]]}",   #标题
-            f"ε(rms)  = {norm_epsilon_100:.5f} π.mm.mrad [ Norm. ]",     #归一化发射度
-            f"ε(rms)[{ratio * 100:.0f}%]  = {norm_epsilon_100:.5f} π.mm.mrad [ Norm. ]",  #百分比归一化发射度
+            f"ε(rms)  = {norm_epsilon_100:.5f} π.mm.mrad" + norm_mark,     #归一化发射度
+            f"ε(rms)[{ratio * 100:.0f}%]  = {norm_epsilon_percent:.5f} π.mm.mrad" + norm_mark,  #百分比归一化发射度
             f"ε[{ratio * 100:.0f}%] = {norm_all_epsilon_percent:.5f} π.mm.mrad",  #百分比全发射度归一化
             f"β = {beta_percent:.5f}  mm/π.mrad",   #百分比alpha
             f"α = {alpha_percent:.5f}",        #百分比beta

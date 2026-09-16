@@ -46,7 +46,7 @@ class PlotDataSet(PicturePlot_2D):
         dataset_obj = DatasetParameter(self.dataset_path, self.project_path, input_dir=self.input_dir)
         dataset_obj.get_parameter()
         # end_index = dataset_obj.get_lattice_end_index() + 1
-        end_index = -1
+        end_index = None          # every row (a slice to -1 used to drop the last output step)
         z = dataset_obj.z[:end_index]  # 束团纵向位置
 
         ek = dataset_obj.ek[:end_index]  # 束团平均能量
@@ -106,14 +106,14 @@ class PlotDataSet(PicturePlot_2D):
             self.x = z
             self.y = [center_x]
             self.xlabel = "z(m)"
-            self.ylabel = "Cener x(mm)"
+            self.ylabel = "Center x(mm)"
             self.ylim = [-5, 5]
 
         if self.picture_name == "c_y":
             self.x = z
             self.y = [center_y]
             self.xlabel = "z(m)"
-            self.ylabel = "Cener y(mm)"
+            self.ylabel = "Center y(mm)"
             # self.ylim = [-max(loss)-3, max(loss) + 3]
 
 
@@ -230,13 +230,15 @@ class PlotDataSet(PicturePlot_2D):
             self.set_legend = 1
 
 
-        # elif self.picture_name == 'phi':
-        #     self.x = z
-        #     self.y = phi
-        #
-        #     self.xlabel = "z(m)"
-        #     v_freq = freq/(10**6)
-        #     self.ylabel = f"P(deg)({v_freq}MHz)"
+        elif self.picture_name == 'phi':
+            phi = getattr(dataset_obj, "phi", None)
+            if phi is None:
+                raise ValueError("the rms phase width needs beam.txt (mass and frequency) next to the results")
+            self.x = z
+            self.y = [list(phi[:end_index]), list(dataset_obj.phi_phi[:end_index])]
+            self.xlabel = "z(m)"
+            self.ylabel = f"RMS phase width(deg) at {dataset_obj.freq / 1e6:g} MHz"
+            self.colors = ['r', 'r']
 
 
 
