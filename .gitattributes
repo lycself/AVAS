@@ -1,0 +1,23 @@
+# normalise line endings for text, keep binaries untouched
+* text=auto
+
+*.dll binary
+*.so binary
+*.so.* binary
+*.lib binary
+*.dst binary
+*.plt binary
+*.edt binary
+*.dat binary
+*.bsx binary
+*.bsy binary
+*.bsz binary
+*.bdx binary
+*.bdy binary
+*.bdz binary
+*.edx binary
+*.edy binary
+*.edz binary
+*.docx binary
+*.png binary
+*.qm binary
