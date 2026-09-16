@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avas"
+version = "2.0.0"
+description = "AVAS - Advanced Virtual Accelerator Software: a linear accelerator simulation code"
+readme = "README.md"
+requires-python = ">=3.9,<3.13"
+license = { file = "LICENSE" }
+authors = [{ name = "AVAS developers" }]
+keywords = ["accelerator", "beam dynamics", "linac", "simulation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "scikit-learn>=1.3",
+    "numba>=0.57",
+    "PyQt5>=5.15",
+    "Send2Trash>=1.8",
+    "openpyxl>=3.0",
+]
+
+[project.optional-dependencies]
+hpc = ["mpi4py>=3.1"]
+build = ["pyinstaller>=6.0"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+avas = "avas.cli.main:main"
+avas-gui = "avas.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["avas*"]
+
+[tool.setuptools.package-data]
+"avas.engine" = ["*.dll", "*.so", "*.so.*"]
+"avas.static" = ["*.txt", "*.csv"]
+"avas.i18n" = ["*.ts", "*.qm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
