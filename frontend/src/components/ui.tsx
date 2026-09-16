@@ -77,8 +77,10 @@ export function CommitInput({
   style,
   mono,
   tip,
+  list,
 }: {
   value: string;
+  list?: string;
   onCommit: (v: string) => void;
   validate?: (v: string) => boolean;
   className?: string;
@@ -90,11 +92,16 @@ export function CommitInput({
 }) {
   const [draft, setDraft] = useState(value);
   const focused = useRef(false);
+  const skipCommit = useRef(false);
   useEffect(() => {
     if (!focused.current) setDraft(value);
   }, [value]);
   const invalid = validate ? !validate(draft) : false;
   const commit = () => {
+    if (skipCommit.current) {
+      skipCommit.current = false;
+      return;
+    }
     if (draft !== value && !invalid) onCommit(draft);
     else if (invalid) setDraft(value);
   };
@@ -107,6 +114,7 @@ export function CommitInput({
       style={style}
       spellCheck={false}
       data-tip={tip}
+      list={list}
       onFocus={() => (focused.current = true)}
       onBlur={() => {
         focused.current = false;
@@ -115,9 +123,9 @@ export function CommitInput({
       onChange={(e) => setDraft(e.target.value)}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
-          commit();
-          (e.target as HTMLInputElement).blur();
+          (e.target as HTMLInputElement).blur(); // blur commits
         } else if (e.key === "Escape") {
+          skipCommit.current = true;
           setDraft(value);
           (e.target as HTMLInputElement).blur();
         }

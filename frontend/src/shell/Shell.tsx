@@ -13,6 +13,7 @@ import {
   blockedByDialog,
 } from "../actions";
 import { closeMenu, openMenuBelow, type MenuItem } from "../components/overlays";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { cx, Icon, IconButton, Spinner } from "../components/ui";
 import { LANGUAGES, useT, type Language } from "../i18n";
 import {
@@ -408,7 +409,9 @@ export function Shell() {
           <div className="pages" style={logMax && logVisible ? { flex: "0 0 120px" } : undefined}>
             {[...visited].map((p) => (
               <div key={p} className="page-host" style={{ display: p === page ? undefined : "none" }}>
-                <Suspense fallback={<div className="page-loading"><Spinner size={24} /></div>}>{PAGE_META[p].render()}</Suspense>
+                <ErrorBoundary name={p}>
+                  <Suspense fallback={<div className="page-loading"><Spinner size={24} /></div>}>{PAGE_META[p].render()}</Suspense>
+                </ErrorBoundary>
               </div>
             ))}
           </div>

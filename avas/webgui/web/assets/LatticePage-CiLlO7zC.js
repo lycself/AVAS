@@ -1,1 +1,0 @@
-import{I as e,R as t}from"./index-6bpR5fvq.js";import{i as n,n as r,r as i}from"./common-D_yGAHWS.js";var a=e();function o(){let e=t();return n()?(0,a.jsx)(`div`,{className:`page`,children:(0,a.jsx)(`div`,{className:`page-inner`,children:(0,a.jsx)(i,{title:e(`LatticePage`),hint:`(work in progress)`})})}):(0,a.jsx)(r,{})}export{o as default};

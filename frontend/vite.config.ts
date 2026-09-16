@@ -1,11 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 // The built page is shipped inside the Python package (avas/webgui/web) and
 // served by avas.webgui.server, so asset URLs must be relative.
 export default defineConfig({
   base: "./",
   plugins: [react()],
+  resolve: {
+    alias: [{ find: /^monaco-esm\//, replacement: fileURLToPath(new URL("./node_modules/monaco-editor/esm/vs/", import.meta.url)) }],
+  },
   build: {
     outDir: "../avas/webgui/web",
     emptyOutDir: true,

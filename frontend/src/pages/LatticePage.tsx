@@ -1,14 +1,187 @@
-import { useT } from "../i18n";
-import { NoProject, PageHeader, useProjectOpen } from "./common";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { call } from "../bridge";
+import { choiceDialog, reportError, toast } from "../components/overlays";
+import { Button, Select, Spinner } from "../components/ui";
+import { t, useT } from "../i18n";
+import { LatticeEditor, type LatticeEditorHandle } from "../lattice/LatticeEditor";
+import { refreshProject, useApp } from "../store/app";
+import { fileSaved, markDirty, onFileSaved, registerPage } from "../store/pages";
+import { NoProject, PageHeader } from "./common";
+
+type ListInfo = { active: string; activePath: string; files: { name: string; missing: boolean }[]; fieldDirs: string[]; envOverride: string | null };
 
 export default function LatticePage() {
-  const t = useT();
-  if (!useProjectOpen()) return <NoProject />;
+  const tt = useT();
+  const projectPath = useApp((s) => (s.project.open ? s.project.path : null));
+  const projectLattice = useApp((s) => s.project.latticeName);
+  const [info, setInfo] = useState<ListInfo | null>(null);
+  const [loaded, setLoaded] = useState<{ name: string; path: string; text: string; key: number } | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const editorRef = useRef<LatticeEditorHandle>(null);
+  const savedText = useRef("");
+  const current = useRef<{ name: string; path: string } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const list = await call<ListInfo>("lattice.list");
+      setInfo(list);
+      const file = await call<{ name: string; path: string; text: string }>("lattice.read", { name: list.active });
+      savedText.current = normalize(file.text);
+      current.current = { name: file.name, path: file.path };
+      setLoaded({ ...file, key: Date.now() });
+      setDirty(false);
+      markDirty("lattice", false);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (projectPath) load();
+    else {
+      setInfo(null);
+      setLoaded(null);
+      current.current = null;
+      markDirty("lattice", false);
+    }
+  }, [projectPath, load]);
+
+  const save = useCallback(async () => {
+    const cur = current.current;
+    if (!cur || !editorRef.current) return;
+    const text = editorRef.current.getText();
+    await call("lattice.write", { name: cur.name, text });
+    savedText.current = normalize(text);
+    setDirty(false);
+    markDirty("lattice", false);
+    fileSaved(cur.path, "lattice");
+  }, []);
+
+  useEffect(
+    () =>
+      registerPage({
+        id: "lattice",
+        label: () => current.current?.name ?? "lattice",
+        isDirty: () => !!editorRef.current && !!current.current && normalize(editorRef.current.getText()) !== savedText.current,
+        save,
+        validate: () => {
+          if (!current.current || !editorRef.current) return [];
+          return editorRef.current.getText().trim() ? [] : [t("Lattice: {name} is empty", { name: current.current.name })];
+        },
+        reload: load,
+      }),
+    [save, load],
+  );
+
+  // the same file saved on the Files page, or the run lattice switched there
+  useEffect(
+    () =>
+      onFileSaved((path, source) => {
+        if (source === "lattice") return;
+        const cur = current.current;
+        const isDirty = !!editorRef.current && !!cur && normalize(editorRef.current.getText()) !== savedText.current;
+        if (cur && path.toLowerCase() === cur.path.toLowerCase()) {
+          if (isDirty) toast(tt("{name} was changed on the Files page; this page still has unsaved edits.", { name: cur.name }), "warning", 6000);
+          else load();
+        }
+      }),
+    [load, tt],
+  );
+  useEffect(() => {
+    if (projectLattice && current.current && projectLattice !== current.current.name && !dirtyRef()) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectLattice]);
+
+  function dirtyRef() {
+    return !!editorRef.current && !!current.current && normalize(editorRef.current.getText()) !== savedText.current;
+  }
+
+  if (!projectPath) return <NoProject />;
+  if (error) return <div className="empty-state danger-text">{error}</div>;
+  if (!info || !loaded) return <div className="empty-state"><Spinner size={24} /></div>;
+
+  const switchTo = async (name: string) => {
+    if (name === current.current?.name) return;
+    if (dirtyRef()) {
+      const choice = await choiceDialog(
+        tt("Save changes to {name}?", { name: current.current!.name }),
+        [
+          { key: "save", label: tt("Save"), variant: "primary" },
+          { key: "discard", label: tt("Don't save") },
+          { key: "cancel", label: tt("Cancel") },
+        ],
+        { title: tt("Unsaved changes") },
+      );
+      if (!choice || choice === "cancel") return;
+      if (choice === "save") await save();
+    }
+    try {
+      await call("lattice.setSource", { name });
+      await load();
+      await refreshProject();
+    } catch (e) {
+      reportError(e);
+    }
+  };
+
   return (
-    <div className="page">
-      <div className="page-inner">
-        <PageHeader title={t("LatticePage")} hint="(work in progress)" />
+    <div className="page-fill">
+      <PageHeader
+        title={tt("Lattice")}
+        hint={tt("The lattice file used for the run. Edit it as text on the left or by physical parameters on the right; both show the same file. Parameter meanings and checks follow the user manual.")}
+      />
+      <div className="row" style={{ gap: 8 }}>
+        <span className="muted">{tt("Lattice used for the run")}</span>
+        <Select
+          value={loaded.name}
+          style={{ minWidth: 260 }}
+          tip={tt("Every AVAS-format lattice found in InputFile/. The choice is stored in ini.ini and used by the GUI and by 'avas run'.")}
+          options={info.files.map((f) => ({
+            value: f.name,
+            label: f.name + (f.name === loaded.name && dirty ? " •" : "") + (f.missing ? tt("  (missing)") : ""),
+          }))}
+          onChange={switchTo}
+        />
+        <span className="soft ellipsis grow" data-tip={loaded.path}>
+          {loaded.path}
+        </span>
+        {info.envOverride && <span className="warning-text">{tt("AVAS_LATTICE is set: {name}", { name: info.envOverride })}</span>}
+        {dirty && (
+          <Button
+            variant="ghost"
+            icon="discard"
+            onClick={() => {
+              editorRef.current?.setText(loaded.text);
+              setDirty(false);
+              markDirty("lattice", false);
+            }}
+          >
+            {tt("Revert")}
+          </Button>
+        )}
+        <Button variant="primary" icon="save" disabled={!dirty} tip={tt("Save the lattice file (Ctrl+S saves all pages)")} onClick={() => save().catch(reportError)}>
+          {tt("Save")}
+        </Button>
+      </div>
+      <div className="editor-host">
+        <LatticeEditor
+          key={loaded.key}
+          ref={editorRef}
+          initialText={loaded.text}
+          fieldDirs={info.fieldDirs}
+          onChange={(text) => {
+            const d = normalize(text) !== savedText.current;
+            setDirty(d);
+            markDirty("lattice", d);
+          }}
+        />
       </div>
     </div>
   );
+}
+
+function normalize(text: string) {
+  return text.replace(/\r\n?/g, "\n").replace(/\n+$/, "");
 }

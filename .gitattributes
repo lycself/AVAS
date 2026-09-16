@@ -21,3 +21,4 @@
 *.docx binary
 *.png binary
 *.qm binary
+avas/webgui/web/** -text

@@ -7,6 +7,7 @@ import { initLog } from "./shell/LogPanel";
 import { initApp, useApp } from "./store/app";
 import "./styles/shell.css";
 import "./styles/pages.css";
+import "./styles/lattice.css";
 
 export function App() {
   const ready = useApp((s) => s.ready);

@@ -178,3 +178,13 @@ def from_dst(name):
         for q in ("alpha", "beta", "emit"):
             out[f"{q}_{pl}"] = str(round(b[f"{q}_{pl}"], 5))
     return out
+
+
+@rpc("beam.useParticles")
+def use_particles(name):
+    """Make a particle file in InputFile the initial beam (readparticledistribution)."""
+    form = load()["form"]
+    form.update(use_dst=True, dst=name)
+    result = save(form)
+    log.info("initial beam read from %s", name)
+    return result

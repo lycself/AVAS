@@ -1,0 +1,73 @@
+/* Lattice page: text editor | structure editor. */
+.editor-host { flex: 1 1 auto; min-height: 0; display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.lattice-editor { flex: 1 1 auto; display: flex; min-height: 0; min-width: 0; }
+.lattice-editor.stacked { flex-direction: column; }
+.lattice-editor > .pane { display: flex; flex-direction: column; min-height: 0; }
+.text-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.toolbar.compact { min-height: 32px; padding: 0 4px; gap: 1px; flex-wrap: nowrap; background: var(--toolbar-bg); }
+.toolbar.compact .segmented button { height: 22px; font-size: 12px; }
+.monaco-host { flex: 1 1 auto; min-height: 0; }
+.lattice-inactive { opacity: .45; }
+.structure-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0; border-left: 1px solid var(--border); }
+.lattice-editor.stacked .structure-editor { border-left: 0; }
+.beamline { position: relative; flex: none; border-bottom: 1px solid var(--border); }
+.beamline canvas { cursor: default; }
+.beamline-tip { position: absolute; z-index: 20; pointer-events: none; white-space: pre; background: var(--tooltip-bg); border: 1px solid var(--tooltip-border); border-radius: 4px; padding: 4px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.beamline-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg-soft); pointer-events: none; }
+.compact-tabs { height: 32px; }
+.structure-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0 10px; }
+.structure-body > .split { flex: 1 1 auto; min-height: 0; }
+.structure-tree { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.search-box { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--input-border); border-radius: 4px; background: var(--input-bg); }
+.search-box:focus-within { border-color: var(--accent); }
+.search-box .codicon { font-size: 14px; color: var(--fg-soft); }
+.search-box input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--fg-strong); min-width: 0; }
+.search-box .clear { cursor: pointer; display: inline-flex; }
+.tree-head, .tree-row { display: grid; grid-template-columns: 22px minmax(90px, 1.1fr) minmax(70px, .9fr) minmax(80px, 1.4fr) 70px; gap: 6px; align-items: center; }
+.tree-head { height: 24px; padding: 0 8px 0 8px; color: var(--fg-muted); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.tree-body { flex: 1 1 auto; overflow: auto; min-height: 0; }
+.tree-row { height: 24px; padding-right: 8px; cursor: default; border-radius: 3px; }
+.tree-row:hover { background: var(--list-hover); }
+.tree-row.selected { background: var(--accent-soft); color: var(--fg-strong); }
+.tree-row.inactive { color: var(--fg-soft); }
+.tree-row.command { color: var(--fg-muted); }
+.tree-row.bold .tree-name { font-weight: 600; }
+.tree-row.group { color: var(--fg); }
+.tree-icon { display: inline-flex; align-items: center; justify-content: center; }
+.tree-icon .codicon { font-size: 14px; }
+.twisty { cursor: pointer; }
+.tree-z { text-align: right; font-variant-numeric: tabular-nums; }
+.tree-params { color: var(--fg-muted); }
+.swatch { width: 10px; height: 6px; border-radius: 2px; display: inline-block; }
+.swatch-empty { width: 10px; }
+.property-scroll { overflow: auto; }
+.property-panel { padding: 10px 4px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+.property-empty { padding: 16px; }
+.prop-form { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; align-items: center; }
+.prop-form > label { text-align: right; color: var(--fg); white-space: nowrap; }
+.prop-field { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.prop-field > .input, .prop-field > .select { flex: 1 1 auto; min-width: 0; }
+.prop-field .unit { min-width: 44px; }
+.nowrap { white-space: nowrap; }
+.issue-list { display: flex; flex-direction: column; gap: 2px; }
+.issue-list .codicon { font-size: 14px; }
+.position { font-size: 12px; line-height: 1.6; }
+.structure-status { flex: none; padding: 4px 10px; font-size: 12px; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.param-grid { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.grid-scroll { flex: 1 1 auto; overflow: auto; min-height: 0; border: 1px solid var(--border); border-radius: 4px; }
+.data-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; width: max-content; min-width: 100%; }
+.data-grid th { position: sticky; top: 0; z-index: 1; background: var(--sidebar-bg); color: var(--fg-muted); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); white-space: nowrap; }
+.data-grid th .th-unit { font-weight: 400; color: var(--fg-soft); }
+.data-grid td { height: 24px; padding: 0 8px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); white-space: nowrap; min-width: 80px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; outline: none; }
+.data-grid td.num { text-align: right; font-family: "Cascadia Mono", Consolas, monospace; }
+.data-grid td.left { text-align: left; }
+.data-grid td.col-line, .data-grid th.col-line { min-width: 52px; width: 52px; color: var(--fg-soft); text-align: right; }
+.data-grid td.col-name { min-width: 110px; }
+.data-grid td.unused { background: var(--cell-unused); }
+.data-grid td.reserved { color: var(--fg-soft); }
+.data-grid tr.inactive td { color: var(--fg-soft); }
+.data-grid tr.current td { background: var(--list-hover); }
+.data-grid td.sel { background: var(--accent-soft) !important; color: var(--fg-strong); }
+.data-grid td .codicon { font-size: 13px; }
+.cell-editor { width: 100%; height: 22px; border: 1px solid var(--accent); border-radius: 2px; background: var(--input-bg); color: var(--fg-strong); outline: none; padding: 0 4px; font: inherit; }
+.monaco-editor .suggest-widget, .monaco-hover { font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; }
