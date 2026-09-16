@@ -87,9 +87,19 @@ avas info
 avas gui
 ```
 
-* 高分屏：已启用 Qt 高 DPI 缩放，150 % / 200 % 显示器下字号正常。
-* 语言：菜单 **Settings → Language** 切换中文 / English，重启后生效。
-* 字号：菜单 **Settings → Font size**。
+界面按工作流分为六页，左侧导航栏切换：
+
+1. **Project** 新建 / 打开 / 最近项目，显示当前项目摘要。
+2. **Beam** 束流参数、分布、Twiss，或从 .dst 文件读入。
+3. **Lattice** 左边编辑 `lattice_mulp.txt`（带查找替换、折叠、注释），右边是元件表。
+4. **Settings** 模拟类型、空间电荷、步长、场文件目录、纵向限制、密度输出，以及误差分析模式。
+5. **Run** 一键运行：自动保存并检查全部页面，显示进度、耗时和上次运行结果。
+6. **Results** 左边选择分析项，右边以标签页嵌入图形（包络、发射度、损失、能量、相移、同步相位、腔压、误差分析、密度、接受度等），可保存图片；相空间查看器和 plt 步查看器以独立窗口打开。
+
+底部是日志面板（View 菜单可隐藏）。其他要点：
+
+* 高分屏：已启用 Qt 高 DPI 缩放并显式指定界面字体，150 % / 200 % 显示器下字号正常。
+* 语言：**Settings → Language** 即时切换中文 / English；**Settings → Font size** 即时调整字号。
 * 设置保存在系统用户配置中（Windows 注册表 `HKCU\Software\AVAS`），日志在 `%LOCALAPPDATA%\AVAS\logs`。
 
 ### 目录结构
@@ -97,7 +107,8 @@ avas gui
 ```
 avas/            Python 包
   cli/           命令行入口（avas run / plot / gui / info）
-  gui/           PyQt5 界面（dialogs/ 对话框，lattice_editor/ 结构文件编辑器）
+  gui/           PyQt5 界面：main_window.py 外壳，pages/ 六个工作流页面，widgets/ 通用控件，
+                 dialogs/ 相空间查看器等对话框，lattice_editor/ 结构文件编辑器
   api/           basic.py：模拟与画图的统一入口；qt/：界面用接口
   core/          ctypes 封装的 C++ 计算内核
   sim/           模拟流程：多粒子、包络、误差、匹配、接受度
@@ -192,7 +203,7 @@ avas info
 
 ### GUI
 
-`avas gui` starts the interface with Qt high-DPI scaling enabled. **Settings → Language** switches between English and 简体中文, **Settings → Font size** changes the base font; both apply after a restart. Settings are stored per user (`HKCU\Software\AVAS` on Windows); logs go to `%LOCALAPPDATA%\AVAS\logs`.
+`avas gui` opens a six-page workflow (sidebar on the left): **Project** (new / open / recent), **Beam**, **Lattice** (editor + element table), **Settings** (tracking options and error-study mode), **Run** (saves and checks everything, then shows progress) and **Results** (analyses in embedded plot tabs; the particle-file and plt-step viewers open in their own windows). A log panel sits at the bottom. High-DPI scaling is enabled and an explicit UI font is set; **Settings → Language** and **Settings → Font size** apply immediately. Settings are stored per user (`HKCU\Software\AVAS` on Windows); logs go to `%LOCALAPPDATA%\AVAS\logs`.
 
 ### Tests
 

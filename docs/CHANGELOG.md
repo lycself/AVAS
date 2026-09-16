@@ -1,5 +1,13 @@
 # 更新记录 / Changelog
 
+## 2026-09-16  v2.0.0  图形界面重做
+
+- 界面按工作流重排为 Project / Beam / Lattice / Settings / Run / Results 六页，左侧导航栏、顶部工具栏、底部日志面板。
+- 互斥选项全部改为单选按钮；Lattice 页合并编辑器与元件表；误差分析作为 Settings 里的一种运行模式。
+- 图形嵌入主窗口标签页（可刷新、可保存图片），不再弹出散落的 matplotlib 窗口。
+- 运行前自动保存并校验；进度、耗时、上次运行状态记录在 OutputFile/avas_run.json。
+- 语言与字号切换即时生效；新增 Fusion 风格主题。
+
 ## 2026-09-16  v2.0.0  项目重构
 
 - 目录重构：全部代码移入 `avas/` 包（cli / gui / api / core / sim / post / data / utils / engine / static / i18n），

@@ -86,13 +86,16 @@ def main(argv=None, language=None):
     settings = QSettings(ORG_NAME, APP_NAME)
     lang = language or settings.value("ui/language", "en")
 
+    from avas.gui.theme import apply_theme
+    apply_theme(app)
+
     from avas.i18n import install_translator
     install_translator(app, lang)
     _apply_font(app, settings)
     _install_excepthook()
 
     # imported after the translator is installed so tr() strings resolve
-    from avas.gui.user_pyqt import MainWindow
+    from avas.gui.main_window import MainWindow
 
     # kept on the app object so the window can replace itself (language switch)
     app._avas_main_window = MainWindow()

@@ -2,6 +2,121 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en">
 <context>
+    <name>BeamPage</name>
+    <message>
+        <source>A file with this name already exists in InputFile. Overwrite?</source>
+        <translation>InputFile 中已有同名文件，是否覆盖？</translation>
+    </message>
+    <message>
+        <source>Beam</source>
+        <translation>束流</translation>
+    </message>
+    <message>
+        <source>Beam parameters</source>
+        <translation>束流参数</translation>
+    </message>
+    <message>
+        <source>Beam: charge is missing</source>
+        <translation>束流：缺少电荷数</translation>
+    </message>
+    <message>
+        <source>Beam: no particle file selected</source>
+        <translation>束流：未选择粒子文件</translation>
+    </message>
+    <message>
+        <source>CW (DC) beam - no longitudinal Twiss</source>
+        <translation>连续束（DC），无纵向 Twiss</translation>
+    </message>
+    <message>
+        <source>Charge</source>
+        <translation>电荷数</translation>
+    </message>
+    <message>
+        <source>Choose a particle file first.</source>
+        <translation>请先选择粒子文件。</translation>
+    </message>
+    <message>
+        <source>Choose...</source>
+        <translation>选择...</translation>
+    </message>
+    <message>
+        <source>Current</source>
+        <translation>流强</translation>
+    </message>
+    <message>
+        <source>Distribution</source>
+        <translation>分布</translation>
+    </message>
+    <message>
+        <source>File exists</source>
+        <translation>文件已存在</translation>
+    </message>
+    <message>
+        <source>Fill parameters from file</source>
+        <translation>从文件填入参数</translation>
+    </message>
+    <message>
+        <source>Frequency</source>
+        <translation>频率</translation>
+    </message>
+    <message>
+        <source>Initial beam: either generated from the parameters below or read from a particle (.dst) file.</source>
+        <translation>初始束流：由下面的参数生成，或从粒子文件 (.dst) 读入。</translation>
+    </message>
+    <message>
+        <source>Kinetic energy</source>
+        <translation>动能</translation>
+    </message>
+    <message>
+        <source>Longitudinal</source>
+        <translation>纵向</translation>
+    </message>
+    <message>
+        <source>Number of particles</source>
+        <translation>粒子数</translation>
+    </message>
+    <message>
+        <source>Particle file</source>
+        <translation>粒子文件</translation>
+    </message>
+    <message>
+        <source>Particle source</source>
+        <translation>粒子来源</translation>
+    </message>
+    <message>
+        <source>Preview rms ellipses</source>
+        <translation>预览 rms 椭圆</translation>
+    </message>
+    <message>
+        <source>Read mass, current, energy and Twiss parameters from the .dst file</source>
+        <translation>从 .dst 文件读取质量、流强、能量和 Twiss 参数</translation>
+    </message>
+    <message>
+        <source>Read particles from a .dst file</source>
+        <translation>从 .dst 文件读取粒子</translation>
+    </message>
+    <message>
+        <source>Rest mass</source>
+        <translation>静止质量</translation>
+    </message>
+    <message>
+        <source>Select particle file</source>
+        <translation>选择粒子文件</translation>
+    </message>
+    <message>
+        <source>Transverse</source>
+        <translation>横向</translation>
+    </message>
+    <message>
+        <source>Twiss parameters and emittance</source>
+        <translation>Twiss 参数与发射度</translation>
+    </message>
+    <message>
+        <source>file inside InputFile/</source>
+        <translation>InputFile/ 中的文件</translation>
+    </message>
+</context>
+<context>
     <name>CavityVoltageDialog</name>
     <message>
         <source>Plot</source>
@@ -145,30 +260,128 @@
     </message>
     <message>
         <source>error</source>
-        <translation>误差</translation>
+        <translation>错误</translation>
+    </message>
+</context>
+<context>
+    <name>LatticePage</name>
+    <message>
+        <source>%d elements, total length %s m</source>
+        <translation>%d 个元件，总长 %s m</translation>
+    </message>
+    <message>
+        <source>Cannot parse lattice: %s</source>
+        <translation>无法解析结构文件：%s</translation>
+    </message>
+    <message>
+        <source>Edit lattice_mulp.txt on the left; the element table on the right is rebuilt from the saved file.</source>
+        <translation>左侧编辑 lattice_mulp.txt；右侧元件表根据已保存的文件生成。</translation>
+    </message>
+    <message>
+        <source>End (m)</source>
+        <translation>终点 (m)</translation>
+    </message>
+    <message>
+        <source>Lattice</source>
+        <translation>结构</translation>
+    </message>
+    <message>
+        <source>Lattice: lattice_mulp.txt is empty</source>
+        <translation>结构：lattice_mulp.txt 为空</translation>
+    </message>
+    <message>
+        <source>Length (m)</source>
+        <translation>长度 (m)</translation>
+    </message>
+    <message>
+        <source>Save &amp;&amp; update table</source>
+        <translation>保存并更新表格</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>类型</translation>
+    </message>
+</context>
+<context>
+    <name>LogPanel</name>
+    <message>
+        <source>Clear</source>
+        <translation>清除</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
-        <source>Please stop the running simulation before changing the language.</source>
-        <translation>请先停止正在运行的模拟，再切换语言。</translation>
+        <source>&amp;File</source>
+        <translation>文件(&amp;F)</translation>
     </message>
     <message>
-        <source>AVAS</source>
-        <translation>AVAS</translation>
+        <source>&amp;Help</source>
+        <translation>帮助(&amp;H)</translation>
     </message>
     <message>
-        <source>Are you sure to quit?</source>
-        <translation>确定要退出吗？</translation>
+        <source>&amp;New project...</source>
+        <translation>新建项目(&amp;N)...</translation>
     </message>
     <message>
-        <source>Create New Folder</source>
-        <translation>新建项目文件夹</translation>
+        <source>&amp;Open project...</source>
+        <translation>打开项目(&amp;O)...</translation>
     </message>
     <message>
-        <source>File</source>
-        <translation>文件</translation>
+        <source>&amp;Run</source>
+        <translation>运行(&amp;R)</translation>
+    </message>
+    <message>
+        <source>&amp;Run simulation</source>
+        <translation>运行模拟(&amp;R)</translation>
+    </message>
+    <message>
+        <source>&amp;Save</source>
+        <translation>保存(&amp;S)</translation>
+    </message>
+    <message>
+        <source>&amp;Settings</source>
+        <translation>设置(&amp;S)</translation>
+    </message>
+    <message>
+        <source>&amp;Stop</source>
+        <translation>停止(&amp;S)</translation>
+    </message>
+    <message>
+        <source>&amp;View</source>
+        <translation>视图(&amp;V)</translation>
+    </message>
+    <message>
+        <source>A simulation is running. Stop it and quit?</source>
+        <translation>模拟正在运行，停止并退出？</translation>
+    </message>
+    <message>
+        <source>About AVAS</source>
+        <translation>关于 AVAS</translation>
+    </message>
+    <message>
+        <source>Beam</source>
+        <translation>束流</translation>
+    </message>
+    <message>
+        <source>Cannot run</source>
+        <translation>无法运行</translation>
+    </message>
+    <message>
+        <source>Create new project (choose a folder name)</source>
+        <translation>新建项目（选择文件夹名）</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>默认</translation>
+    </message>
+    <message>
+        <source>E&amp;xit</source>
+        <translation>退出(&amp;X)</translation>
+    </message>
+    <message>
+        <source>Folder (*)</source>
+        <translation>文件夹 (*)</translation>
     </message>
     <message>
         <source>Font size</source>
@@ -179,88 +392,128 @@
         <translation>语言</translation>
     </message>
     <message>
-        <source>Message</source>
-        <translation>提示</translation>
+        <source>Lattice</source>
+        <translation>结构</translation>
     </message>
     <message>
-        <source>New</source>
-        <translation>新建</translation>
+        <source>Linac simulation</source>
+        <translation>直线加速器模拟</translation>
     </message>
     <message>
-        <source>Pages</source>
-        <translation>页面</translation>
+        <source>Load project</source>
+        <translation>加载项目</translation>
     </message>
     <message>
-        <source>Select Directory</source>
-        <translation>选择目录</translation>
+        <source>Log</source>
+        <translation>日志</translation>
+    </message>
+    <message>
+        <source>Log panel</source>
+        <translation>日志面板</translation>
+    </message>
+    <message>
+        <source>Main</source>
+        <translation>主工具栏</translation>
+    </message>
+    <message>
+        <source>New project</source>
+        <translation>新建项目</translation>
+    </message>
+    <message>
+        <source>No project</source>
+        <translation>未打开项目</translation>
+    </message>
+    <message>
+        <source>Open &amp;recent</source>
+        <translation>最近项目(&amp;R)</translation>
+    </message>
+    <message>
+        <source>Open project</source>
+        <translation>打开项目</translation>
+    </message>
+    <message>
+        <source>Open project directory</source>
+        <translation>打开项目目录</translation>
+    </message>
+    <message>
+        <source>Project</source>
+        <translation>项目</translation>
+    </message>
+    <message>
+        <source>Project check</source>
+        <translation>项目检查</translation>
+    </message>
+    <message>
+        <source>Project saved</source>
+        <translation>项目已保存</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>退出</translation>
+    </message>
+    <message>
+        <source>Ready</source>
+        <translation>就绪</translation>
+    </message>
+    <message>
+        <source>Results</source>
+        <translation>结果</translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation>运行</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>保存</translation>
     </message>
     <message>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
     <message>
-        <source>System default</source>
-        <translation>系统默认</translation>
+        <source>Simulation failed</source>
+        <translation>模拟失败</translation>
     </message>
     <message>
-        <source>accept</source>
-        <translation>接受度</translation>
+        <source>Simulation failed: %s</source>
+        <translation>模拟失败：%s</translation>
     </message>
     <message>
-        <source>analysis</source>
-        <translation>分析</translation>
+        <source>Simulation finished</source>
+        <translation>模拟完成</translation>
     </message>
     <message>
-        <source>beam</source>
-        <translation>束流</translation>
+        <source>Simulation running...</source>
+        <translation>模拟运行中...</translation>
     </message>
     <message>
-        <source>data</source>
-        <translation>数据</translation>
+        <source>Stop the running simulation before changing the language.</source>
+        <translation>请先停止正在运行的模拟，再切换语言。</translation>
     </message>
     <message>
-        <source>error</source>
-        <translation>误差</translation>
+        <source>Stop the running simulation first.</source>
+        <translation>请先停止正在运行的模拟。</translation>
     </message>
     <message>
-        <source>input</source>
-        <translation>输入</translation>
+        <source>dynamic errors</source>
+        <translation>动态误差</translation>
     </message>
     <message>
-        <source>lattice</source>
-        <translation>结构</translation>
+        <source>envelope</source>
+        <translation>包络</translation>
     </message>
     <message>
-        <source>open</source>
-        <translation>打开</translation>
+        <source>multi-particle</source>
+        <translation>多粒子</translation>
     </message>
     <message>
-        <source>others</source>
-        <translation>其他</translation>
+        <source>static + dynamic errors</source>
+        <translation>静态 + 动态误差</translation>
     </message>
     <message>
-        <source>output</source>
-        <translation>输出</translation>
-    </message>
-    <message>
-        <source>project path</source>
-        <translation>项目路径</translation>
-    </message>
-    <message>
-        <source>refresh</source>
-        <translation>刷新</translation>
-    </message>
-    <message>
-        <source>save</source>
-        <translation>保存</translation>
-    </message>
-    <message>
-        <source>setting</source>
-        <translation>设置</translation>
-    </message>
-    <message>
-        <source>tool</source>
-        <translation>工具</translation>
+        <source>static errors</source>
+        <translation>静态误差</translation>
     </message>
 </context>
 <context>
@@ -271,639 +524,14 @@
     </message>
 </context>
 <context>
-    <name>PageAccept</name>
+    <name>PathPicker</name>
     <message>
-        <source>Emittance</source>
-        <translation>发射度</translation>
-    </message>
-    <message>
-        <source>Error</source>
-        <translation>错误</translation>
-    </message>
-    <message>
-        <source>Min_x</source>
-        <translation>Min_x</translation>
-    </message>
-    <message>
-        <source>Min_y</source>
-        <translation>Min_y</translation>
-    </message>
-    <message>
-        <source>Norm Emittance</source>
-        <translation>归一化发射度</translation>
-    </message>
-    <message>
-        <source>Plot</source>
-        <translation>绘图</translation>
-    </message>
-    <message>
-        <source>Run</source>
-        <translation>运行</translation>
-    </message>
-    <message>
-        <source>mm</source>
-        <translation>mm</translation>
-    </message>
-    <message>
-        <source>mrad</source>
-        <translation>mrad</translation>
-    </message>
-    <message>
-        <source>phiE</source>
-        <translation>phiE</translation>
-    </message>
-    <message>
-        <source>xx'</source>
-        <translation>xx'</translation>
-    </message>
-    <message>
-        <source>yy'</source>
-        <translation>yy'</translation>
-    </message>
-    <message>
-        <source>zz'</source>
-        <translation>zz'</translation>
-    </message>
-    <message>
-        <source>π.mm.mrad</source>
-        <translation>π.mm.mrad</translation>
-    </message>
-</context>
-<context>
-    <name>PageAnalysis</name>
-    <message>
-        <source>Alpha</source>
-        <translation>Alpha</translation>
-    </message>
-    <message>
-        <source>Analysis</source>
-        <translation>分析</translation>
-    </message>
-    <message>
-        <source>Beam pha advance</source>
-        <translation>束流相移</translation>
-    </message>
-    <message>
-        <source>Beta</source>
-        <translation>Beta</translation>
-    </message>
-    <message>
-        <source>Beta(twiss)</source>
-        <translation>Beta (Twiss)</translation>
-    </message>
-    <message>
-        <source>Convert plt to dst (step)</source>
-        <translation>plt 转 dst (步)</translation>
-    </message>
-    <message>
-        <source>Emittance</source>
-        <translation>发射度</translation>
-    </message>
-    <message>
-        <source>Energy</source>
-        <translation>能量</translation>
-    </message>
-    <message>
-        <source>Env</source>
-        <translation>包络</translation>
-    </message>
-    <message>
-        <source>Envelope</source>
-        <translation>包络</translation>
-    </message>
-    <message>
-        <source>Gamma</source>
-        <translation>Gamma</translation>
-    </message>
-    <message>
-        <source>Import dst File</source>
-        <translation>导入 dst 文件</translation>
-    </message>
-    <message>
-        <source>Input</source>
-        <translation>输入</translation>
-    </message>
-    <message>
-        <source>Meter</source>
-        <translation>每米</translation>
-    </message>
-    <message>
-        <source>Mulp</source>
-        <translation>多粒子</translation>
-    </message>
-    <message>
-        <source>Output</source>
-        <translation>输出</translation>
-    </message>
-    <message>
-        <source>Period</source>
-        <translation>周期</translation>
-    </message>
-    <message>
-        <source>Pha Advance</source>
-        <translation>相移</translation>
-    </message>
-    <message>
-        <source>Plot</source>
-        <translation>绘图</translation>
-    </message>
-    <message>
-        <source>Select dst File</source>
-        <translation>选择 dst 文件</translation>
-    </message>
-    <message>
-        <source>Syn Phase</source>
-        <translation>同步相位</translation>
-    </message>
-    <message>
-        <source>convert</source>
-        <translation>转换</translation>
-    </message>
-    <message>
-        <source>get all step</source>
-        <translation>获取全部步数</translation>
-    </message>
-    <message>
-        <source>loss</source>
-        <translation>损失</translation>
-    </message>
-</context>
-<context>
-    <name>PageBeam</name>
-    <message>
-        <source>Beam parameters</source>
-        <translation>束流参数</translation>
-    </message>
-    <message>
-        <source>CW beam</source>
-        <translation>连续束</translation>
-    </message>
-    <message>
-        <source>Charge</source>
-        <translation>电荷数</translation>
-    </message>
-    <message>
-        <source>Current</source>
-        <translation>流强</translation>
-    </message>
-    <message>
-        <source>Distribution</source>
-        <translation>分布</translation>
-    </message>
-    <message>
-        <source>Emittance</source>
-        <translation>发射度</translation>
-    </message>
-    <message>
-        <source>Energy</source>
-        <translation>能量</translation>
-    </message>
-    <message>
-        <source>Error</source>
-        <translation>错误</translation>
-    </message>
-    <message>
-        <source>File exists</source>
-        <translation>文件已存在</translation>
-    </message>
-    <message>
-        <source>Frequency</source>
-        <translation>频率</translation>
-    </message>
-    <message>
-        <source>Hz</source>
-        <translation>Hz</translation>
-    </message>
-    <message>
-        <source>Import all beam parameters from file</source>
-        <translation>从文件导入全部束流参数</translation>
-    </message>
-    <message>
-        <source>Mass</source>
-        <translation>质量</translation>
-    </message>
-    <message>
-        <source>MeV</source>
-        <translation>MeV</translation>
-    </message>
-    <message>
-        <source>Momentum Deviation</source>
-        <translation>动量偏差</translation>
-    </message>
-    <message>
-        <source>Multiparticle input file </source>
-        <translation>多粒子输入文件 </translation>
-    </message>
-    <message>
-        <source>Num of particle</source>
-        <translation>粒子数</translation>
-    </message>
-    <message>
-        <source>Position Deviation</source>
-        <translation>位置偏差</translation>
-    </message>
-    <message>
-        <source>Select dst File</source>
-        <translation>选择 dst 文件</translation>
-    </message>
-    <message>
-        <source>The file already exists. Overwrite?</source>
-        <translation>文件已存在，是否要覆盖？</translation>
-    </message>
-    <message>
-        <source>Twiss parameter</source>
-        <translation>Twiss 参数</translation>
-    </message>
-    <message>
-        <source>Use particle file</source>
-        <translation>使用粒子文件</translation>
-    </message>
-    <message>
-        <source>Visuallize preview of rms values</source>
-        <translation>预览 rms 值</translation>
-    </message>
-    <message>
-        <source>e</source>
-        <translation>e</translation>
-    </message>
-    <message>
-        <source>mA</source>
-        <translation>mA</translation>
-    </message>
-    <message>
-        <source>mm/π mrad</source>
-        <translation>mm/π mrad</translation>
-    </message>
-    <message>
-        <source>α&lt;sub&gt;xx‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>α&lt;sub&gt;yy‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>α&lt;sub&gt;zz‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>β&lt;sub&gt;xx‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>β&lt;sub&gt;yy‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>β&lt;sub&gt;zz‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>ε&lt;sub&gt;xx‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>ε&lt;sub&gt;yy‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>ε&lt;sub&gt;zz‘&lt;/sub&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>π.mm.mrad</source>
-        <translation>π.mm.mrad</translation>
-    </message>
-</context>
-<context>
-    <name>PageData</name>
-    <message>
-        <source>Data</source>
-        <translation>数据</translation>
-    </message>
-</context>
-<context>
-    <name>PageError</name>
-    <message>
-        <source>Centroid</source>
-        <translation>质心</translation>
-    </message>
-    <message>
-        <source>Density</source>
-        <translation>密度</translation>
-    </message>
-    <message>
-        <source>Density level</source>
-        <translation>密度等级</translation>
-    </message>
-    <message>
-        <source>Dynamic error</source>
-        <translation>动态误差</translation>
-    </message>
-    <message>
-        <source>Emit growth &amp;&amp; Loss</source>
-        <translation>发射度增长 &amp;&amp; 损失</translation>
-    </message>
-    <message>
-        <source>Emittance</source>
-        <translation>发射度</translation>
-    </message>
-    <message>
-        <source>Energy change</source>
-        <translation>能量变化</translation>
-    </message>
-    <message>
-        <source>Plot</source>
-        <translation>绘图</translation>
-    </message>
-    <message>
-        <source>R</source>
-        <translation>R</translation>
-    </message>
-    <message>
-        <source>Rms size</source>
-        <translation>rms 尺寸</translation>
-    </message>
-    <message>
-        <source>Rms size max</source>
-        <translation>rms 尺寸最大值</translation>
-    </message>
-    <message>
-        <source>Select  File</source>
-        <translation>选择文件</translation>
-    </message>
-    <message>
-        <source>Static error</source>
-        <translation>静态误差</translation>
-    </message>
-    <message>
-        <source>Static error &amp;&amp; Dynamic error</source>
-        <translation>静态误差 + 动态误差</translation>
-    </message>
-    <message>
-        <source>X</source>
-        <translation>X</translation>
-    </message>
-    <message>
-        <source>X &amp;&amp; Y</source>
-        <translation>X &amp;&amp; Y</translation>
-    </message>
-    <message>
-        <source>X' &amp;&amp; Y'</source>
-        <translation>X' &amp;&amp; Y'</translation>
-    </message>
-    <message>
-        <source>Y</source>
-        <translation>Y</translation>
-    </message>
-    <message>
-        <source>Z</source>
-        <translation>Z</translation>
-    </message>
-    <message>
-        <source>average</source>
-        <translation>平均</translation>
-    </message>
-    <message>
-        <source>rms</source>
-        <translation>rms</translation>
-    </message>
-    <message>
-        <source>rms(X') &amp;&amp; rms(Y')</source>
-        <translation>rms(X') &amp;&amp; rms(Y')</translation>
-    </message>
-    <message>
-        <source>rms(X) &amp;&amp; rms(Y)</source>
-        <translation>rms(X) &amp;&amp; rms(Y)</translation>
-    </message>
-    <message>
-        <source>seed</source>
-        <translation>随机种子</translation>
-    </message>
-</context>
-<context>
-    <name>PageInput</name>
-    <message>
-        <source>Boundary</source>
-        <translation>边界</translation>
-    </message>
-    <message>
-        <source>Calculate Space Charge</source>
-        <translation>计算空间电荷</translation>
-    </message>
-    <message>
-        <source>Calsulation step(βλ)</source>
-        <translation>计算步长 (βλ)</translation>
-    </message>
-    <message>
-        <source>Denity grid</source>
-        <translation>密度网格</translation>
-    </message>
-    <message>
-        <source>Energy</source>
-        <translation>能量</translation>
-    </message>
-    <message>
-        <source>Envelope</source>
-        <translation>包络</translation>
-    </message>
-    <message>
-        <source>Error</source>
-        <translation>错误</translation>
-    </message>
-    <message>
-        <source>FFT</source>
-        <translation>FFT</translation>
-    </message>
-    <message>
-        <source>Field Source</source>
-        <translation>场文件目录</translation>
-    </message>
-    <message>
-        <source>Generate density file</source>
-        <translation>生成密度文件</translation>
-    </message>
-    <message>
-        <source>Longlimits</source>
-        <translation>纵向限制</translation>
-    </message>
-    <message>
-        <source>MeV</source>
-        <translation>MeV</translation>
-    </message>
-    <message>
-        <source>Multi_particles</source>
-        <translation>多粒子</translation>
-    </message>
-    <message>
-        <source>Operation setting</source>
-        <translation>运行设置</translation>
-    </message>
-    <message>
-        <source>Output step in plt</source>
-        <translation>plt 输出步长</translation>
-    </message>
-    <message>
-        <source>Phase</source>
-        <translation>相位</translation>
-    </message>
-    <message>
-        <source>Random seed of input beam</source>
-        <translation>输入束流随机种子</translation>
-    </message>
-    <message>
-        <source>SPICNIC</source>
-        <translation>SPICNIC</translation>
-    </message>
-    <message>
-        <source>Scan Phase</source>
-        <translation>相位扫描</translation>
-    </message>
-    <message>
-        <source>Select Directory</source>
+        <source>Select directory</source>
         <translation>选择目录</translation>
     </message>
     <message>
-        <source>Space Charge</source>
-        <translation>空间电荷</translation>
-    </message>
-    <message>
-        <source>Space-charge step</source>
-        <translation>空间电荷步长</translation>
-    </message>
-    <message>
-        <source>deg</source>
-        <translation>deg</translation>
-    </message>
-    <message>
-        <source>meter</source>
-        <translation>m</translation>
-    </message>
-</context>
-<context>
-    <name>PageLattice</name>
-    <message>
-        <source>Save</source>
-        <translation>保存</translation>
-    </message>
-    <message>
-        <source>input twiss</source>
-        <translation>输入 Twiss</translation>
-    </message>
-</context>
-<context>
-    <name>PageMatch</name>
-    <message>
-        <source>Calculate input twiss parameter</source>
-        <translation>计算输入 Twiss 参数</translation>
-    </message>
-    <message>
-        <source>Function</source>
-        <translation>功能</translation>
-    </message>
-    <message>
-        <source>Match</source>
-        <translation>匹配</translation>
-    </message>
-    <message>
-        <source>Match with twiss command</source>
-        <translation>按 twiss 命令匹配</translation>
-    </message>
-    <message>
-        <source>Use initial value</source>
-        <translation>使用初始值</translation>
-    </message>
-</context>
-<context>
-    <name>PageOthers</name>
-    <message>
-        <source>Import dst file</source>
-        <translation>导入 dst 文件</translation>
-    </message>
-    <message>
-        <source>Particle number expansion multiple</source>
-        <translation>粒子数扩充倍数</translation>
-    </message>
-    <message>
-        <source>Select dst File</source>
-        <translation>选择 dst 文件</translation>
-    </message>
-    <message>
-        <source>Stop</source>
-        <translation>停止</translation>
-    </message>
-    <message>
-        <source>change Number</source>
-        <translation>扩充粒子数</translation>
-    </message>
-</context>
-<context>
-    <name>PageOutput</name>
-    <message>
-        <source>Progress</source>
-        <translation>进度</translation>
-    </message>
-    <message>
-        <source>b1</source>
-        <translation>b1</translation>
-    </message>
-    <message>
-        <source>length</source>
-        <translation>长度</translation>
-    </message>
-    <message>
-        <source>step</source>
-        <translation>步</translation>
-    </message>
-</context>
-<context>
-    <name>PagePlotphase</name>
-    <message>
-        <source>All steps</source>
-        <translation>全部步</translation>
-    </message>
-    <message>
-        <source>DST Import / Plot</source>
-        <translation>DST 导入 / 绘图</translation>
-    </message>
-    <message>
-        <source>Import dst File</source>
-        <translation>导入 dst 文件</translation>
-    </message>
-    <message>
-        <source>Import plt File</source>
-        <translation>导入 plt 文件</translation>
-    </message>
-    <message>
-        <source>Location</source>
-        <translation>位置</translation>
-    </message>
-    <message>
-        <source>Plot</source>
-        <translation>绘图</translation>
-    </message>
-    <message>
-        <source>Plt Import / Plot</source>
-        <translation>Plt 导入 / 绘图</translation>
-    </message>
-    <message>
-        <source>Select dst File</source>
-        <translation>选择 dst 文件</translation>
-    </message>
-    <message>
-        <source>Select plt File</source>
-        <translation>选择 plt 文件</translation>
-    </message>
-    <message>
-        <source>Step</source>
-        <translation>步</translation>
-    </message>
-</context>
-<context>
-    <name>PageTool</name>
-    <message>
-        <source>AVASPlot</source>
-        <translation>AVAS 绘图</translation>
+        <source>Select file</source>
+        <translation>选择文件</translation>
     </message>
 </context>
 <context>
@@ -914,10 +542,600 @@
     </message>
 </context>
 <context>
+    <name>PlotArea</name>
+    <message>
+        <source>Pick an item on the left to open a plot here.</source>
+        <translation>在左侧选择一项，图形会显示在这里。</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>开始</translation>
+    </message>
+</context>
+<context>
+    <name>PlotTab</name>
+    <message>
+        <source>Refresh</source>
+        <translation>刷新</translation>
+    </message>
+    <message>
+        <source>Save image</source>
+        <translation>保存图片</translation>
+    </message>
+</context>
+<context>
+    <name>ProjectPage</name>
+    <message>
+        <source>%d files</source>
+        <translation>%d 个文件</translation>
+    </message>
+    <message>
+        <source>An AVAS project is a directory with InputFile/ (beam, lattice, settings) and OutputFile/ (results).</source>
+        <translation>AVAS 项目是一个包含 InputFile/（束流、结构、设置）和 OutputFile/（结果）的目录。</translation>
+    </message>
+    <message>
+        <source>Current project</source>
+        <translation>当前项目</translation>
+    </message>
+    <message>
+        <source>Double-click to open</source>
+        <translation>双击打开</translation>
+    </message>
+    <message>
+        <source>Input files</source>
+        <translation>输入文件</translation>
+    </message>
+    <message>
+        <source>Last run</source>
+        <translation>上次运行</translation>
+    </message>
+    <message>
+        <source>New project...</source>
+        <translation>新建项目...</translation>
+    </message>
+    <message>
+        <source>Open project...</source>
+        <translation>打开项目...</translation>
+    </message>
+    <message>
+        <source>Output files</source>
+        <translation>输出文件</translation>
+    </message>
+    <message>
+        <source>Path</source>
+        <translation>路径</translation>
+    </message>
+    <message>
+        <source>Project</source>
+        <translation>项目</translation>
+    </message>
+    <message>
+        <source>Recent projects</source>
+        <translation>最近项目</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>开始</translation>
+    </message>
+    <message>
+        <source>none yet</source>
+        <translation>暂无</translation>
+    </message>
+</context>
+<context>
+    <name>ResultsPage</name>
+    <message>
+        <source>Acceptance</source>
+        <translation>接受度</translation>
+    </message>
+    <message>
+        <source>Acceptance (π mm mrad)</source>
+        <translation>接受度 (π mm mrad)</translation>
+    </message>
+    <message>
+        <source>An expansion is already running.</source>
+        <translation>已有一个扩充任务在运行。</translation>
+    </message>
+    <message>
+        <source>Beam along the lattice</source>
+        <translation>沿结构的束流参数</translation>
+    </message>
+    <message>
+        <source>BeamSet.plt contains no particle dumps. Set 'Output every N steps (plt)' to a value &gt; 0 on the Settings page and run the simulation again.</source>
+        <translation>BeamSet.plt 中没有粒子输出。请在设置页把“每 N 步输出 (plt)”设为大于 0 并重新运行模拟。</translation>
+    </message>
+    <message>
+        <source>BeamSet.plt not found in OutputFile.</source>
+        <translation>OutputFile 中没有 BeamSet.plt。</translation>
+    </message>
+    <message>
+        <source>Cavity voltage</source>
+        <translation>腔压</translation>
+    </message>
+    <message>
+        <source>Choose a density file (OutputFile/density_*.dat).</source>
+        <translation>请选择密度文件 (OutputFile/density_*.dat)。</translation>
+    </message>
+    <message>
+        <source>Choose an error-study result file (OutputFile/errors_par*.txt).</source>
+        <translation>请选择误差分析结果文件 (OutputFile/errors_par*.txt)。</translation>
+    </message>
+    <message>
+        <source>Choose an error-study result file.</source>
+        <translation>请选择误差分析结果文件。</translation>
+    </message>
+    <message>
+        <source>Convert plt step to dst</source>
+        <translation>plt 步转 dst</translation>
+    </message>
+    <message>
+        <source>Density</source>
+        <translation>密度</translation>
+    </message>
+    <message>
+        <source>Emittance</source>
+        <translation>发射度</translation>
+    </message>
+    <message>
+        <source>Emittance growth and loss</source>
+        <translation>发射度增长与损失</translation>
+    </message>
+    <message>
+        <source>Energy</source>
+        <translation>能量</translation>
+    </message>
+    <message>
+        <source>Envelope</source>
+        <translation>包络</translation>
+    </message>
+    <message>
+        <source>Envelope / centroid / beta</source>
+        <translation>包络 / 质心 / beta</translation>
+    </message>
+    <message>
+        <source>Error output</source>
+        <translation>误差输出</translation>
+    </message>
+    <message>
+        <source>Error study</source>
+        <translation>误差分析</translation>
+    </message>
+    <message>
+        <source>Expand particle number</source>
+        <translation>扩充粒子数</translation>
+    </message>
+    <message>
+        <source>Expand particles</source>
+        <translation>扩充粒子</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>文件</translation>
+    </message>
+    <message>
+        <source>Input .dst</source>
+        <translation>输入 .dst</translation>
+    </message>
+    <message>
+        <source>InputFile / %s</source>
+        <translation>InputFile / %s</translation>
+    </message>
+    <message>
+        <source>Loss</source>
+        <translation>损失</translation>
+    </message>
+    <message>
+        <source>Min. angle</source>
+        <translation>最小角度</translation>
+    </message>
+    <message>
+        <source>Min. position</source>
+        <translation>最小位置</translation>
+    </message>
+    <message>
+        <source>Multiply particle number by</source>
+        <translation>粒子数扩充倍数</translation>
+    </message>
+    <message>
+        <source>No field elements in the lattice.</source>
+        <translation>结构中没有 field 元件。</translation>
+    </message>
+    <message>
+        <source>Normalised</source>
+        <translation>归一化</translation>
+    </message>
+    <message>
+        <source>Open a project first.</source>
+        <translation>请先打开项目。</translation>
+    </message>
+    <message>
+        <source>Open viewer</source>
+        <translation>打开查看器</translation>
+    </message>
+    <message>
+        <source>Other file</source>
+        <translation>其他文件</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>输出</translation>
+    </message>
+    <message>
+        <source>Output parameters</source>
+        <translation>输出参数</translation>
+    </message>
+    <message>
+        <source>OutputFile / %s</source>
+        <translation>OutputFile / %s</translation>
+    </message>
+    <message>
+        <source>Particle file viewer (.dst)</source>
+        <translation>粒子文件查看器 (.dst)</translation>
+    </message>
+    <message>
+        <source>Particle loss</source>
+        <translation>粒子损失</translation>
+    </message>
+    <message>
+        <source>Particle viewer</source>
+        <translation>粒子查看器</translation>
+    </message>
+    <message>
+        <source>Phase advance</source>
+        <translation>相移</translation>
+    </message>
+    <message>
+        <source>Phase space</source>
+        <translation>相空间</translation>
+    </message>
+    <message>
+        <source>Plane</source>
+        <translation>平面</translation>
+    </message>
+    <message>
+        <source>Plot</source>
+        <translation>绘图</translation>
+    </message>
+    <message>
+        <source>Plots are drawn from OutputFile/ of the current project. Open several tabs and use Refresh after a new run.</source>
+        <translation>图形来自当前项目的 OutputFile/。可以同时打开多个标签页，重新运行后点“刷新”。</translation>
+    </message>
+    <message>
+        <source>Position (m)</source>
+        <translation>位置 (m)</translation>
+    </message>
+    <message>
+        <source>Project file</source>
+        <translation>项目文件</translation>
+    </message>
+    <message>
+        <source>Quantity</source>
+        <translation>物理量</translation>
+    </message>
+    <message>
+        <source>Result</source>
+        <translation>结果</translation>
+    </message>
+    <message>
+        <source>Results</source>
+        <translation>结果</translation>
+    </message>
+    <message>
+        <source>Select a .dst file.</source>
+        <translation>请选择 .dst 文件。</translation>
+    </message>
+    <message>
+        <source>Select a .plt file.</source>
+        <translation>请选择 .plt 文件。</translation>
+    </message>
+    <message>
+        <source>Select density file</source>
+        <translation>选择密度文件</translation>
+    </message>
+    <message>
+        <source>Select error output file</source>
+        <translation>选择误差输出文件</translation>
+    </message>
+    <message>
+        <source>Select errors_par file</source>
+        <translation>选择 errors_par 文件</translation>
+    </message>
+    <message>
+        <source>Select particle file</source>
+        <translation>选择粒子文件</translation>
+    </message>
+    <message>
+        <source>Select plt file</source>
+        <translation>选择 plt 文件</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>开始</translation>
+    </message>
+    <message>
+        <source>Statistic</source>
+        <translation>统计量</translation>
+    </message>
+    <message>
+        <source>Step</source>
+        <translation>步</translation>
+    </message>
+    <message>
+        <source>Step to export</source>
+        <translation>导出的步</translation>
+    </message>
+    <message>
+        <source>Step viewer</source>
+        <translation>步查看器</translation>
+    </message>
+    <message>
+        <source>Step viewer (.plt)</source>
+        <translation>步查看器 (.plt)</translation>
+    </message>
+    <message>
+        <source>Steps in file</source>
+        <translation>文件中的步数</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Synchronous phase</source>
+        <translation>同步相位</translation>
+    </message>
+    <message>
+        <source>The viewer shows x-x', y-y', φ-W and z-z' planes and computes emittances.</source>
+        <translation>查看器显示 x-x'、y-y'、φ-W、z-z' 四个平面并计算发射度。</translation>
+    </message>
+    <message>
+        <source>Tools</source>
+        <translation>工具</translation>
+    </message>
+    <message>
+        <source>Unit</source>
+        <translation>单位</translation>
+    </message>
+    <message>
+        <source>Voltage ratio per field</source>
+        <translation>各场的电压比例</translation>
+    </message>
+    <message>
+        <source>Write dst</source>
+        <translation>写出 dst</translation>
+    </message>
+    <message>
+        <source>average</source>
+        <translation>平均</translation>
+    </message>
+    <message>
+        <source>per meter</source>
+        <translation>每米</translation>
+    </message>
+    <message>
+        <source>per period</source>
+        <translation>每周期</translation>
+    </message>
+    <message>
+        <source>plt file</source>
+        <translation>plt 文件</translation>
+    </message>
+    <message>
+        <source>plt to dst</source>
+        <translation>plt 转 dst</translation>
+    </message>
+    <message>
+        <source>rms</source>
+        <translation>rms</translation>
+    </message>
+</context>
+<context>
+    <name>RunPage</name>
+    <message>
+        <source>All pages are saved and checked before the simulation starts. Results are written to OutputFile/ inside the project.</source>
+        <translation>开始模拟前会自动保存并检查所有页面。结果写入项目下的 OutputFile/。</translation>
+    </message>
+    <message>
+        <source>Elapsed</source>
+        <translation>耗时</translation>
+    </message>
+    <message>
+        <source>Last run</source>
+        <translation>上次运行</translation>
+    </message>
+    <message>
+        <source>Mode</source>
+        <translation>模式</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>输出</translation>
+    </message>
+    <message>
+        <source>Position</source>
+        <translation>位置</translation>
+    </message>
+    <message>
+        <source>Progress</source>
+        <translation>进度</translation>
+    </message>
+    <message>
+        <source>Project</source>
+        <translation>项目</translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation>运行</translation>
+    </message>
+    <message>
+        <source>Simulation</source>
+        <translation>模拟</translation>
+    </message>
+    <message>
+        <source>State</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <source>Step</source>
+        <translation>步</translation>
+    </message>
+    <message>
+        <source>failed</source>
+        <translation>失败</translation>
+    </message>
+    <message>
+        <source>finished</source>
+        <translation>完成</translation>
+    </message>
+    <message>
+        <source>idle</source>
+        <translation>空闲</translation>
+    </message>
+    <message>
+        <source>no run recorded for this project</source>
+        <translation>该项目尚无运行记录</translation>
+    </message>
+    <message>
+        <source>running</source>
+        <translation>运行中</translation>
+    </message>
+    <message>
+        <source>■  Stop</source>
+        <translation>■  停止</translation>
+    </message>
+    <message>
+        <source>▶  Run simulation</source>
+        <translation>▶  运行模拟</translation>
+    </message>
+</context>
+<context>
     <name>SearchDialog</name>
     <message>
         <source>Find</source>
         <translation>查找</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsPage</name>
+    <message>
+        <source>Apply boundary (boundary.txt)</source>
+        <translation>启用边界 (boundary.txt)</translation>
+    </message>
+    <message>
+        <source>Density grid</source>
+        <translation>密度网格</translation>
+    </message>
+    <message>
+        <source>Directory</source>
+        <translation>目录</translation>
+    </message>
+    <message>
+        <source>Energy limit</source>
+        <translation>能量限制</translation>
+    </message>
+    <message>
+        <source>Envelope</source>
+        <translation>包络</translation>
+    </message>
+    <message>
+        <source>Envelope mode is not available in this version</source>
+        <translation>本版本不支持包络模式</translation>
+    </message>
+    <message>
+        <source>Error amplitudes are defined by err_* commands in the lattice file.</source>
+        <translation>误差幅度由结构文件中的 err_* 命令定义。</translation>
+    </message>
+    <message>
+        <source>Error study</source>
+        <translation>误差分析</translation>
+    </message>
+    <message>
+        <source>Errors</source>
+        <translation>误差</translation>
+    </message>
+    <message>
+        <source>Field maps</source>
+        <translation>场文件</translation>
+    </message>
+    <message>
+        <source>Include space charge</source>
+        <translation>计算空间电荷</translation>
+    </message>
+    <message>
+        <source>Limits and extra output</source>
+        <translation>限制与附加输出</translation>
+    </message>
+    <message>
+        <source>Longitudinal limits</source>
+        <translation>纵向限制</translation>
+    </message>
+    <message>
+        <source>Model</source>
+        <translation>模型</translation>
+    </message>
+    <message>
+        <source>Multi-particle tracking</source>
+        <translation>多粒子跟踪</translation>
+    </message>
+    <message>
+        <source>Output every N steps (plt)</source>
+        <translation>每 N 步输出 (plt)</translation>
+    </message>
+    <message>
+        <source>Phase limit</source>
+        <translation>相位限制</translation>
+    </message>
+    <message>
+        <source>Random seed of input beam</source>
+        <translation>输入束流随机种子</translation>
+    </message>
+    <message>
+        <source>Seed</source>
+        <translation>随机种子</translation>
+    </message>
+    <message>
+        <source>Select field map directory</source>
+        <translation>选择场文件目录</translation>
+    </message>
+    <message>
+        <source>Settings: error seed is missing</source>
+        <translation>设置：缺少误差随机种子</translation>
+    </message>
+    <message>
+        <source>Settings: steps per βλ is missing</source>
+        <translation>设置：缺少每 βλ 步数</translation>
+    </message>
+    <message>
+        <source>Simulation settings</source>
+        <translation>模拟设置</translation>
+    </message>
+    <message>
+        <source>Simulation type</source>
+        <translation>模拟类型</translation>
+    </message>
+    <message>
+        <source>Solver</source>
+        <translation>求解器</translation>
+    </message>
+    <message>
+        <source>Space charge</source>
+        <translation>空间电荷</translation>
+    </message>
+    <message>
+        <source>Steps per βλ</source>
+        <translation>每 βλ 步数</translation>
+    </message>
+    <message>
+        <source>Tracking options written to input.txt, and the run mode stored in ini.ini.</source>
+        <translation>跟踪选项写入 input.txt，运行模式保存在 ini.ini。</translation>
+    </message>
+    <message>
+        <source>Write density file</source>
+        <translation>生成密度文件</translation>
+    </message>
+    <message>
+        <source>empty = InputFile/</source>
+        <translation>留空 = InputFile/</translation>
     </message>
 </context>
 </TS>
