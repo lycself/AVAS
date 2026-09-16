@@ -41,7 +41,7 @@ class Settings:
 
     def _load(self):
         try:
-            with open(self.path, encoding="utf-8") as fh:
+            with open(self.path, encoding="utf-8-sig") as fh:
                 data = json.load(fh)
             if isinstance(data, dict):
                 self._data = data

@@ -12,10 +12,16 @@ The result is dist/AVAS/ with
 * MicrosoftEdgeWebview2Setup.exe (if fetched) - offered when WebView2 is missing
 """
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
+
+# A Python from conda keeps libexpat.dll, libffi ... in <prefix>/Library/bin; let PyInstaller find them.
+_conda_bin = os.path.join(sys.base_prefix, "Library", "bin")
+if os.path.isdir(_conda_bin):
+    os.environ["PATH"] = _conda_bin + os.pathsep + os.environ.get("PATH", "")
 
 datas = []
 datas += collect_data_files("avas", subdir="engine")
