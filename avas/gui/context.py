@@ -1,6 +1,6 @@
 """Process-wide GUI state shared by the RPC services (one window, one project)."""
-from avas.webgui import app as gui_app
-from avas.webgui.project import Project
+from avas.gui import app as gui_app
+from avas.gui.project import Project
 
 _project = None
 

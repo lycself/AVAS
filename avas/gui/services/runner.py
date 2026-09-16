@@ -26,8 +26,8 @@ import time
 
 from avas import __version__
 from avas.paths import PACKAGE_DIR
-from avas.webgui import bridge, context
-from avas.webgui.bridge import UserError, rpc
+from avas.gui import bridge, context
+from avas.gui.bridge import UserError, rpc
 
 log = logging.getLogger("avas.gui")
 engine_log = logging.getLogger("avas.engine")
@@ -80,7 +80,9 @@ def parse_progress(line):
 def simulation_command(input_dir, output_dir, mode):
     run_args = ["run", "--input", input_dir, "--output", output_dir, "--mode", mode or "basic"]
     if getattr(sys, "frozen", False):
-        return [sys.executable] + run_args
+        # the windowed AVASGui.exe starts runs through the console program next to it
+        console = os.path.join(os.path.dirname(sys.executable), "AVAS.exe")
+        return [console if os.path.isfile(console) else sys.executable] + run_args
     return [sys.executable, "-u", "-m", "avas"] + run_args
 
 
@@ -273,7 +275,7 @@ class Runner:
         state.update(ok=ok, message=message, stopped=self._stopping)
         bridge.emit("run.progress", state)
         bridge.emit("run.finished", state)
-        from avas.webgui.services import projects
+        from avas.gui.services import projects
         projects.notify()
 
 

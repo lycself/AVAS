@@ -39,7 +39,7 @@ class Plttozcode():
 
         if step_type == 0:
             for particle in part_list:
-                if particle[5] > 0 and (particle[6] ==0 or particle[6]==2):
+                if particle[5] > 0 and particle[6] == 1:      # alive flag 1, as in TreatPlt and the acceptance code
 
                     p2 = particle[1]**2 + particle[3]**2 + particle[5]**2
                     beta = math.sqrt(p2/(1 + p2))

@@ -4,9 +4,9 @@ import subprocess
 import sys
 
 import avas
-from avas.webgui import app as gui_app
-from avas.webgui import bridge, logbridge, webview2
-from avas.webgui.bridge import UserError, rpc
+from avas.gui import app as gui_app
+from avas.gui import bridge, logbridge, webview2
+from avas.gui.bridge import UserError, rpc
 
 
 @rpc("app.info")

@@ -1,5 +1,5 @@
 // Calls into Python (pywebview js_api) and events coming back from it.
-// See avas/webgui/bridge.py for the other side.
+// See avas/gui/bridge.py for the other side.
 
 declare global {
   interface Window {
@@ -21,7 +21,7 @@ export class RpcError extends Error {
 
 let readyPromise: Promise<void> | null = null;
 
-// Development: "?devrpc" in the URL talks to avas.webgui.devserver over HTTP.
+// Development: "?devrpc" in the URL talks to avas.gui.devserver over HTTP.
 if (location.search.includes("devrpc") && !window.pywebview) {
   window.pywebview = {
     api: {

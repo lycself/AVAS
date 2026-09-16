@@ -1,6 +1,6 @@
 """Development server: the GUI in an ordinary browser, without pywebview.
 
-    python -m avas.webgui.devserver [--port 8765]
+    python -m avas.gui.devserver [--port 8765]
 
 then open http://127.0.0.1:8765/index.html?devrpc.  Calls go over HTTP
 (``POST /rpc``) and events over an event stream (``GET /events``).  Native
@@ -10,8 +10,8 @@ import argparse
 import os
 import time
 
-from avas.webgui import app as gui_app
-from avas.webgui import logbridge, server
+from avas.gui import app as gui_app
+from avas.gui import logbridge, server
 
 
 def main():
@@ -21,7 +21,7 @@ def main():
     args = ap.parse_args()
     os.environ.setdefault("AVAS_GUI_SETTINGS", args.settings or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".dev-gui.json"))
     logbridge.install()
-    from avas.webgui import services  # noqa: F401
+    from avas.gui import services  # noqa: F401
     srv, base = server.start(port=args.port, dev_rpc=True)
     gui_app.state()["base_url"] = base
     print(f"AVAS dev server: {base}/index.html?devrpc", flush=True)

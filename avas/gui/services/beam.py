@@ -9,9 +9,9 @@ import shutil
 
 from avas.api.qt.api import cal_beam_parameter
 from avas.utils.beamconfig import BeamConfig
-from avas.webgui import context
-from avas.webgui.bridge import UserError, rpc
-from avas.webgui.textio import read_text, write_text
+from avas.gui import context
+from avas.gui.bridge import UserError, rpc
+from avas.gui.textio import read_text, write_text
 
 log = logging.getLogger("avas.gui")
 

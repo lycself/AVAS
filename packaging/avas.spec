@@ -3,74 +3,50 @@
 
 Run from the repository root:
 
+    python packaging/fetch_webview2.py      # once: WebView2 bootstrapper for machines without the runtime
     pyinstaller packaging/avas.spec
 
-The result is dist/AVAS/AVAS.exe (Windows) which understands the same
-sub-commands as the ``avas`` CLI (``AVAS.exe gui``, ``AVAS.exe run ...``).
+The result is dist/AVAS/ with
+* AVAS.exe     - console program, same sub-commands as the ``avas`` CLI (``AVAS.exe run ...``)
+* AVASGui.exe  - the graphical interface without a console window
+* MicrosoftEdgeWebview2Setup.exe (if fetched) - offered when WebView2 is missing
 """
 import os
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
-PKG = os.path.join(ROOT, "avas")
 
 datas = []
 datas += collect_data_files("avas", subdir="engine")
 datas += collect_data_files("avas", subdir="static")
-datas += collect_data_files("avas", subdir="i18n")
-datas += collect_data_files("qtawesome")          # icon fonts (codicons) used by the GUI
+datas += [(os.path.join(ROOT, "avas", "gui", "web"), os.path.join("avas", "gui", "web"))]
+datas += collect_data_files("webview")                  # pywebview's JavaScript glue
+bootstrapper = os.path.join(ROOT, "packaging", "redist", "MicrosoftEdgeWebview2Setup.exe")
+binaries = [(bootstrapper, ".")] if os.path.isfile(bootstrapper) else []
 
-block_cipher = None
-
-a = Analysis(
-    [os.path.join(ROOT, "run_avas.py")],
-    pathex=[ROOT],
-    binaries=[],
-    datas=datas,
-    hiddenimports=[
-        "avas.gui.app",
-        "avas.gui.user_pyqt",
-        "avas.api.basic",
-        "avas.sim.error",
-        "avas.sim.err_adjust",
-        "sklearn.utils._typedefs",
-    ],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=["avas.gpu", "avas.hpc"],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
+hiddenimports = (
+    ["avas.gui.app", "avas.api.basic", "avas.sim.error", "avas.sim.err_adjust", "sklearn.utils._typedefs",
+     "clr_loader", "pythonnet"]
+    + collect_submodules("avas.gui.services")
+    + collect_submodules("webview.platforms")
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name="AVAS",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
+common = dict(pathex=[ROOT], binaries=binaries, datas=datas, hiddenimports=hiddenimports, hookspath=[],
+              hooksconfig={}, runtime_hooks=[], excludes=["avas.gpu", "avas.hpc", "PyQt5", "PySide6", "tkinter"],
+              noarchive=False)
+
+cli = Analysis([os.path.join(ROOT, "run_avas.py")], **common)
+gui = Analysis([os.path.join(ROOT, "packaging", "avas_gui.py")], **common)
+
+cli_pyz = PYZ(cli.pure, cli.zipped_data)
+gui_pyz = PYZ(gui.pure, gui.zipped_data)
+
+cli_exe = EXE(cli_pyz, cli.scripts, [], exclude_binaries=True, name="AVAS", console=True, upx=False)
+gui_exe = EXE(gui_pyz, gui.scripts, [], exclude_binaries=True, name="AVASGui", console=False, upx=False)
+
 coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="AVAS",
+    cli_exe, cli.binaries, cli.zipfiles, cli.datas,
+    gui_exe, gui.binaries, gui.zipfiles, gui.datas,
+    strip=False, upx=False, name="AVAS",
 )

@@ -1,130 +1,192 @@
 """GUI entry point: ``avas gui`` / ``python -m avas gui`` / ``avas-gui``.
 
-Responsibilities that used to live in the old root ``main.py``:
-
-* enable Qt high-DPI scaling *before* the ``QApplication`` exists, so the UI
-  is readable on 150 % / 200 % Windows displays;
-* install the UI translation chosen in *Settings > Language*;
-* apply the user's UI scale (font size + style sheet);
-* show uncaught exceptions in a dialog instead of silently dying.
+Starts the loopback server, opens one pywebview window (Edge WebView2 on
+Windows) on the built page and runs the GUI loop.  Set ``AVAS_GUI_DEV_URL``
+(e.g. ``http://localhost:5173``) to load the Vite dev server instead, and
+``AVAS_GUI_DEBUG=1`` to enable the WebView developer tools.
 """
+import logging
 import multiprocessing
 import os
 import sys
-import traceback
 
-from PyQt5.QtCore import Qt, QSettings
-from PyQt5.QtGui import QFont, QFontDatabase, QGuiApplication
-from PyQt5.QtWidgets import QApplication, QMessageBox
+from avas.gui import bridge, server, settings as settings_mod, webview2
 
-ORG_NAME = "AVAS"
-APP_NAME = "AVAS"
+log = logging.getLogger("avas.gui")
 
+APP_TITLE = "AVAS"
+MIN_SIZE = (960, 600)
 
-def _enable_high_dpi():
-    """Must run before QApplication is constructed."""
-    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
-    os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    # Qt 5.14+: honour fractional scale factors (125 %, 150 %) exactly instead of
-    # rounding them, which would make everything either too small or too large.
-    policy = getattr(Qt, "HighDpiScaleFactorRoundingPolicy", None)
-    if policy is not None and hasattr(QGuiApplication, "setHighDpiScaleFactorRoundingPolicy"):
-        QGuiApplication.setHighDpiScaleFactorRoundingPolicy(policy.PassThrough)
+_state = {"settings": None, "window": None, "server": None, "base_url": "", "force_close": False}
 
 
-def _install_excepthook():
-    def exception_handler(exc_type, value, tb):
-        QMessageBox.critical(None, "Critical Error", f"An unexpected error occurred:\n{value}")
-        traceback.print_exception(exc_type, value, tb)
-
-    sys.excepthook = exception_handler
+def state():
+    return _state
 
 
-# Real UI fonts to try, in order.  CJK-capable families first so Chinese text
-# does not fall back to a raster font.
-PREFERRED_FAMILIES = [
-    "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI",       # Windows
-    "PingFang SC", "Helvetica Neue",                            # macOS
-    "Noto Sans CJK SC", "Noto Sans", "DejaVu Sans", "Arial",    # Linux / generic
-]
+def app_settings():
+    if _state["settings"] is None:
+        _state["settings"] = settings_mod.Settings()
+    return _state["settings"]
 
 
-def ui_scale(settings):
-    """UI scale in percent from QSettings (``ui/uiScale``).
-
-    Older builds stored an absolute ``ui/fontPointSize``; it is converted once
-    so an existing preference is not lost.
-    """
-    from avas.gui.theme import DEFAULT_POINT_SIZE, DEFAULT_SCALE, SCALES
-    scale = settings.value("ui/uiScale", 0, type=int)
-    if not scale:
-        old_pt = settings.value("ui/fontPointSize", 0, type=int)
-        scale = int(round(old_pt / DEFAULT_POINT_SIZE * 100)) if old_pt else DEFAULT_SCALE
-        scale = min(SCALES, key=lambda s: abs(s - scale))
-        settings.setValue("ui/uiScale", scale)
-    return scale
+# --------------------------------------------------------------------------- theme helpers
+def system_prefers_dark():
+    if sys.platform != "win32":
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+        return int(value) == 0
+    except OSError:
+        return False
 
 
-def _apply_font(app, settings):
-    """Give the application an explicit, readable font.
-
-    Qt's Windows platform theme resolves the default widget font from the
-    system "message font"; on Chinese Windows with display scaling this comes
-    back as *SimSun 5 pt* (measured), which is why the old GUI was unreadable
-    on high-DPI screens even though the menu bar (which uses a separate theme
-    font) looked fine.  Picking a real UI family and size here makes every
-    widget inherit something sane.  The size follows *View > UI scale*.
-    """
-    from avas.gui.theme import base_point_size
-    families = set(QFontDatabase().families())
-    font = app.font()
-    for family in PREFERRED_FAMILIES:
-        if family in families:
-            font.setFamily(family)
-            break
-    font.setPointSizeF(base_point_size(ui_scale(settings)))
-    font.setStyleStrategy(QFont.PreferAntialias)
-    app.setFont(font)
+def resolve_theme(mode):
+    if mode in ("light", "dark"):
+        return mode
+    return "dark" if system_prefers_dark() else "light"
 
 
-def apply_ui_scale(app, settings):
-    """(Re)apply font, theme (light / dark / follow system) and style sheet for the stored UI scale.
+def set_title_bar_dark(dark):
+    """Dark / light native title bar (Windows 10 1809+)."""
+    win = _state["window"]
+    if sys.platform != "win32" or win is None:
+        return
+    try:
+        import ctypes
+        hwnd = int(win.native.Handle.ToInt64())
+        value = ctypes.c_int(1 if dark else 0)
+        for attribute in (20, 19):          # DWMWA_USE_IMMERSIVE_DARK_MODE (new / pre-20H1)
+            if ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(value),
+                                                          ctypes.sizeof(value)) == 0:
+                break
+    except Exception:  # noqa: BLE001 - cosmetic only
+        pass
 
-    Setting a new style sheet re-polishes every existing widget, which is what
-    makes a live scale change take effect everywhere (a bare ``setFont`` after
-    the windows exist only reaches widgets created later, e.g. popup menus).
-    """
-    from avas.gui.theme import apply_theme
-    _apply_font(app, settings)
-    apply_theme(app, ui_scale(settings), settings.value("ui/theme", "system", type=str))
+
+def set_zoom(factor):
+    """Scale the whole page like browser zoom (WebView2 ZoomFactor); used for View > UI scale."""
+    win = _state["window"]
+    if win is None:
+        return
+    try:
+        form = win.native
+        control = getattr(form, "webview", None)
+        if control is None or sys.platform != "win32":
+            return
+        from System import Action  # pythonnet, available with the WinForms backend
+
+        def apply():
+            control.ZoomFactor = float(factor)
+
+        if control.InvokeRequired:
+            control.Invoke(Action(apply))
+        else:
+            apply()
+    except Exception as exc:  # noqa: BLE001 - cosmetic only
+        log.debug("zoom failed: %s", exc)
 
 
+# --------------------------------------------------------------------------- window events
+def _on_shown():
+    set_title_bar_dark(resolve_theme(app_settings().get("ui/theme")) == "dark")
+
+
+def _on_loaded():
+    scale = app_settings().get("ui/uiScale") or 100
+    if scale != 100:
+        set_zoom(scale / 100.0)
+
+
+def _on_closing():
+    win = _state["window"]
+    if _state["force_close"] or win is None:
+        return True
+    try:
+        ok = win.evaluate_js("window.__avasCanClose ? window.__avasCanClose() : true")
+    except Exception:  # noqa: BLE001 - page not responsive: allow closing
+        return True
+    if ok is False:
+        return False
+    _remember_geometry()
+    return True
+
+
+def _remember_geometry():
+    win = _state["window"]
+    try:
+        app_settings().set("ui/window", {"width": win.width, "height": win.height, "x": win.x, "y": win.y,
+                                         "maximized": bool(getattr(win, "maximized", False))})
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def request_close(force=True):
+    _state["force_close"] = force
+    win = _state["window"]
+    if win is not None:
+        _remember_geometry()
+        win.destroy()
+
+
+# --------------------------------------------------------------------------- main
 def main(argv=None, language=None):
     multiprocessing.freeze_support()
-    _enable_high_dpi()
+    from avas.gui import logbridge
+    logbridge.install()
 
-    app = QApplication(sys.argv if argv is None else [sys.argv[0]] + list(argv))
-    app.setOrganizationName(ORG_NAME)
-    app.setApplicationName(APP_NAME)
+    s = app_settings()
+    if language:
+        s.set("ui/language", language)
+    if not webview2.ensure_runtime(s.get("ui/language")):
+        return 1
 
-    settings = QSettings(ORG_NAME, APP_NAME)
-    lang = language or settings.value("ui/language", "en")
+    import webview
+    from avas.gui import services  # noqa: F401 - registers RPC handlers
 
-    apply_ui_scale(app, settings)
+    srv, base = server.start()
+    _state["server"], _state["base_url"] = srv, base
+    url = os.environ.get("AVAS_GUI_DEV_URL") or f"{base}/index.html"
 
-    from avas.i18n import install_translator
-    install_translator(app, lang)
-    _install_excepthook()
+    geo = s.get("ui/window") or {}
+    dark = resolve_theme(s.get("ui/theme")) == "dark"
+    kwargs = dict(width=int(geo.get("width") or 1400), height=int(geo.get("height") or 900),
+                  min_size=MIN_SIZE, background_color="#1f1f1f" if dark else "#ffffff",
+                  text_select=True, maximized=bool(geo.get("maximized")))
+    if geo.get("x") is not None and geo.get("y") is not None and _on_some_screen(geo):
+        kwargs.update(x=int(geo["x"]), y=int(geo["y"]))
 
-    # imported after the translator is installed so tr() strings resolve
-    from avas.gui.main_window import MainWindow
+    win = webview.create_window(APP_TITLE, url, js_api=bridge.Api(), **kwargs)
+    _state["window"] = win
+    bridge.attach_window(win)
+    win.events.shown += _on_shown
+    win.events.loaded += _on_loaded
+    win.events.closing += _on_closing
 
-    # kept on the app object so the window can replace itself (language switch)
-    app._avas_main_window = MainWindow()
-    return app.exec_()
+    storage = os.path.join(os.path.dirname(settings_mod.default_path()), "webview")
+    debug = os.environ.get("AVAS_GUI_DEBUG") == "1"
+    webview.start(gui="edgechromium" if sys.platform == "win32" else None, debug=debug,
+                  private_mode=False, storage_path=storage, icon=_icon_path())
+    services.runner.shutdown()
+    srv.shutdown()
+    return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def _on_some_screen(geo):
+    try:
+        import webview
+        for screen in webview.screens:
+            if screen.x - 50 <= geo["x"] < screen.x + screen.width - 100 and \
+                    screen.y - 50 <= geo["y"] < screen.y + screen.height - 100:
+                return True
+    except Exception:  # noqa: BLE001
+        return True
+    return False
+
+
+def _icon_path():
+    path = os.path.join(server.WEB_ROOT, "avas.ico")
+    return path if os.path.isfile(path) else None

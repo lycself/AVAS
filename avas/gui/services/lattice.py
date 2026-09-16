@@ -6,9 +6,9 @@ from avas import paths
 from avas.data import filekinds, schema
 from avas.data.fieldmap import EXT_MEANING
 from avas.data.lattice_doc import Group, LatticeDocument
-from avas.webgui import context
-from avas.webgui.bridge import UserError, rpc
-from avas.webgui.textio import read_text, write_text
+from avas.gui import context
+from avas.gui.bridge import UserError, rpc
+from avas.gui.textio import read_text, write_text
 
 log = logging.getLogger("avas.gui")
 
@@ -161,6 +161,6 @@ def set_source(name):
     p = context.project().require()
     p.set_lattice_name(name)
     log.info("lattice used for the run: %s", name)
-    from avas.webgui.services import projects
+    from avas.gui.services import projects
     projects.notify()
     return list_lattices()

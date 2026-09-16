@@ -3,8 +3,8 @@ import os
 
 from avas.api.qt.api import create_from_file_input_ini, write_to_file_input_ini
 from avas.utils.iniconfig import IniConfig
-from avas.webgui import context
-from avas.webgui.bridge import UserError, rpc
+from avas.gui import context
+from avas.gui.bridge import UserError, rpc
 
 
 def safe_int(v, default):

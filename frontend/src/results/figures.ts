@@ -1,4 +1,4 @@
-// Turn the backend's figure descriptions (avas/webgui/services/results.py) into Plotly data/layout.
+// Turn the backend's figure descriptions (avas/gui/services/results.py) into Plotly data/layout.
 import { seriesColor } from "../components/Plot";
 
 export type Trace = { x: ArrayLike<number>; y: ArrayLike<number>; color?: string | null; name?: string | null; markers?: boolean; legend?: boolean; y2?: boolean };

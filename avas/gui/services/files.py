@@ -10,9 +10,9 @@ from avas.data import filekinds as fk
 from avas.data.fieldmap import EXT_MEANING, FieldMap, components
 from avas.data.lattice_doc import LatticeDocument
 from avas.data.particles import read_dst, read_edst
-from avas.webgui import bridge, context
-from avas.webgui.bridge import UserError, rpc
-from avas.webgui.textio import read_text, write_text
+from avas.gui import bridge, context
+from avas.gui.bridge import UserError, rpc
+from avas.gui.textio import read_text, write_text
 
 log = logging.getLogger("avas.gui")
 
@@ -121,7 +121,7 @@ def use_lattice(path):
     p = _check(path)
     p.set_lattice_name(os.path.basename(path))
     log.info("lattice used for the run: %s", os.path.basename(path))
-    from avas.webgui.services import projects
+    from avas.gui.services import projects
     projects.notify()
     return True
 
@@ -140,7 +140,7 @@ def rename_file(path, newName):
     if was_run_lattice:
         p.set_lattice_name(new_name)
     log.info("renamed %s -> %s", os.path.basename(path), new_name)
-    from avas.webgui.services import projects
+    from avas.gui.services import projects
     projects.notify()
     return target
 
@@ -151,7 +151,7 @@ def trash_file(path):
     from send2trash import send2trash
     send2trash(os.path.normpath(path))
     log.info("moved to the recycle bin: %s", os.path.basename(path))
-    from avas.webgui.services import projects
+    from avas.gui.services import projects
     projects.notify()
     return True
 

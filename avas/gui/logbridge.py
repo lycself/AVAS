@@ -2,7 +2,7 @@
 import logging
 import threading
 
-from avas.webgui import bridge
+from avas.gui import bridge
 
 _installed = {"handler": None}
 MAX_HISTORY = 2000

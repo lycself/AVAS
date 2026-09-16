@@ -10,7 +10,7 @@
   flusher thread delivers the queue in batches every ~40 ms through
   ``window.__avasEmit(batch)``, so a chatty log never floods the page.
 * **Blobs**: large numeric arrays travel as binary over the local HTTP server
-  (see :mod:`avas.webgui.server`); :func:`blob` stores an array and returns a
+  (see :mod:`avas.gui.server`); :func:`blob` stores an array and returns a
   small JSON reference the page resolves with ``fetch``.
 """
 import json

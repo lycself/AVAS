@@ -1,4 +1,4 @@
-// Lattice document as returned by lattice.parse (avas/webgui/services/lattice.py).
+// Lattice document as returned by lattice.parse (avas/gui/services/lattice.py).
 import { call } from "../bridge";
 import { pick } from "../i18n";
 

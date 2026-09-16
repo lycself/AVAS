@@ -14,8 +14,8 @@ import uuid
 
 import numpy as np
 
-from avas.webgui import bridge, context
-from avas.webgui.bridge import UserError, rpc
+from avas.gui import bridge, context
+from avas.gui.bridge import UserError, rpc
 
 log = logging.getLogger("avas.gui")
 

@@ -11,7 +11,7 @@ import posixpath
 import threading
 import urllib.parse
 
-from avas.webgui import bridge
+from avas.gui import bridge
 
 WEB_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
@@ -49,7 +49,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):  # noqa: N802
-        # development only (avas.webgui.devserver): RPC over HTTP for a plain browser
+        # development only (avas.gui.devserver): RPC over HTTP for a plain browser
         if not self.server.dev_rpc or urllib.parse.urlparse(self.path).path != "/rpc":
             self._send(404, b"not found", "text/plain")
             return

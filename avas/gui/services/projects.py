@@ -2,8 +2,8 @@
 import logging
 import os
 
-from avas.webgui import bridge, context
-from avas.webgui.bridge import UserError, rpc
+from avas.gui import bridge, context
+from avas.gui.bridge import UserError, rpc
 
 log = logging.getLogger("avas.gui")
 
@@ -14,7 +14,7 @@ def notify():
 
 
 def _runner_busy():
-    from avas.webgui.services import runner
+    from avas.gui.services import runner
     return runner.is_running()
 
 
