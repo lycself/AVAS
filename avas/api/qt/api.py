@@ -2,7 +2,6 @@ from avas.paths import lattice_source_path
 import re
 import sys
 
-from fontTools.feaLib import location
 
 from avas.post.analysis.percentemitt import PercentEmit
 from avas.utils.readfile import read_dst_fast

@@ -1,0 +1,97 @@
+/* Window chrome, laid out like VS Code: menu/title bar, activity side bar,
+   editor area, bottom panel, status bar. */
+.boot, .boot-error { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--fg-muted); padding: 24px; text-align: center; }
+.shell { display: flex; flex-direction: column; height: 100%; }
+body.dragging, body.dragging * { cursor: inherit !important; user-select: none !important; }
+body.dragging .sash-v, body.dragging { cursor: col-resize; }
+
+/* ---------------------------------------------------------------- menu bar */
+.menubar {
+  display: flex; align-items: center; height: 35px; flex: none; padding: 0 6px 0 0;
+  background: var(--toolbar-bg); border-bottom: 1px solid var(--border);
+}
+.menubar-logo { width: 40px; display: flex; justify-content: center; color: var(--accent); }
+.menubar-logo .codicon { font-size: 18px; }
+.menubar-item { height: 24px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--fg); cursor: default; }
+.menubar-item:hover, .menubar-item.open { background: var(--list-hover); }
+.menubar-title { color: var(--fg-muted); font-size: 12px; max-width: 40%; }
+.toolbar-actions { display: flex; align-items: center; gap: 2px; }
+.toolbar-actions .divider-v { margin: 7px 4px; }
+.run-btn:not(:disabled) { color: var(--success); }
+.stop-btn:not(:disabled) { color: var(--danger); }
+
+/* ---------------------------------------------------------------- body */
+.shell-body { flex: 1 1 auto; display: flex; min-height: 0; }
+.sidebar-wrap { flex: none; min-width: 0; overflow: hidden; background: var(--sidebar-bg); }
+.sidebar { display: flex; flex-direction: column; height: 100%; }
+.sidebar-header {
+  height: 35px; flex: none; display: flex; align-items: center; padding: 0 14px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1px; color: var(--fg-muted); white-space: nowrap; text-transform: uppercase;
+}
+.nav-item {
+  position: relative; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border: 0;
+  border-left: 2px solid transparent; background: transparent; color: var(--fg-muted); cursor: pointer; text-align: left; white-space: nowrap;
+}
+.nav-item .codicon { font-size: 20px; }
+.nav-item:hover { background: var(--list-hover); color: var(--fg-strong); }
+.nav-item.active { background: var(--list-active); color: var(--fg-strong); border-left-color: var(--accent); }
+.nav-item.dim:not(.active) { color: var(--fg-soft); }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 0; }
+.nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.nav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-muted); flex: none; }
+.sidebar.collapsed .nav-dot { position: absolute; right: 9px; top: 9px; }
+
+.sash { flex: none; position: relative; z-index: 5; }
+.sash-v { width: 4px; margin: 0 -2px; cursor: col-resize; }
+.sash-v::before { content: ""; position: absolute; top: 0; bottom: 0; left: 1px; width: 1px; background: var(--border); }
+.sash-h { height: 4px; margin: -2px 0; cursor: row-resize; }
+.sash-h::before { content: ""; position: absolute; left: 0; right: 0; top: 1px; height: 1px; background: var(--border); }
+.sash:hover::before, .sash:active::before { background: var(--accent); transition: background .1s .15s; }
+.sash-v:hover::before, .sash-v:active::before { left: 0; width: 4px; }
+.sash-h:hover::before, .sash-h:active::before { top: 0; height: 4px; }
+
+.main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.pages { flex: 1 1 auto; min-height: 0; position: relative; background: var(--editor-bg); }
+.page-host { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.page-loading { flex: 1; display: flex; align-items: center; justify-content: center; }
+.panel { flex: none; min-height: 60px; background: var(--panel-bg); display: flex; flex-direction: column; }
+
+/* ---------------------------------------------------------------- log panel */
+.log-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.panel-header { display: flex; align-items: center; gap: 2px; height: 35px; flex: none; padding: 0 8px 0 12px; }
+.panel-tab {
+  font-size: 11px; font-weight: 600; letter-spacing: 1px; color: var(--fg-strong); padding: 6px 2px 4px; margin-right: 14px;
+  border-bottom: 1px solid var(--accent);
+}
+.panel-filters { display: flex; align-items: center; gap: 4px; }
+.chip { height: 22px; padding: 0 8px; border-radius: 11px; border: 1px solid transparent; background: transparent; color: var(--fg-muted); cursor: pointer; font-size: 12px; }
+.chip:hover { background: var(--list-hover); }
+.chip.active { background: var(--badge-bg); color: var(--fg-strong); }
+.panel-search { display: flex; align-items: center; gap: 4px; margin-left: 6px; height: 22px; padding: 0 6px; border: 1px solid var(--input-border); border-radius: 4px; background: var(--input-bg); }
+.panel-search .codicon { font-size: 13px; color: var(--fg-soft); }
+.panel-search input { border: 0; outline: 0; background: transparent; width: 140px; font-size: 12px; color: var(--fg-strong); }
+.log-body { flex: 1 1 auto; overflow: auto; padding: 2px 12px 8px; font-size: 12px; line-height: 18px; }
+.log-line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-word; }
+.log-time { color: var(--log-time); flex: none; }
+.log-msg { color: var(--log-info); }
+.log-debug .log-msg { color: var(--log-debug); }
+.log-warning .log-msg { color: var(--log-warning); }
+.log-error .log-msg, .log-critical .log-msg { color: var(--log-error); }
+.log-engine .log-msg { color: var(--fg-muted); }
+.log-empty { color: var(--fg-soft); padding: 8px 0; }
+
+/* ---------------------------------------------------------------- status bar */
+.statusbar {
+  display: flex; align-items: center; height: 24px; flex: none; padding: 0 4px;
+  background: var(--statusbar-bg); border-top: 1px solid var(--border); color: var(--fg); font-size: 12px;
+}
+.statusbar.running { background: var(--status-running-bg); border-top-color: var(--status-running-bg); color: var(--on-accent); }
+.status-item {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 0; background: transparent;
+  color: inherit; cursor: pointer; font-size: 12px; white-space: nowrap;
+}
+.status-item .codicon { font-size: 14px; }
+.status-item:hover { background: var(--list-hover); }
+.statusbar.running .status-item:hover { background: rgba(255, 255, 255, .12); }
+.status-message { flex: 1 1 auto; padding: 0 8px; min-width: 0; user-select: text; }
+.status-message.error { color: var(--danger); }

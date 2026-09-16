@@ -1,4 +1,3 @@
-from fontTools.cffLib import privateDictOperators
 
 from avas.utils.readfile import read_txt
 from avas.utils.tool import write_to_txt, convert_dic2lis

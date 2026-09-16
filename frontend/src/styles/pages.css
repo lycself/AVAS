@@ -1,0 +1,63 @@
+/* Page layout shared by all sidebar pages. */
+.page { flex: 1 1 auto; overflow: auto; min-height: 0; }
+.page-inner { padding: 24px 32px 32px; max-width: 1400px; }
+.page-inner.wide { max-width: none; }
+.page-fill { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; padding: 20px 24px 12px; gap: 10px; }
+.page-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+.page-fill .page-header { margin-bottom: 0; }
+.page-header-text { flex: 1 1 auto; min-width: 0; }
+.page-title { font-size: 22px; font-weight: 600; color: var(--fg-strong); margin: 0 0 2px; }
+.page-hint { color: var(--fg-muted); margin: 0; max-width: 900px; }
+.page-actions { display: flex; gap: 8px; align-items: center; flex: none; padding-top: 4px; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px 48px; align-items: start; }
+.columns.c32 { grid-template-columns: 3fr 2fr; }
+@media (max-width: 1100px) { .columns.c32 { grid-template-columns: 1fr; } }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; align-items: baseline; }
+.kv > .k { color: var(--fg-muted); }
+.kv > .v { min-width: 0; word-break: break-all; user-select: text; }
+.form { display: grid; grid-template-columns: 190px minmax(0, 460px); gap: 8px 14px; align-items: center; }
+.form > .form-label { color: var(--fg); text-align: right; }
+.form > .form-label.top { align-self: start; padding-top: 4px; }
+.form > .form-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.form > .form-field > .input, .form > .form-field > .select { flex: 1 1 auto; }
+.form > .form-full { grid-column: 2; display: flex; align-items: center; gap: 8px; }
+.unit { color: var(--fg-muted); min-width: 64px; white-space: nowrap; }
+.hint { color: var(--fg-soft); font-size: 12px; }
+.card { border: 1px solid var(--border); border-radius: 6px; background: var(--editor-bg); }
+.list { border: 1px solid var(--border); border-radius: 4px; overflow: auto; background: var(--editor-bg); }
+.list-item { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 3px 10px; cursor: pointer; }
+.list-item:hover { background: var(--list-hover); }
+.list-item.active { background: var(--accent-soft); color: var(--fg-strong); }
+.list-item .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kpi { font-size: 16px; font-weight: 600; color: var(--fg-strong); }
+.caption { color: var(--fg-soft); font-size: 12px; }
+.state { font-size: 15px; font-weight: 700; }
+.state-running { color: var(--accent); }
+.state-ok { color: var(--success); }
+.state-fail { color: var(--danger); }
+.state-idle { color: var(--fg-muted); font-weight: 600; }
+.stats { display: flex; gap: 40px; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; gap: 1px; min-width: 90px; }
+.engine-line { font-size: 12px; color: var(--fg-muted); word-break: break-all; user-select: text; min-height: 18px; }
+.progress.big { height: 6px; border-radius: 3px; }
+.recent-path { color: var(--fg-soft); font-size: 12px; }
+.check-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.check-list span { display: inline-flex; align-items: center; gap: 4px; }
+.check-list .codicon { font-size: 14px; }
+.inline-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.radio-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.radio-col { display: flex; flex-direction: column; gap: 4px; }
+.split { flex: 1 1 auto; display: flex; min-height: 0; }
+.split > .sash-v { align-self: stretch; }
+.pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100%; color: var(--fg-muted); padding: 48px; text-align: center; }
+.twiss-table { border-collapse: collapse; width: 100%; max-width: 560px; }
+.twiss-table th { text-align: left; font-weight: 500; color: var(--fg); padding: 0 6px 6px; white-space: nowrap; }
+.twiss-table td { padding: 3px 6px; }
+.twiss-table td:first-child { width: 40px; }
+.twiss-table .input { width: 100%; }
+.unit-inline { color: var(--fg-soft); font-weight: 400; font-size: 12px; margin-left: 4px; }
+.mini-table { border-collapse: collapse; font-size: 12px; user-select: text; }
+.mini-table th, .mini-table td { padding: 3px 12px; text-align: right; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.mini-table th { color: var(--fg-muted); font-weight: 500; }
+.mini-table td:first-child, .mini-table th:first-child { text-align: left; }

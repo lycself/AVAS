@@ -1,6 +1,5 @@
 #获取模拟的进度条
 from avas.paths import lattice_source_path
-from PyQt5.QtWidgets import QWidget
 import os
 from avas.data.datasetparameter import DatasetParameter
 from avas.utils.treatfile import check_file_update

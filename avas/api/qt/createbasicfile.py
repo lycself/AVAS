@@ -148,7 +148,7 @@ class CreateBasicProject():
         elif os.path.exists(self.project_path):
             # raise FileExistsError(f"The directory '{project_path}' already exists.")
             code = -1
-            msg = f"The directory '{project_path}' already exists."
+            msg = f"The directory '{self.project_path}' already exists."
             res = format_output(code, msg=msg, **kwargs)
             return res
 
