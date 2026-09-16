@@ -146,3 +146,10 @@ def emit(name, payload=None):
 def zoom(factor):
     gui_app.set_zoom(max(0.5, min(3.0, float(factor))))
     return True
+
+
+@rpc("app.closeGuard")
+def close_guard(unsaved):
+    """The page reports whether any page has unsaved changes (checked when the window closes)."""
+    gui_app.state()["unsaved"] = bool(unsaved)
+    return True

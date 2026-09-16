@@ -5,7 +5,6 @@ declare global {
   interface Window {
     pywebview?: { api: { call(method: string, params?: unknown): Promise<string> } };
     __avasEmit?: (batch: [string, unknown][]) => void;
-    __avasCanClose?: () => boolean;
   }
 }
 

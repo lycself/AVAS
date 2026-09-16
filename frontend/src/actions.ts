@@ -1,9 +1,9 @@
 // Commands shared by the menu bar, tool bar, shortcuts and pages.
-import { call } from "./bridge";
+import { call, on } from "./bridge";
 import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, reportError, toast } from "./components/overlays";
 import { t } from "./i18n";
 import { refreshProject, setPage, setProject, showStatus, useApp, type ProjectSummary } from "./store/app";
-import { allPages, dirtyPages } from "./store/pages";
+import { allPages, dirtyPages, useDirty } from "./store/pages";
 
 /** Ask about unsaved pages.  Resolves true when it is fine to continue. */
 export async function resolveUnsaved(action: string): Promise<boolean> {
@@ -154,12 +154,18 @@ export function quit() {
   confirmClose();
 }
 
-/** Called synchronously by Python when the window's close button is pressed. */
-window.__avasCanClose = () => {
-  if (!useApp.getState().run.running && !dirtyPages().length) return true;
-  window.setTimeout(confirmClose, 0);
-  return false;
-};
+// Closing the window: Python cancels the close while something is unsaved or running
+// and asks the page (event "app.closeRequested"); the guard flag is kept in sync here.
+on("app.closeRequested", () => confirmClose());
+let lastGuard: boolean | null = null;
+function syncCloseGuard() {
+  const unsaved = Object.values(useDirty.getState().dirty).some(Boolean);
+  if (unsaved !== lastGuard) {
+    lastGuard = unsaved;
+    call("app.closeGuard", { unsaved }).catch(() => undefined);
+  }
+}
+useDirty.subscribe(syncCloseGuard);
 
 export function isTyping(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null;

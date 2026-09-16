@@ -102,14 +102,18 @@ def _on_loaded():
 
 
 def _on_closing():
+    """Runs on the UI thread: must not wait for the page (evaluate_js would dead-lock).
+
+    The page keeps ``unsaved`` up to date (``app.closeGuard``); when there is
+    something to ask about, closing is cancelled and the page asks the user,
+    then calls ``app.quit``.
+    """
     win = _state["window"]
     if _state["force_close"] or win is None:
         return True
-    try:
-        ok = win.evaluate_js("window.__avasCanClose ? window.__avasCanClose() : true")
-    except Exception:  # noqa: BLE001 - page not responsive: allow closing
-        return True
-    if ok is False:
+    from avas.gui.services import runner
+    if _state.get("unsaved") or runner.is_running():
+        bridge.emit("app.closeRequested")
         return False
     _remember_geometry()
     return True
