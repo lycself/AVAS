@@ -95,9 +95,11 @@ export default function SettingsPage() {
                   {tt("Revert")}
                 </Button>
               )}
-              <Button variant="primary" icon="save" disabled={!ed.dirty || locked} onClick={ed.saveNow}>
-                {tt("Save")}
-              </Button>
+              {ed.dirty && (
+                <Button variant="primary" icon="save" disabled={locked} tip={tt("Ctrl+S saves all pages")} onClick={ed.saveNow}>
+                  {tt("Save")}
+                </Button>
+              )}
             </>
           }
         />

@@ -79,6 +79,7 @@ function MenuBar() {
   const open = app.project.open;
   const running = app.run.running;
   const paused = running && !!app.run.paused;
+  const anyDirty = useDirty((s) => Object.values(s.dirty).some(Boolean));
 
   const menus: { label: string; items: () => MenuItem[] }[] = [
     {
@@ -214,7 +215,7 @@ function MenuBar() {
       <div className="grow" />
       <div className="toolbar-actions">
         <IconButton icon="folder-opened" tip={`${t("Open project...")}  (Ctrl+O)`} onClick={() => openProject()} />
-        <IconButton icon="save" tip={`${t("Save")}  (Ctrl+S)`} disabled={!open} onClick={() => saveAll()} />
+        <IconButton icon="save" tip={anyDirty ? `${t("Save")}  (Ctrl+S)` : t("Nothing to save")} disabled={!open || !anyDirty} onClick={() => saveAll()} />
         <div className="divider-v" />
         <IconButton
           icon={!running ? "play" : paused ? "debug-continue" : "debug-pause"}

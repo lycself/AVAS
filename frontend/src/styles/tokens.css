@@ -17,7 +17,6 @@
   --accent: #005fb8;
   --accent-hover: #0258a8;
   --accent-soft: #dbe9f7;
-  --accent-disabled: #a9c8e6;
   --on-accent: #ffffff;
   --on-accent-hover: rgba(255, 255, 255, 0.12);
   --list-hover: #ececec;
@@ -89,7 +88,6 @@
   --accent: #0078d4;
   --accent-hover: #026ec1;
   --accent-soft: #04395e;
-  --accent-disabled: #1d3b56;
   --on-accent: #ffffff;
   --on-accent-hover: rgba(255, 255, 255, 0.12);
   --list-hover: #2a2d2e;

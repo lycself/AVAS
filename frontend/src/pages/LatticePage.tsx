@@ -230,8 +230,8 @@ export default function LatticePage() {
             {tt("Revert")}
           </Button>
         )}
-        {mode === "text" && (
-          <Button variant="primary" icon="save" disabled={!dirty || locked} tip={tt("Save the lattice file (Ctrl+S saves all pages)")} onClick={() => save().catch(reportError)}>
+        {mode === "text" && dirty && (
+          <Button variant="primary" icon="save" disabled={locked} tip={tt("Save the lattice file (Ctrl+S saves all pages)")} onClick={() => save().catch(reportError)}>
             {tt("Save")}
           </Button>
         )}

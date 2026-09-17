@@ -511,8 +511,8 @@ export default function FilesPage() {
               <Button variant="ghost" icon="refresh" onClick={async () => (await confirmLeave()) && openFile(opened.path, true)}>
                 {tt("Reload")}
               </Button>
-              {opened.view === "text" && opened.editable && (
-                <Button variant="primary" icon="save" disabled={!dirty || locked} onClick={() => save().catch(reportError)}>
+              {opened.view === "text" && opened.editable && dirty && (
+                <Button variant="primary" icon="save" disabled={locked} tip={tt("Ctrl+S saves all pages")} onClick={() => save().catch(reportError)}>
                   {tt("Save")}
                 </Button>
               )}

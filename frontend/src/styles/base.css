@@ -52,7 +52,8 @@ a:hover { text-decoration: underline; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-primary:active:not(:disabled) { background: var(--accent-hover); }
-.btn-primary:disabled { background: var(--accent-disabled); border-color: var(--accent-disabled); opacity: 1; }
+/* a disabled primary button fades like every other button: a full-strength blue with white text read as clickable */
+.btn-primary:disabled { background: var(--accent); border-color: var(--accent); opacity: .4; }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
 .btn-danger:hover:not(:disabled) { filter: brightness(1.08); background: var(--danger); }
 .btn-ghost { border-color: transparent; background: transparent; }
