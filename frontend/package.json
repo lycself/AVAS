@@ -14,12 +14,14 @@
     "plotly.js-dist-min": "^4.1.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "three": "^0.186.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/plotly.js": "^3.0.13",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^5.9.3",
     "vite": "^8.3.0"

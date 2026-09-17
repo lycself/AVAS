@@ -10,8 +10,18 @@ import { setLogMaximized, setLogVisible, showStatus, useApp } from "../store/app
 export type LogEntry = { t: number; level: string; name: string; msg: string };
 const MAX = 5000;
 
-type LogState = { entries: LogEntry[]; errors: number; warnings: number; seq: number };
-export const useLog = create<LogState>(() => ({ entries: [], errors: 0, warnings: 0, seq: 0 }));
+export type LogFilter = "all" | "problems" | "gui";
+type LogState = { entries: LogEntry[]; errors: number; warnings: number; seq: number; filter: LogFilter; query: string };
+export const useLog = create<LogState>(() => ({ entries: [], errors: 0, warnings: 0, seq: 0, filter: "all", query: "" }));
+
+/** Open the log panel, optionally with a filter (e.g. "problems" from a "Show log" link). */
+export function showLog(filter?: LogFilter, query?: string) {
+  setLogVisible(true);
+  const patch: Partial<LogState> = {};
+  if (filter) patch.filter = filter;
+  if (query !== undefined) patch.query = query;
+  useLog.setState(patch);
+}
 
 function add(batch: LogEntry[]) {
   useLog.setState((s) => {
@@ -61,14 +71,14 @@ function stamp(t: number) {
   return d.toTimeString().slice(0, 8);
 }
 
-type Filter = "all" | "problems" | "gui";
-
 export function LogPanel() {
   const t = useT();
   const entries = useLog((s) => s.entries);
   const maximized = useApp((s) => s.logMaximized);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
+  const filter = useLog((s) => s.filter);
+  const query = useLog((s) => s.query);
+  const setFilter = (f: LogFilter) => useLog.setState({ filter: f });
+  const setQuery = (q: string) => useLog.setState({ query: q });
   const bodyRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -112,7 +122,7 @@ export function LogPanel() {
       <div className="panel-header">
         <div className="panel-tab active">{t("Log").toUpperCase()}</div>
         <div className="panel-filters">
-          {(["all", "problems", "gui"] as Filter[]).map((f) => (
+          {(["all", "problems", "gui"] as LogFilter[]).map((f) => (
             <button key={f} className={cx("chip", filter === f && "active")} onClick={() => setFilter(f)}>
               {f === "all" ? t("All") : f === "problems" ? t("Problems") : t("Without engine output")}
             </button>

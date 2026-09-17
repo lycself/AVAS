@@ -37,6 +37,14 @@ export type ProjectSummary = {
 
 export type RunState = {
   running: boolean;
+  paused?: boolean;
+  /** project: normal run; segment: part of the lattice; assistant: the assistant's sandbox study */
+  source?: "project" | "segment" | "assistant";
+  label?: string;
+  outputDir?: string;
+  stage?: number;
+  stages?: number;
+  stageLabel?: string;
   mode?: string;
   percent?: number;
   eta_s?: number | null;
@@ -72,6 +80,8 @@ type AppState = {
   lastFinished: RunState | null;
   statusMessage: { text: string; level: "info" | "warning" | "error" } | null;
   logCounts: { errors: number; warnings: number };
+  /** results folder the Results page should switch to (set by "Show results" of a segment run) */
+  resultsRequest: { outputDir: string | undefined; nonce: number } | null;
 };
 
 export const useApp = create<AppState>(() => ({
@@ -93,6 +103,7 @@ export const useApp = create<AppState>(() => ({
   lastFinished: null,
   statusMessage: null,
   logCounts: { errors: 0, warnings: 0 },
+  resultsRequest: null,
 }));
 
 const set = useApp.setState;
@@ -173,6 +184,12 @@ export function setPage(page: PageId) {
   persist({ "ui/lastPage": page });
 }
 
+/** Open the Results page on *outputDir* (undefined: the project's OutputFile). */
+export function showResults(outputDir?: string) {
+  set({ resultsRequest: { outputDir, nonce: Date.now() } });
+  setPage("results");
+}
+
 export function setSidebarCollapsed(collapsed: boolean) {
   set({ sidebarCollapsed: collapsed });
   persist({ "ui/sidebarCollapsed": collapsed });
@@ -241,5 +258,5 @@ export async function initApp() {
   const summary = await call<ProjectSummary>("project.restoreLast");
   setProject(summary);
   const last = s["ui/lastPage"] as PageId;
-  set({ page: summary.open && PAGES.includes(last) ? last : summary.open ? "beam" : "project", ready: true });
+  set({ page: summary.open && PAGES.includes(last) ? last : "project", ready: true });
 }

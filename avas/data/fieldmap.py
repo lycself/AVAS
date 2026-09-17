@@ -8,9 +8,12 @@ Two layouts are handled, both as used in AVAS projects:
   xmax, int Ny, double ymin, double ymax, double norm`` then float32 values.
 
 The storage order of the three axes is not documented in the manual.  Both
-candidate orders (z outermost / z innermost) are tried and the one whose
-longitudinal profile is smoother is used, which is unambiguous for real field
-maps.
+candidate orders (z outermost / z innermost) are tried on the whole cube and
+z outermost is kept unless z innermost is clearly smoother along z.  All files
+of one map share the order, so :func:`group_order` decides it once for the
+group: a single quadrupole component (e.g. ``q150.bsy``) can look alike in
+both orders, while the group cannot.  The engine's maps checked so far (40
+maps of two projects) are all stored z outermost.
 """
 import os
 import struct
@@ -74,8 +77,7 @@ class FieldMap:
             if load_values:
                 self.values = np.array(fh.read().split(), dtype=float)[:self.points]
 
-    def _cube(self):
-        """Values as an array indexed ``[z, y, x]``; the axis order is detected once (see module doc)."""
+    def _candidates(self):
         if self.values is None:
             self.read()
         nz, nx, ny = self.nz + 1, self.nx + 1, self.ny + 1
@@ -83,16 +85,26 @@ class FieldMap:
         if v.size < nz * nx * ny:
             raise ValueError(f"{os.path.basename(self.path)}: {v.size} values, {nz * nx * ny} expected")
         v = v[:nz * nx * ny]
-        z_outer = v.reshape(nz, ny, nx)
-        z_inner = np.transpose(v.reshape(nx, ny, nz), (2, 1, 0))
-        if nx == 1 and ny == 1 or nz == 1:
-            return z_outer
-        rough = [_roughness(np.abs(c).max(axis=(1, 2))) for c in (z_outer, z_inner)]
-        return z_outer if rough[0] <= rough[1] else z_inner
+        return v.reshape(nz, ny, nx), np.transpose(v.reshape(nx, ny, nz), (2, 1, 0))
 
-    def profiles(self):
+    def order_scores(self):
+        """``(roughness z-outer, roughness z-inner)``; ``None`` when the order does not matter."""
+        if self.nz < 2 or (self.nx == 0 and self.ny == 0):
+            return None
+        outer, inner = self._candidates()
+        return _cube_roughness(outer), _cube_roughness(inner)
+
+    def _cube(self, order=None):
+        """Values indexed ``[z, y, x]``; *order* "outer" / "inner" forces the storage order (see module doc)."""
+        outer, inner = self._candidates()
+        if order is None:
+            scores = self.order_scores()
+            order = "inner" if scores and scores[1] < 0.9 * scores[0] else "outer"
+        return inner if order == "inner" else outer
+
+    def profiles(self, order=None):
         """``(z, on_axis, max_abs)``: field at x = y = 0 and the largest |field| of each cross-section."""
-        cube = self._cube()
+        cube = self._cube(order)
         ix = _centre_indices(self.x_range, self.nx + 1)
         iy = _centre_indices(self.y_range, self.ny + 1)
         axis = cube[:, iy][:, :, ix].mean(axis=(1, 2)) * self.norm
@@ -126,9 +138,22 @@ def _centre_indices(rng, n):
     return [i0] if abs(pos - i0) < 1e-9 else sorted({i0, i1})
 
 
-def _roughness(curve):
-    span = float(np.ptp(curve)) or 1.0
-    return float(np.abs(np.diff(curve, 2)).sum()) / span if curve.size > 2 else 0.0
+def _cube_roughness(cube):
+    """Second over first differences along z (scale free) on at most ~16×16 transverse points."""
+    sub = cube[:, ::max(1, cube.shape[1] // 16), ::max(1, cube.shape[2] // 16)]
+    d1 = np.abs(np.diff(sub, axis=0)).sum()
+    return float(np.abs(np.diff(sub, 2, axis=0)).sum() / d1) if d1 > 0 else 0.0
+
+
+def group_order(fieldmaps):
+    """Storage order shared by the files of one map: "inner" only when clearly smoother overall."""
+    outer = inner = 0.0
+    for fm in fieldmaps:
+        scores = fm.order_scores()
+        if scores:
+            outer += scores[0]
+            inner += scores[1]
+    return "inner" if outer > 0 and inner < 0.9 * outer else "outer"
 
 
 def components(dirs, base):

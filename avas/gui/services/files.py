@@ -238,11 +238,15 @@ def _lattice_doc(project):
 
 @rpc("files.fieldmap")
 def fieldmap(path):
+    from avas.data.fieldmap import group_order
     p = _check(path)
     fm = FieldMap(path).read()
-    z, axis, peak = fm.profiles()
     base = os.path.splitext(os.path.basename(path))[0]
     dirs = p.field_dirs() or [os.path.dirname(path)]
+    siblings = components(dirs + [os.path.dirname(path)], base)
+    group = [fm] + [FieldMap(q).read() for e, q in siblings.items()
+                    if os.path.normcase(os.path.abspath(q)) != os.path.normcase(os.path.abspath(path))]
+    z, axis, peak = fm.profiles(group_order(group))       # all files of a map share the storage order
     found = sorted(components(dirs, base))
     users = []
     doc = _lattice_doc(p)

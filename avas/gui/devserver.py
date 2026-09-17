@@ -21,6 +21,8 @@ def main():
     args = ap.parse_args()
     os.environ.setdefault("AVAS_GUI_SETTINGS", args.settings or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".dev-gui.json"))
     logbridge.install()
+    from avas import i18n
+    i18n.set_language(gui_app.app_settings().get("ui/language"))
     from avas.gui import services  # noqa: F401
     srv, base = server.start(port=args.port, dev_rpc=True)
     gui_app.state()["base_url"] = base

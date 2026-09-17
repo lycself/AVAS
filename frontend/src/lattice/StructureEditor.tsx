@@ -2,7 +2,9 @@
 // a parameter table per keyword.  Every edit is a whole-line replacement
 // sent to the text editor (one undo step).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { promptDialog } from "../components/overlays";
+import { openMenu, promptDialog } from "../components/overlays";
+import { applyResult, structureMenu, type ApplyRange } from "./structureMenu";
+import { deleteUnit, duplicateUnit, moveUnit, moveUnitTo } from "./structureOps";
 import { Checkbox, CommitInput, cx, Icon, Select, Tabs } from "../components/ui";
 import { pick, t, useT } from "../i18n";
 import { Beamline } from "./Beamline";
@@ -30,9 +32,29 @@ type Props = {
   selected: number | null;
   onSelect: (line: number, source: "tree" | "beamline" | "grid") => void;
   onEdits: (edits: Edit[]) => void;
+  /** Structural edits (insert / move / delete); absent = no structure menu. */
+  onRangeEdits?: ApplyRange;
+  getLines?: () => string[];
+  frequency?: number;
   readOnly?: boolean;
   fieldmaps: Record<string, string[]>;
 };
+
+/** Tree props for structural editing (context menu, drag and drop, keys) shared with the visual editor. */
+export function structureTreeHandlers(doc: LatticeDoc, getLines: () => string[], apply: ApplyRange, opts: { readOnly?: boolean; frequency?: number; onShowText?: (line: number) => void }) {
+  if (opts.readOnly) return {};
+  return {
+    onContextMenu: (line: number, e: React.MouseEvent) =>
+      openMenu(structureMenu(doc, getLines, line, apply, { frequency: opts.frequency, onShowText: opts.onShowText ? () => opts.onShowText!(line) : undefined }), e.clientX, e.clientY),
+    onMoveTo: (line: number, target: number, after: boolean) => applyResult(moveUnitTo(doc, getLines(), line, target, after), apply),
+    onKeyCommand: (cmd: "delete" | "up" | "down" | "duplicate", line: number) => {
+      const lines = getLines();
+      const result =
+        cmd === "delete" ? deleteUnit(doc, lines, line) : cmd === "duplicate" ? duplicateUnit(doc, lines, line) : moveUnit(doc, lines, line, cmd === "up" ? -1 : 1);
+      applyResult(result, apply);
+    },
+  };
+}
 
 const FLOAT_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 const INT_RE = /^[-+]?\d+$/;
@@ -51,11 +73,32 @@ function Swatch({ st }: { st: Statement }) {
 /* ------------------------------------------------------------------ tree */
 type Filter = "all" | "elements" | "commands" | "issues";
 
-function StructureTree({ doc, kw, selected, onSelect }: { doc: LatticeDoc; kw: Map<string, Keyword>; selected: number | null; onSelect: (line: number) => void }) {
+export function StructureTree({
+  doc,
+  kw,
+  selected,
+  onSelect,
+  onContextMenu,
+  onMoveTo,
+  onKeyCommand,
+  compact,
+}: {
+  doc: LatticeDoc;
+  kw: Map<string, Keyword>;
+  selected: number | null;
+  onSelect: (line: number) => void;
+  onContextMenu?: (line: number, e: React.MouseEvent) => void;
+  /** Drag and drop reordering: move the unit at *line* before / after *target*. */
+  onMoveTo?: (line: number, target: number, after: boolean) => void;
+  /** Keyboard shortcuts on the selected row (Delete, Alt+Up/Down, Ctrl+D). */
+  onKeyCommand?: (cmd: "delete" | "up" | "down" | "duplicate", line: number) => void;
+  compact?: boolean;
+}) {
   const tt = useT();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [dropAt, setDropAt] = useState<{ line: number; after: boolean } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,14 +106,53 @@ function StructureTree({ doc, kw, selected, onSelect }: { doc: LatticeDoc; kw: M
     el?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
+  const dndProps = (st: Statement) =>
+    onMoveTo
+      ? {
+          draggable: st.key !== "start" && st.key !== "end",
+          onDragStart: (e: React.DragEvent) => {
+            e.dataTransfer.setData("application/x-avas-line", String(st.line));
+            e.dataTransfer.effectAllowed = "move";
+          },
+          onDragOver: (e: React.DragEvent) => {
+            if (!e.dataTransfer.types.includes("application/x-avas-line")) return;
+            e.preventDefault();
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setDropAt({ line: st.line, after: e.clientY > r.top + r.height / 2 });
+          },
+          onDragLeave: () => setDropAt((d) => (d?.line === st.line ? null : d)),
+          onDrop: (e: React.DragEvent) => {
+            const from = Number(e.dataTransfer.getData("application/x-avas-line"));
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setDropAt(null);
+            if (Number.isFinite(from)) onMoveTo(from, st.line, e.clientY > r.top + r.height / 2);
+          },
+          onDragEnd: () => setDropAt(null),
+        }
+      : {};
+
   const row = (st: Statement, depth: number) => {
     const spec = kw.get(st.key);
     return (
       <div
         key={`s${st.line}`}
-        className={cx("tree-row", selected === st.line && "selected", !st.active && "inactive", st.active && !st.isElement && "command")}
+        className={cx(
+          "tree-row",
+          selected === st.line && "selected",
+          !st.active && "inactive",
+          st.active && !st.isElement && "command",
+          dropAt?.line === st.line && (dropAt.after ? "drop-after" : "drop-before"),
+        )}
         style={{ paddingLeft: 8 + depth * 14 }}
+        data-line={st.line}
         onClick={() => onSelect(st.line)}
+        onContextMenu={(e) => {
+          if (!onContextMenu) return;
+          e.preventDefault();
+          onSelect(st.line);
+          onContextMenu(st.line, e);
+        }}
+        {...dndProps(st)}
       >
         <span className="tree-icon">{worstIssue(st) ? <IssueIcon st={st} /> : <Swatch st={st} />}</span>
         <span className="tree-name ellipsis">{st.name || st.keyword}</span>
@@ -137,7 +219,30 @@ function StructureTree({ doc, kw, selected, onSelect }: { doc: LatticeDoc; kw: M
   }
 
   return (
-    <div className="structure-tree">
+    <div
+      className={cx("structure-tree", compact && "compact")}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (!onKeyCommand || selected == null || (e.target as HTMLElement).tagName === "INPUT") return;
+        let cmd: "delete" | "up" | "down" | "duplicate" | null = null;
+        if (e.key === "Delete") cmd = "delete";
+        else if (e.altKey && e.key === "ArrowUp") cmd = "up";
+        else if (e.altKey && e.key === "ArrowDown") cmd = "down";
+        else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") cmd = "duplicate";
+        else if (!e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+          const lines = [...listRef.current!.querySelectorAll<HTMLElement>(".tree-row[data-line]")].map((el) => Number(el.dataset.line));
+          const i = lines.indexOf(selected);
+          const next = lines[i + (e.key === "ArrowUp" ? -1 : 1)];
+          if (next !== undefined) onSelect(next);
+          e.preventDefault();
+          return;
+        }
+        if (cmd) {
+          e.preventDefault();
+          onKeyCommand(cmd, selected);
+        }
+      }}
+    >
       <div className="row" style={{ gap: 6, padding: "6px 0" }}>
         <div className="search-box grow">
           <Icon name="search" />
@@ -198,7 +303,7 @@ function ParamField({ p, value, readOnly, fieldmaps, onCommit }: { p: Param | nu
   return <CommitInput value={value} onCommit={onCommit} validate={validate} disabled={readOnly} mono />;
 }
 
-function PropertyPanel({ st, kw, readOnly, fieldmaps, onEdits }: { st: Statement | null; kw: Map<string, Keyword>; readOnly?: boolean; fieldmaps: Record<string, string[]>; onEdits: (e: Edit[]) => void }) {
+export function PropertyPanel({ st, kw, readOnly, fieldmaps, onEdits }: { st: Statement | null; kw: Map<string, Keyword>; readOnly?: boolean; fieldmaps: Record<string, string[]>; onEdits: (e: Edit[]) => void }) {
   const tt = useT();
   const schemaField = kw.get("field");
   if (!st) return <div className="property-empty muted">{tt("Select an element or command in the list, the schematic or the text.")}</div>;
@@ -505,7 +610,7 @@ function ParamGrid({ doc, kw, selected, readOnly, onSelect, onEdits }: { doc: La
 }
 
 /* ------------------------------------------------------------------ editor */
-export function StructureEditor({ doc, schema, selected, onSelect, onEdits, readOnly, fieldmaps }: Props) {
+export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getLines, frequency, readOnly, fieldmaps }: Props) {
   const tt = useT();
   const kw = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k])), [schema]);
   const [tab, setTab] = useState<"structure" | "table">("structure");
@@ -537,7 +642,13 @@ export function StructureEditor({ doc, schema, selected, onSelect, onEdits, read
         {tab === "structure" ? (
           <div className="split">
             <div className="pane" style={{ width: `${split * 100}%` }}>
-              <StructureTree doc={doc} kw={kw} selected={selected} onSelect={(l) => onSelect(l, "tree")} />
+              <StructureTree
+                doc={doc}
+                kw={kw}
+                selected={selected}
+                onSelect={(l) => onSelect(l, "tree")}
+                {...(onRangeEdits && getLines ? structureTreeHandlers(doc, getLines, onRangeEdits, { readOnly, frequency }) : {})}
+              />
             </div>
             <div
               className="sash sash-v"

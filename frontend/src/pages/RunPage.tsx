@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { runSimulation, stopSimulation } from "../actions";
+import { pauseSimulation, resumeSimulation, runSimulation, stopSimulation } from "../actions";
 import { call } from "../bridge";
 import { reportError } from "../components/overlays";
 import { Badge, Button, cx, ProgressBar, Section } from "../components/ui";
 import { fmtSeconds, runStatusLabel } from "../format";
 import { useT } from "../i18n";
-import { setPage, useApp } from "../store/app";
+import { setPage, showResults, useApp } from "../store/app";
 import { NoProject, PageHeader } from "./common";
 
 const MODE_LABEL: Record<string, string> = {
@@ -31,10 +31,15 @@ export default function RunPage() {
 
   if (!project.open) return <NoProject />;
 
+  const running = run.running;
+  const paused = running && !!run.paused;
   const pct = run.percent ?? 0;
   let stateText = t("idle");
   let stateClass = "state-idle";
-  if (run.running) {
+  if (paused) {
+    stateText = t("paused");
+    stateClass = "state-paused";
+  } else if (running) {
     stateText = t("running");
     stateClass = "state-running";
   } else if (last && last.ok !== undefined) {
@@ -48,10 +53,27 @@ export default function RunPage() {
       stateClass = "state-fail";
     }
   }
-  const showBar = run.running || (last && last.ok !== undefined);
+  const showBar = running || (last && last.ok !== undefined);
   const info = project.lastRun ?? {};
   const tone = info.status === "finished" ? "success" : info.status === "failed" ? "danger" : info.status === "running" ? "accent" : "neutral";
-  const effMode = run.running ? run.mode ?? mode : mode;
+  const effMode = running ? run.mode ?? mode : mode;
+  // what the progress belongs to: the running job, or the one that finished last
+  const job = running ? run : last;
+  const source = job?.source ?? "project";
+  const taskText =
+    source === "segment"
+      ? t("Segment {label}", { label: job?.label ?? "" })
+      : source === "assistant"
+        ? t("Assistant: {task}", { task: t(job?.label ?? "") })
+        : t("Full lattice");
+  const stageText = running && run.stages && run.stages > 1 ? `${run.stage} / ${run.stages}  ${t(run.stageLabel ?? "")}` : null;
+  const stepText =
+    run.step != null && run.all_step ? (source === "assistant" ? t("simulation {i} of {n}", { i: run.step, n: run.all_step }) : `${run.step} / ${run.all_step}`) : null;
+
+  let engineLine = "";
+  if (paused) engineLine = t("Paused. The simulation continues exactly where it stopped when you resume it.");
+  else if (running) engineLine = run.line || t("waiting for the engine...");
+  else if (last && !last.ok && !last.stopped) engineLine = last.message ?? "";
 
   return (
     <div className="page">
@@ -61,10 +83,20 @@ export default function RunPage() {
           hint={t("All pages are saved and checked before the simulation starts. Results are written to OutputFile/ inside the project.")}
           actions={
             <>
-              <Button variant="primary" icon="play" disabled={run.running} onClick={runSimulation} style={{ minWidth: 150 }}>
-                {t("Run simulation")}
-              </Button>
-              <Button icon="debug-stop" disabled={!run.running} onClick={stopSimulation} className={run.running ? "btn-stop" : ""}>
+              {!running ? (
+                <Button variant="primary" icon="play" onClick={runSimulation} style={{ minWidth: 150 }}>
+                  {t("Run simulation")}
+                </Button>
+              ) : paused ? (
+                <Button variant="primary" icon="debug-continue" onClick={resumeSimulation} style={{ minWidth: 150 }} tip={t("Resume (F5)")}>
+                  {t("Resume")}
+                </Button>
+              ) : (
+                <Button variant="primary" icon="debug-pause" onClick={pauseSimulation} style={{ minWidth: 150 }} tip={t("Pause (F5)")}>
+                  {t("Pause")}
+                </Button>
+              )}
+              <Button icon="debug-stop" disabled={!running} onClick={stopSimulation} className={running ? "btn-stop" : ""}>
                 {t("Stop")}
               </Button>
             </>
@@ -81,25 +113,32 @@ export default function RunPage() {
           <div className="k">{t("Lattice")}</div>
           <div className="v">{project.latticeName}</div>
           <div className="k">{t("Output")}</div>
-          <div className="v">{project.outputDir}</div>
+          <div className="v selectable">{source === "segment" && job?.outputDir ? job.outputDir : project.outputDir}</div>
         </div>
 
         <Section title={t("Progress")} icon="pulse">
           <div className="col" style={{ gap: 10 }}>
             <div className="row">
               <span className={cx("state", stateClass)}>{stateText}</span>
+              {job && source !== "project" && <span className="muted">{taskText}</span>}
               <div className="grow" />
               {showBar && <span className="kpi">{pct.toFixed(1)} %</span>}
             </div>
-            <ProgressBar value={pct / 100} />
+            <ProgressBar value={pct / 100} paused={paused} />
             <div className="stats">
+              {stageText && (
+                <div className="stat">
+                  <span className="caption">{t("Stage")}</span>
+                  <span className="kpi">{stageText}</span>
+                </div>
+              )}
               <div className="stat">
                 <span className="caption">{t("Position")}</span>
                 <span className="kpi">{run.pos_m != null ? `${run.pos_m.toFixed(3)} m` : "–"}</span>
               </div>
               <div className="stat">
                 <span className="caption">{t("Step")}</span>
-                <span className="kpi">{run.step != null && run.all_step ? `${run.step} / ${run.all_step}` : "–"}</span>
+                <span className="kpi">{stepText ?? "–"}</span>
               </div>
               <div className="stat">
                 <span className="caption">{t("Elapsed")}</span>
@@ -107,18 +146,20 @@ export default function RunPage() {
               </div>
               <div className="stat">
                 <span className="caption">{t("Remaining")}</span>
-                <span className="kpi">{run.running ? fmtSeconds(run.eta_s) : last?.ok ? "0 s" : "–"}</span>
+                <span className="kpi">{running ? (paused ? t("paused") : fmtSeconds(run.eta_s)) : last?.ok ? "0 s" : "–"}</span>
               </div>
             </div>
-            <div className="engine-line mono">
-              {run.running ? run.line || t("waiting for the engine...") : last && !last.ok && !last.stopped ? last.message : ""}
-            </div>
-            {last?.ok && !run.running && (
+            <div className="engine-line mono">{engineLine}</div>
+            {last?.ok && !running && last.source !== "assistant" && (
               <div className="row">
-                <Button icon="graph-line" onClick={() => setPage("results")}>
+                <Button icon="graph-line" onClick={() => showResults(last.source === "segment" ? last.outputDir : undefined)}>
                   {t("Show results")}
                 </Button>
-                <Button variant="ghost" icon="folder" onClick={() => call("shell.open", { path: project.outputDir }).catch(reportError)}>
+                <Button
+                  variant="ghost"
+                  icon="folder"
+                  onClick={() => call("shell.open", { path: last.source === "segment" && last.outputDir ? last.outputDir : project.outputDir }).catch(reportError)}
+                >
                   {t("Open output folder")}
                 </Button>
               </div>

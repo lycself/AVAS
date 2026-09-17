@@ -183,9 +183,24 @@ def cmd_run(args):
         raise
     info.update(status="finished", finished=time.strftime("%Y-%m-%d %H:%M:%S"),
                 elapsed_s=round(time.time() - t0, 2))
+    diagnostics = _diagnostics(output_dir) if mode == "basic" else None
+    if diagnostics:
+        info["diagnostics"] = diagnostics
     write_run_info(output_dir, info)
+    if os.environ.get("AVAS_GUI_CHILD") != "1":          # the GUI logs them itself, translated
+        for m in (diagnostics or {}).get("messages", []):
+            print(f"[avas] {m['level']}: {m['text'][0]}")
     print(f"[avas] done in {info['elapsed_s']} s -> {output_dir}")
     return 0
+
+
+def _diagnostics(output_dir):
+    """DataSet.txt health check (NaN columns, lost beam); never fails the run."""
+    try:
+        from avas.post.analysis.run_diagnostics import dataset_diagnostics
+        return dataset_diagnostics(output_dir)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +295,13 @@ def cmd_gui(args):
 
 
 def cmd_info(args):
+    from avas.buildinfo import build_info
     from avas.paths import ENGINE_DIR, LOG_DIR, STATIC_DIR
-    print(f"AVAS {__version__}")
+    b = build_info()
+    stamp = ", ".join(x for x in (f"built {b['built']}" if b.get("built") else "",
+                                  f"commit {b['commit']}{'+' if b.get('dirty') else ''}" if b.get("commit") else "",
+                                  "stand-alone" if b.get("frozen") else "source") if x)
+    print(f"AVAS {__version__} ({stamp})")
     print(f"python : {sys.version.split()[0]} ({sys.executable})")
     print(f"engine : {ENGINE_DIR}")
     print(f"static : {STATIC_DIR}")
@@ -358,13 +378,98 @@ def build_parser():
 
     p_info = sub.add_parser("info", help="show version and install locations")
     p_info.set_defaults(func=cmd_info)
+
+    p_doctor = sub.add_parser("doctor", help="check this installation (engine, WebView2, GUI, assistant, preview)")
+    p_doctor.set_defaults(func=cmd_doctor)
     return parser
+
+
+def cmd_doctor(args):
+    """Quick self-test of an installation; exit code 1 when something essential fails."""
+    import tempfile
+    import traceback
+
+    failures = 0
+
+    def check(name, fn, essential=True):
+        nonlocal failures
+        try:
+            detail = fn()
+            print(f"  ok    {name}{': ' + str(detail) if detail else ''}")
+        except Exception as exc:  # noqa: BLE001 - reported
+            if essential:
+                failures += 1
+            print(f"  {'FAIL' if essential else 'warn'}  {name}: {exc}")
+            if os.environ.get("AVAS_DEBUG"):
+                traceback.print_exc()
+
+    def engine():
+        from avas.core.MultiParticleEngine import MultiParticleEngine
+        return MultiParticleEngine().dll_path
+
+    def webview():
+        if sys.platform != "win32":
+            return "not Windows"
+        from avas.gui.webview2 import installed_version
+        v = installed_version()
+        if not v:
+            raise RuntimeError("Microsoft Edge WebView2 runtime is not installed")
+        return v
+
+    def gui_services():
+        from avas.gui import bridge, services  # noqa: F401
+        return f"{len(bridge.handlers())} RPC handlers"
+
+    def assistant():
+        from avas.ai import PRESETS
+        from avas.ai.avas_tools import build_tools
+        from avas.ai.manual import search
+        tools = build_tools(object())
+        hits = search("superpose")
+        if not hits.get("sections"):
+            raise RuntimeError("the user manual text is missing")
+        return f"{len(tools)} tools, {len(PRESETS)} provider presets, manual ok"
+
+    def preview():
+        from avas.sim.linear_optics import linear_preview
+        beam = {"mass": 938.272, "charge": 1, "energy": 3.0, "current": 0.0, "frequency": 162.5e6,
+                "twiss": {"x": (0.0, 0.5, 0.2), "y": (0.0, 0.5, 0.2), "z": (0.0, 0.5, 0.3)}}
+        text = "start\ndrift 0.2 0.02 0\nquad 0.1 0.02 0 10\ndrift 0.2 0.02 0\nquad 0.1 0.02 0 -10\ndrift 0.2 0.02 0\nend\n"
+        res = linear_preview(text, beam, [tempfile.gettempdir()], space_charge=False)
+        return f"rms_x {res['rms_x'][0]:.3f} -> {res['rms_x'][-1]:.3f} mm in {res['model']['elapsed_ms']:.0f} ms"
+
+    def user_data():
+        from avas.paths import USER_DATA_DIR
+        os.makedirs(USER_DATA_DIR, exist_ok=True)
+        probe = os.path.join(USER_DATA_DIR, ".doctor")
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("ok")
+        os.remove(probe)
+        return USER_DATA_DIR
+
+    def secrets():
+        from avas.ai import backend_name
+        return backend_name()
+
+    from avas.buildinfo import build_info
+    b = build_info()
+    print(f"AVAS {__version__} ({'stand-alone' if b.get('frozen') else 'source'}"
+          f"{', built ' + b['built'] if b.get('built') else ''}{', commit ' + b['commit'] if b.get('commit') else ''})")
+    check("simulation engine", engine)
+    check("WebView2 runtime", webview)
+    check("GUI services", gui_services)
+    check("AI assistant", assistant)
+    check("linear envelope preview", preview)
+    check("user data folder", user_data)
+    check("API key store", secrets, essential=False)
+    print("all checks passed" if not failures else f"{failures} check(s) failed")
+    return 1 if failures else 0
 
 
 def _normalize_argv(argv):
     """``avas --input X --output Y``  ->  ``avas run --input X --output Y``."""
     argv = list(argv)
-    known = {"run", "plot", "gui", "info", "-h", "--help", "-V", "--version"}
+    known = {"run", "plot", "gui", "info", "doctor", "-h", "--help", "-V", "--version"}
     if argv and argv[0] not in known and argv[0].startswith("-"):
         argv.insert(0, "run")
     return argv

@@ -18,6 +18,7 @@ body.dragging .sash-v, body.dragging { cursor: col-resize; }
 .toolbar-actions { display: flex; align-items: center; gap: 2px; }
 .toolbar-actions .divider-v { margin: 7px 4px; }
 .run-btn:not(:disabled) { color: var(--success); }
+.run-btn.pause:not(:disabled) { color: var(--warning); }
 .stop-btn:not(:disabled) { color: var(--danger); }
 
 /* ---------------------------------------------------------------- body */
@@ -33,6 +34,7 @@ body.dragging .sash-v, body.dragging { cursor: col-resize; }
   border-left: 2px solid transparent; background: transparent; color: var(--fg-muted); cursor: pointer; text-align: left; white-space: nowrap;
 }
 .nav-item .codicon { font-size: 20px; }
+.nav-item .nav-paused { color: var(--warning); }
 .nav-item:hover { background: var(--list-hover); color: var(--fg-strong); }
 .nav-item.active { background: var(--list-active); color: var(--fg-strong); border-left-color: var(--accent); }
 .nav-item.dim:not(.active) { color: var(--fg-soft); }

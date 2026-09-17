@@ -5,6 +5,7 @@ Every plot is described by ``(plot, params)``; :func:`figure` returns a
 JSON figure description the page turns into Plotly traces, :func:`export`
 draws the same plot with matplotlib (light colours) into a file.
 """
+import json
 import logging
 import os
 import re
@@ -27,11 +28,25 @@ PLANE_TITLES = None
 
 # --------------------------------------------------------------------------- helpers
 def _dirs(outputDir=None):
+    """Project, input directory of the results and the results folder.
+
+    Results written with other inputs (segment runs, command-line runs) name their
+    input directory in avas_run.json; the project's InputFile is the fallback.
+    """
     p = context.project().require()
     out = outputDir or p.output_dir
     if not os.path.isdir(out):
         raise UserError(f"Results folder not found: {out}")
-    return p, p.input_dir, out
+    input_dir = p.input_dir
+    if os.path.normcase(os.path.abspath(out)) != os.path.normcase(os.path.abspath(p.output_dir)):
+        try:
+            with open(os.path.join(out, "avas_run.json"), encoding="utf-8") as fh:
+                cand = json.load(fh).get("input_dir")
+            if cand and os.path.isdir(cand):
+                input_dir = cand
+        except (OSError, ValueError, AttributeError):
+            pass
+    return p, input_dir, out
 
 
 _MATH = [(r"\\varepsilon", "ε"), (r"\\epsilon", "ε"), (r"\\alpha", "α"), (r"\\beta", "β"), (r"\\gamma", "γ"),

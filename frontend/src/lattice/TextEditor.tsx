@@ -4,6 +4,7 @@ import { IconButton, Segmented } from "../components/ui";
 import { useT } from "../i18n";
 import { useApp } from "../store/app";
 import { defineThemes, LANG, monaco, registerLattice, setMarkers } from "./monaco";
+import type { RangeEdit } from "./structureOps";
 import type { Edit, LatticeDoc, Schema } from "./types";
 
 export type TextEditorHandle = {
@@ -12,8 +13,12 @@ export type TextEditorHandle = {
   setText: (text: string, resetUndo?: boolean) => void;
   /** Whole-line replacements as one undo step. */
   applyEdits: (edits: Edit[]) => void;
+  /** Line-range replacements / insertions / deletions as one undo step. */
+  applyRangeEdits: (edits: RangeEdit[]) => void;
   revealLine: (line0: number) => void;
   focus: () => void;
+  undo: () => void;
+  redo: () => void;
 };
 
 type Props = {
@@ -25,6 +30,7 @@ type Props = {
   onCursorLine?: (line0: number) => void;
 };
 
+const NL = String.fromCharCode(10);
 const ELEMENT_KEYS = new Set(["drift", "field", "quad", "solenoid", "bend", "steerer", "edge", "diag_energy", "diag_size", "diag_position"]);
 
 export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEditor({ schema, initialText, readOnly, doc, onChange, onCursorLine }, ref) {
@@ -173,6 +179,32 @@ export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEdito
       editor.executeEdits("structure", ops);
       editor.pushUndoStop();
     },
+    applyRangeEdits: (edits) => {
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!editor || !model || !edits.length || readOnly) return;
+      const n = model.getLineCount();
+      const ops = edits.map(({ start, end, lines }) => {
+        const text = lines.join(NL);
+        if (start >= n) {
+          // append after the last line
+          const col = model.getLineMaxColumn(n);
+          return { range: new monaco.Range(n, col, n, col), text: lines.length ? NL + text : "", forceMoveMarkers: true };
+        }
+        if (end >= n) {
+          // replace through the last line (no line break after it)
+          if (!lines.length && start > 0) {
+            const col = model.getLineMaxColumn(start);
+            return { range: new monaco.Range(start, col, n, model.getLineMaxColumn(n)), text: "", forceMoveMarkers: true };
+          }
+          return { range: new monaco.Range(start + 1, 1, n, model.getLineMaxColumn(n)), text, forceMoveMarkers: true };
+        }
+        return { range: new monaco.Range(start + 1, 1, end + 1, 1), text: lines.length ? text + NL : "", forceMoveMarkers: true };
+      });
+      editor.pushUndoStop();
+      editor.executeEdits("structure", ops);
+      editor.pushUndoStop();
+    },
     revealLine: (line0) => {
       const editor = editorRef.current;
       if (!editor) return;
@@ -185,6 +217,8 @@ export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEdito
       }
     },
     focus: () => editorRef.current?.focus(),
+    undo: () => editorRef.current?.trigger("visual-editor", "undo", null),
+    redo: () => editorRef.current?.trigger("visual-editor", "redo", null),
   }));
 
   const run = (id: string) => {

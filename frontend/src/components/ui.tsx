@@ -356,9 +356,9 @@ export function Spinner({ size = 16 }: { size?: number }) {
   return <Icon name="loading" spin style={{ fontSize: size }} />;
 }
 
-export function ProgressBar({ value, indeterminate }: { value?: number; indeterminate?: boolean }) {
+export function ProgressBar({ value, indeterminate, paused }: { value?: number; indeterminate?: boolean; paused?: boolean }) {
   return (
-    <div className={cx("progress", indeterminate && "indeterminate")}>
+    <div className={cx("progress", indeterminate && "indeterminate", paused && "paused")}>
       <div className="progress-fill" style={indeterminate ? undefined : { width: `${Math.max(0, Math.min(1, value ?? 0)) * 100}%` }} />
     </div>
   );

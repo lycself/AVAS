@@ -112,7 +112,7 @@ def _on_closing():
     if _state["force_close"] or win is None:
         return True
     from avas.gui.services import runner
-    if _state.get("unsaved") or runner.is_running():
+    if _state.get("unsaved") or runner.any_active():
         bridge.emit("app.closeRequested")
         return False
     _remember_geometry()
@@ -145,6 +145,8 @@ def main(argv=None, language=None):
     s = app_settings()
     if language:
         s.set("ui/language", language)
+    from avas import i18n
+    i18n.set_language(s.get("ui/language"))
     if not webview2.ensure_runtime(s.get("ui/language")):
         return 1
 
@@ -179,6 +181,7 @@ def main(argv=None, language=None):
     webview.start(gui="edgechromium" if sys.platform == "win32" else None, debug=debug,
                   private_mode=False, storage_path=storage, icon=_icon_path())
     services.runner.shutdown()
+    services.assistant.shutdown()
     srv.shutdown()
     return 0
 

@@ -1,0 +1,1 @@
+import{ot as e}from"./app-BE6Pab9Z.js";var t=e(()=>({mode:(()=>{try{return localStorage.getItem(`avas.latticeMode`)===`visual`?`visual`:`text`}catch{return`text`}})(),pendingSelect:null}));function n(e){t.setState({mode:e});try{localStorage.setItem(`avas.latticeMode`,e)}catch{}}var r=0;function i(e){t.setState({pendingSelect:{line:e,seq:++r}})}export{n,t as r,i as t};

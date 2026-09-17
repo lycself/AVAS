@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for the stand-alone AVAS build.
 
-Run from the repository root:
+Run from the repository root (packaging/build.py does all of this, stamps the
+build and compiles the installer):
 
     python packaging/fetch_webview2.py      # once: WebView2 bootstrapper for machines without the runtime
     pyinstaller packaging/avas.spec
@@ -28,13 +29,19 @@ datas += collect_data_files("avas", subdir="engine")
 datas += collect_data_files("avas", subdir="static")
 datas += [(os.path.join(ROOT, "avas", "gui", "web"), os.path.join("avas", "gui", "web"))]
 datas += collect_data_files("webview")                  # pywebview's JavaScript glue
+stamp = os.path.join(ROOT, "avas", "_build.json")        # written by packaging/build.py
+if os.path.isfile(stamp):
+    datas += [(stamp, "avas")]
 bootstrapper = os.path.join(ROOT, "packaging", "redist", "MicrosoftEdgeWebview2Setup.exe")
 binaries = [(bootstrapper, ".")] if os.path.isfile(bootstrapper) else []
+icon = os.path.join(ROOT, "avas", "gui", "web", "avas.ico")
+icon = icon if os.path.isfile(icon) else None
 
 hiddenimports = (
-    ["avas.gui.app", "avas.api.basic", "avas.sim.error", "avas.sim.err_adjust", "sklearn.utils._typedefs",
-     "clr_loader", "pythonnet"]
+    ["avas.gui.app", "avas.api.basic", "avas.sim.error", "avas.sim.err_adjust", "avas.sim.linear_optics",
+     "sklearn.utils._typedefs", "scipy.optimize", "clr_loader", "pythonnet"]
     + collect_submodules("avas.gui.services")
+    + collect_submodules("avas.ai")
     + collect_submodules("webview.platforms")
 )
 
@@ -48,8 +55,8 @@ gui = Analysis([os.path.join(ROOT, "packaging", "avas_gui.py")], **common)
 cli_pyz = PYZ(cli.pure, cli.zipped_data)
 gui_pyz = PYZ(gui.pure, gui.zipped_data)
 
-cli_exe = EXE(cli_pyz, cli.scripts, [], exclude_binaries=True, name="AVAS", console=True, upx=False)
-gui_exe = EXE(gui_pyz, gui.scripts, [], exclude_binaries=True, name="AVASGui", console=False, upx=False)
+cli_exe = EXE(cli_pyz, cli.scripts, [], exclude_binaries=True, name="AVAS", console=True, upx=False, icon=icon)
+gui_exe = EXE(gui_pyz, gui.scripts, [], exclude_binaries=True, name="AVASGui", console=False, upx=False, icon=icon)
 
 coll = COLLECT(
     cli_exe, cli.binaries, cli.zipfiles, cli.datas,

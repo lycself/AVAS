@@ -71,10 +71,11 @@ export type MenuItem =
   | { type: "separator" }
   | { type: "header"; label: string };
 
-type MenuState = { items: MenuItem[]; x: number; y: number; minWidth?: number; onClose?: () => void } | null;
+type MenuState = { items: MenuItem[]; x: number; y: number; minWidth?: number; onClose?: () => void; anchorBottom?: boolean } | null;
 const useMenu = create<{ menu: MenuState; set: (m: MenuState) => void }>((set) => ({ menu: null, set: (menu) => set({ menu }) }));
 
-export function openMenu(items: MenuItem[], x: number, y: number, opts?: { minWidth?: number; onClose?: () => void }) {
+/** Show a context menu at (x, y); with *anchorBottom* the menu's bottom edge is at y (menus opened from the status bar). */
+export function openMenu(items: MenuItem[], x: number, y: number, opts?: { minWidth?: number; onClose?: () => void; anchorBottom?: boolean }) {
   useMenu.getState().set({ items, x, y, ...opts });
 }
 
@@ -89,7 +90,7 @@ export function closeMenu() {
   m?.onClose?.();
 }
 
-function MenuList({ items, x, y, minWidth, depth }: { items: MenuItem[]; x: number; y: number; minWidth?: number; depth: number }) {
+function MenuList({ items, x, y, minWidth, depth, anchorBottom }: { items: MenuItem[]; x: number; y: number; minWidth?: number; depth: number; anchorBottom?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
   const [sub, setSub] = useState<{ index: number; x: number; y: number } | null>(null);
@@ -99,11 +100,11 @@ function MenuList({ items, x, y, minWidth, depth }: { items: MenuItem[]; x: numb
     if (!el) return;
     const r = el.getBoundingClientRect();
     let nx = x;
-    let ny = y;
+    let ny = anchorBottom ? y - r.height : y;
     if (nx + r.width > window.innerWidth - 4) nx = depth ? x - r.width - 200 : window.innerWidth - r.width - 4;
     if (ny + r.height > window.innerHeight - 4) ny = Math.max(4, window.innerHeight - r.height - 4);
     setPos({ x: Math.max(4, nx), y: ny });
-  }, [x, y, depth]);
+  }, [x, y, depth, anchorBottom]);
   useEffect(() => {
     if (depth) return;
     const key = (e: KeyboardEvent) => {
@@ -188,7 +189,7 @@ export function MenuLayer() {
   if (!menu) return null;
   return (
     <div className="menu-layer" onContextMenu={(e) => e.preventDefault()}>
-      <MenuList items={menu.items} x={menu.x} y={menu.y} minWidth={menu.minWidth} depth={0} />
+      <MenuList items={menu.items} x={menu.x} y={menu.y} minWidth={menu.minWidth} depth={0} anchorBottom={menu.anchorBottom} />
     </div>
   );
 }

@@ -37,3 +37,8 @@ frontend/node_modules/
 # WebView2 bootstrapper, fetched by packaging/fetch_webview2.py
 packaging/redist/
 tests/_output_gui/
+tests/_output_assistant/
+# build stamp written by packaging/build.py
+avas/_build.json
+# assistant work folders inside projects (sandbox runs, backups)
+.avas_ai/

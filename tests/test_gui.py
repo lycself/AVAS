@@ -153,6 +153,29 @@ def test_lattice_page(project):
     ok("lattice.write", name="lattice_mulp.txt", text=text)
 
 
+def test_project_overview(project):
+    ov = ok("project.overview")
+    assert ov["lattice"]["elements"] == 1 and ov["lattice"]["rf"] == 1 and ov["lattice"]["counts"] == {"field1": 1}
+    assert ov["beam"]["particlenumber"] == "5260"
+    assert ov["settings"]["sim_type"] == "mulp"
+    run = ov["lastRun"]
+    assert run["status"] == "finished" and run["diagnostics"]["transmission"] == 1.0
+
+
+def test_visual_editor_data(project):
+    env = resolve_blobs(ok("lattice.runEnvelope"))
+    assert env["rows"] > 10 and len(env["z"]) == len(env["rmsX"]) and env["rmsX"][0] == pytest.approx(0.94, abs=0.05)
+    prof = ok("lattice.fieldProfile", name="efield")["components"]
+    assert {"edx", "edy", "edz"} <= set(prof) and len(prof["edz"]["z"]) == 106 and "gradient" in prof["edx"]
+    assert rpc("lattice.fieldProfile", name="no_such_map")["ok"] is False
+    pytest.importorskip("avas.sim.linear_optics")
+    text = ok("lattice.read", name="lattice_mulp.txt")["text"]
+    pv = resolve_blobs(ok("lattice.preview", text=text))
+    assert len(pv["z"]) == len(pv["rms_x"]) > 10
+    assert pv["rms_x"][0] == pytest.approx(0.95, abs=0.05)             # normalized-emittance convention
+    assert pv["energy"][-1] > pv["energy"][0]                           # the cavity accelerates
+
+
 def test_files_page(project):
     listing = ok("files.list")
     roles = {f["name"]: f["role"] for f in listing["files"]}
@@ -206,3 +229,118 @@ def test_phase_space_viewers_and_export(project):
     assert tuple(imread(png)[0, 0][:3]) == (1.0, 1.0, 1.0)     # publication export: white background
     ok("results.export", plot="phase", params={"handle": handle, "planes": planes, "ratio": 1},
        path=os.path.join(WORK, "phase.png"))
+
+
+SEGMENT_LATTICE = """start
+section LEBT {
+drift 0.3 0.02 0
+}
+section cav {
+outputplane 0
+field 0.21 0.02 2 1 162.5e6 -33 1.36 -1.36 efield
+drift 0.2 0.02 0
+field 0.21 0.02 0 1 162.5e6 15 1.36 -1.36 efield
+drift 0.1 0.02 0
+}
+end
+"""
+
+
+def _wait_for_job(runner, timeout=600):
+    import time
+    t0 = time.time()
+    while runner.job is not None:
+        assert time.time() - t0 < timeout, "simulation did not finish"
+        time.sleep(0.3)
+
+
+def _last_dataset_row(output_dir):
+    with open(os.path.join(output_dir, "DataSet.txt"), encoding="utf-8") as fh:
+        rows = [ln.split() for ln in fh if len(ln.split()) == 41]
+    return [float(v) for v in rows[-1]]
+
+
+def test_pause_resume_and_segment_run(project):
+    """Pause freezes the engine and the clock; a segment run from the full run's particle file matches the full run."""
+    import time
+    from avas.gui import context
+    from avas.gui.services import runner, segments
+    work = os.path.join(WORK, "segment_project")
+    shutil.rmtree(work, ignore_errors=True)
+    shutil.copytree(os.path.join(EXAMPLE, "InputFile"), os.path.join(work, "InputFile"))
+    os.makedirs(os.path.join(work, "OutputFile"))
+    with open(os.path.join(work, "InputFile", "lattice_mulp.txt"), "w", encoding="utf-8") as fh:
+        fh.write(SEGMENT_LATTICE)
+    ok("project.open", path=work)
+    r = runner.runner()
+    try:
+        ok("run.start")
+        t0 = time.time()
+        while r.job is not None and not (r.state().get("percent") or 0) and time.time() - t0 < 120:
+            time.sleep(0.2)
+        paused = ok("run.pause")
+        assert paused["running"] and paused["paused"] and paused["source"] == "project"
+        time.sleep(2.5)
+        still = ok("run.state")
+        assert still["paused"] and still["elapsed_s"] == pytest.approx(paused["elapsed_s"], abs=0.5)
+        assert r.proc is not None and r.proc.poll() is None                 # frozen, not stopped
+        assert ok("run.resume")["paused"] is False
+        _wait_for_job(r)
+        info = context.project().last_run()
+        assert info["status"] == "finished", info
+        assert info["elapsed_s"] < time.time() - t0 - 2                      # the pause is not counted
+
+        p = context.project()
+        plan, card = segments.describe(p, segments.load_doc(p), {"section": "cav"})
+        options = {o["id"]: o for o in card["options"]}
+        assert card["rephase"] and card["default"] == "dst" and plan.z_start == pytest.approx(0.3)
+        assert options["dst"]["available"] and options["upstream"]["available"] and options["twiss"]["available"]
+        job = segments.start(p, {"section": "cav"}, "dst")
+        _wait_for_job(r)
+        assert job.ok, job.message
+        assert [s.key for s in job.stages] == ["reference", "segment"]
+        full, part = _last_dataset_row(p.output_dir), _last_dataset_row(job.output_dir)
+        assert part[0] == pytest.approx(full[0], rel=2e-3)                   # exit energy
+        assert part[16] == pytest.approx(full[16], rel=0.05)                 # rms x
+        assert part[28] == full[28]                                          # transmitted particles
+
+        sources = ok("results.sources")
+        assert [s["kind"] for s in sources] == ["project", "segment"] and sources[1]["entry"] == "dst"
+        assert job.meta.get("fingerprint")
+        overview = ok("results.overview", outputDir=job.output_dir)
+        assert os.path.normcase(overview["inputDir"]) == os.path.normcase(os.path.join(job.root, "InputFile"))
+        assert ok("results.figure", plot="dataset", params={"type": "rms_x"}, outputDir=job.output_dir)["traces"]
+
+        # chained: the LEBT run's final particle file is the entry beam of "cav"
+        lebt = segments.start(p, {"section": "LEBT"})
+        _wait_for_job(r)
+        assert lebt.ok, lebt.message
+        plan, card = segments.describe(p, segments.load_doc(p), {"section": "cav"})
+        chained = next(o for o in card["options"] if o["id"] == "segment")
+        assert chained["available"] and chained["source"] == os.path.basename(lebt.root) and chained["accuracy"] == "accurate"
+        job2 = segments.start(p, {"section": "cav"}, "segment")
+        _wait_for_job(r)
+        assert job2.ok, job2.message
+        assert job2.meta["entry"]["source"] == os.path.basename(lebt.root)
+        part2 = _last_dataset_row(job2.output_dir)
+        assert part2[0] == pytest.approx(full[0], rel=2e-3) and part2[16] == pytest.approx(full[16], rel=0.05)
+        # a changed beam upstream makes the LEBT result unusable
+        beam_path = os.path.join(work, "InputFile", "beam.txt")
+        with open(beam_path, encoding="utf-8") as fh:
+            beam_text = fh.read()
+        with open(beam_path, "w", encoding="utf-8") as fh:
+            fh.write(beam_text.replace("current 0.18409999999999999", "current 0.2"))
+        try:
+            _plan, card = segments.describe(p, segments.load_doc(p), {"section": "cav"})
+            assert not next(o for o in card["options"] if o["id"] == "segment")["available"]
+        finally:
+            with open(beam_path, "w", encoding="utf-8") as fh:
+                fh.write(beam_text)
+        # the project's own files are untouched
+        with open(os.path.join(work, "InputFile", "lattice_mulp.txt"), encoding="utf-8") as fh:
+            assert fh.read() == SEGMENT_LATTICE
+    finally:
+        if r.job is not None:
+            r.stop()
+            _wait_for_job(r, 30)
+        ok("project.open", path=os.path.join(WORK, "project"))

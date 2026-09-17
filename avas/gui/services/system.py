@@ -11,9 +11,11 @@ from avas.gui.bridge import UserError, rpc
 
 @rpc("app.info")
 def info():
+    from avas.buildinfo import build_info
     s = gui_app.app_settings()
     return {
         "version": avas.__version__,
+        "build": build_info(),
         "python": sys.version.split()[0],
         "platform": sys.platform,
         "baseUrl": gui_app.state()["base_url"],
@@ -32,6 +34,9 @@ def system_dark():
 @rpc("settings.set")
 def settings_set(values):
     gui_app.app_settings().update(values)
+    if "ui/language" in values:
+        from avas import i18n
+        i18n.set_language(values["ui/language"])
     if "ui/theme" in values:
         gui_app.set_title_bar_dark(gui_app.resolve_theme(values["ui/theme"]) == "dark")
     return True
@@ -130,6 +135,16 @@ def shell_reveal(path):
             subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
     else:
         shell_open(path if os.path.isdir(path) else os.path.dirname(path))
+    return True
+
+
+@rpc("shell.openUrl")
+def shell_open_url(url):
+    """Open an http(s) link from the assistant's answers in the default browser."""
+    import webbrowser
+    if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
+        raise UserError("Only http(s) links can be opened.")
+    webbrowser.open(url)
     return True
 
 

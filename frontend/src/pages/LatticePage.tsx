@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { call } from "../bridge";
 import { choiceDialog, reportError, toast } from "../components/overlays";
-import { Button, Select, Spinner } from "../components/ui";
+import { Button, Segmented, Select, Spinner } from "../components/ui";
 import { t, useT } from "../i18n";
 import { LatticeEditor, type LatticeEditorHandle } from "../lattice/LatticeEditor";
 import { refreshProject, useApp } from "../store/app";
+import { registerLatticeEditor } from "../assistant/front";
+import { setLatticeMode, useLatticeUi } from "../store/latticeUi";
 import { fileSaved, markDirty, onFileSaved, registerPage } from "../store/pages";
 import { NoProject, PageHeader } from "./common";
 
@@ -19,6 +21,7 @@ export default function LatticePage() {
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<LatticeEditorHandle>(null);
+  const mode = useLatticeUi((s) => s.mode);
   const savedText = useRef("");
   const current = useRef<{ name: string; path: string } | null>(null);
 
@@ -73,6 +76,21 @@ export default function LatticePage() {
         reload: load,
       }),
     [save, load],
+  );
+
+  // the assistant reads and changes the lattice through the open editor
+  useEffect(
+    () =>
+      registerLatticeEditor({
+        name: () => current.current?.name ?? null,
+        path: () => current.current?.path ?? null,
+        getText: () => (editorRef.current && current.current ? editorRef.current.getText() : null),
+        isDirty: () => !!editorRef.current && !!current.current && normalize(editorRef.current.getText()) !== savedText.current,
+        replaceText: (text) => editorRef.current?.replaceText(text),
+        save,
+        selection: () => editorRef.current?.selection() ?? null,
+      }),
+    [save],
   );
 
   // the same file saved on the Files page, or the run lattice switched there
@@ -133,6 +151,15 @@ export default function LatticePage() {
         hint={tt("The lattice file used for the run. Edit it as text on the left or by physical parameters on the right; both show the same file. Parameter meanings and checks follow the user manual.")}
       />
       <div className="row" style={{ gap: 8 }}>
+        <Segmented
+          value={mode}
+          onChange={setLatticeMode}
+          options={[
+            { value: "text", label: tt("Text + structure"), icon: "code", tip: tt("Text editor and structure editor side by side") },
+            { value: "visual", label: tt("Visual editor"), icon: "circuit-board", tip: tt("Components, beam envelope and live linear preview") },
+          ]}
+        />
+        <div className="divider-v" />
         <span className="muted nowrap">{tt("Lattice used for the run")}</span>
         <Select
           value={loaded.name}
@@ -171,6 +198,7 @@ export default function LatticePage() {
           ref={editorRef}
           initialText={loaded.text}
           fieldDirs={info.fieldDirs}
+          layout={mode === "visual" ? "visual" : "split"}
           onChange={(text) => {
             const d = normalize(text) !== savedText.current;
             setDirty(d);

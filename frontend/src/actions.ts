@@ -1,6 +1,6 @@
 // Commands shared by the menu bar, tool bar, shortcuts and pages.
 import { call, on } from "./bridge";
-import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, reportError, toast } from "./components/overlays";
+import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, reportError, toast, type MenuItem } from "./components/overlays";
 import { t } from "./i18n";
 import { refreshProject, setPage, setProject, showStatus, useApp, type ProjectSummary } from "./store/app";
 import { allPages, dirtyPages, useDirty } from "./store/pages";
@@ -39,7 +39,6 @@ export async function openProject(path?: string) {
     if (!(await resolveUnsaved(t("opening another project")))) return;
     const summary = await call<ProjectSummary>("project.open", { path: target });
     setProject(summary);
-    if (useApp.getState().page === "project") setPage("beam");
     showStatus(t("Project opened"));
   } catch (e) {
     reportError(e, t("Open project"));
@@ -75,6 +74,43 @@ export async function closeProject() {
   }
 }
 
+export function revealProject() {
+  const path = useApp.getState().project.path;
+  if (path) call("shell.open", { path }).catch((e) => reportError(e));
+}
+
+function basename(p: string) {
+  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+}
+
+/** Project switcher: recent projects plus open / new / close (status bar, title, overview page). */
+export function projectMenuItems(): MenuItem[] {
+  const { project } = useApp.getState();
+  const current = project.path?.toLowerCase();
+  const recent = project.recent.filter((p) => p.toLowerCase() !== current).slice(0, 8);
+  const items: MenuItem[] = [];
+  if (project.open) {
+    items.push({ type: "header", label: project.name ?? "" });
+    items.push({ label: t("Project overview"), icon: "home", onClick: () => setPage("project") });
+    items.push({ label: t("Show in Explorer"), icon: "folder", onClick: revealProject });
+    items.push({ type: "separator" });
+  }
+  if (recent.length) {
+    items.push({ type: "header", label: t("Switch to") });
+    for (const p of recent) items.push({ label: basename(p), shortcut: shortPath(p), icon: "folder", onClick: () => openProject(p) });
+    items.push({ type: "separator" });
+  }
+  items.push({ label: t("Open project..."), shortcut: "Ctrl+O", icon: "folder-opened", onClick: () => openProject() });
+  items.push({ label: t("New project..."), shortcut: "Ctrl+N", icon: "new-folder", onClick: newProject });
+  if (project.open) items.push({ label: t("Close project"), icon: "close", onClick: closeProject });
+  return items;
+}
+
+function shortPath(p: string) {
+  const parent = p.split(/[\\/]/).slice(0, -1).join("\\");
+  return parent.length > 42 ? "…" + parent.slice(-40) : parent;
+}
+
 let saving = false;
 /** Save every page with unsaved changes (Ctrl+S). */
 export async function saveAll(quiet = false): Promise<boolean> {
@@ -94,21 +130,27 @@ export async function saveAll(quiet = false): Promise<boolean> {
   }
 }
 
-export async function runSimulation() {
-  const app = useApp.getState();
-  if (!app.project.open || app.run.running) return;
+/** Validate the pages, save them and run the engine's checks (shows what went wrong). */
+export async function prepareRun(): Promise<{ ok: boolean; error?: string }> {
   const errors = allPages().flatMap((p) => p.validate?.() ?? []);
   if (errors.length) {
     await alertDialog(errors.join("\n"), { title: t("Cannot run"), kind: "warning" });
-    return;
+    return { ok: false, error: errors.join("; ") };
   }
-  if (!(await saveAll(true))) return;
+  if (!(await saveAll(true))) return { ok: false, error: "The pages could not be saved." };
   try {
     await call("run.check");
-  } catch (e) {
+  } catch (e: any) {
     await reportError(e, t("Project check"));
-    return;
+    return { ok: false, error: e?.message ?? String(e) };
   }
+  return { ok: true };
+}
+
+export async function runSimulation() {
+  const app = useApp.getState();
+  if (!app.project.open || app.run.running) return;
+  if (!(await prepareRun()).ok) return;
   try {
     const state = await call<any>("run.start");
     useApp.setState({ run: state });
@@ -126,9 +168,50 @@ export async function stopSimulation() {
   }
 }
 
-export function showAbout() {
+export async function pauseSimulation() {
+  if (!useApp.getState().run.running) return;
+  try {
+    useApp.setState({ run: await call<any>("run.pause") });
+  } catch (e) {
+    reportError(e, t("Pause"));
+  }
+}
+
+export async function resumeSimulation() {
+  if (!useApp.getState().run.running) return;
+  try {
+    useApp.setState({ run: await call<any>("run.resume") });
+  } catch (e) {
+    reportError(e, t("Resume"));
+  }
+}
+
+/** F5 and the tool-bar button: run, pause or resume depending on the state. */
+export function runPauseResume() {
+  const { run } = useApp.getState();
+  if (!run.running) runSimulation();
+  else if (run.paused) resumeSimulation();
+  else pauseSimulation();
+}
+
+export async function showAbout() {
+  const { version } = useApp.getState();
+  let lines: string[] = [];
+  try {
+    const info = await call<any>("app.info");
+    const b = info.build ?? {};
+    lines = [
+      b.frozen ? t("Stand-alone build") : t("Running from source"),
+      b.built ? `${t("Built")}: ${b.built}` : b.frontend ? `${t("Front end built")}: ${b.frontend}` : "",
+      b.commit ? `${t("Commit")}: ${b.commit}${b.dirty ? ` (${t("with local changes")})` : ""}` : "",
+      `${t("Location")}: ${b.location ?? ""}`,
+      `Python ${info.python} · WebView2 ${info.webview2 ?? "–"}`,
+    ].filter(Boolean);
+  } catch {
+    /* the dialog still shows the version */
+  }
   alertDialog(
-    `AVAS ${useApp.getState().version}\nAdvanced Virtual Accelerator Software\n\nC. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., Phys. Rev. Accel. Beams 28, 044602 (2025)`,
+    `AVAS ${version}\nAdvanced Virtual Accelerator Software\n\n${lines.join("\n")}${lines.length ? "\n\n" : ""}C. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., Phys. Rev. Accel. Beams 28, 044602 (2025)`,
     { title: t("About AVAS") },
   );
 }

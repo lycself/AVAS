@@ -77,9 +77,10 @@ avas plot phase       --dst "C:\proj\Results_001\outData_0.210000.dst" --plane x
 avas plot syn_phase   --output "C:\proj\Results_001"
 avas plot cavity_voltage --output "C:\proj\Results_001" --ratio efield=1.0
 
-# 图形界面 / 版本信息
+# 图形界面 / 版本信息 / 安装自检（内核、WebView2、界面、AI 助手、线性预览）
 avas gui --lang zh_CN
 avas info
+avas doctor
 ```
 
 `avas plot --help` 列出全部图类型。画图时输入目录默认从输出目录里的 `avas_run.json` 读取，也可以用 `--input` 指定。
@@ -93,7 +94,9 @@ avas gui
 界面是一个普通的桌面窗口（pywebview + Edge WebView2），里面用网页技术绘制，不需要打开浏览器。布局与 VS Code 相同：
 顶部菜单栏和工具按钮、左侧导航栏、中间页面、下方日志面板、底部状态栏。按工作流分为七页：
 
-1. **Project** 新建 / 打开 / 最近项目（单击打开，可从列表移除），显示当前项目摘要；可关闭项目。
+1. **Project** 没有打开项目时是欢迎页（新建 / 打开 / 最近项目）；打开项目后是项目概览：上次运行（状态、传输效率、
+   末端能量，以及 DataSet.txt 中 NaN、全部丢束等诊断和原因提示）、束流、结构（元件统计、问题数）、模拟设置、文件，
+   可直接进入可视化编辑器或运行。切换 / 关闭项目在 **文件** 菜单、标题栏项目名和状态栏左侧的项目切换菜单中。
 2. **Beam** 束流参数、分布、Twiss，或从 .dst 文件读入（可「从文件填入参数」）。保存时只改写页面管理的关键字，
    `randomseed`、`initpos` 等其他关键字和注释原样保留。「预览 rms 椭圆」按填写的 α、β、ε 画出 x/y/z 三个相平面。
 3. **Lattice** 顶部选择**运行使用的结构文件**（记在 `ini.ini` 的 `[lattice] source`，界面和 `avas run` 都按它运行）。
@@ -106,6 +109,20 @@ avas gui
    * **参数表**：按关键字列出同类元件，选中元件时自动切到它的关键字；可多选单元格「批量设置」。
    * **检查**：参数个数和数值、枚举取值、叠加场规则、校正铁长度、首末元件、场图文件。
    * 所有修改都改写文本中的对应一行（一次修改一步撤销），`Ctrl+Z` 可撤销。
+   * 结构树右键 / 快捷键：在其后插入元件、创建副本（`Ctrl+D`）、上移下移（`Alt+↑/↓`，拖动行也可以）、删除（`Del`）。
+
+   页面左上角切换到 **可视化编辑器**（与文本编辑同一份内容、同一套撤销）：
+   * **元件面板**：把漂移段、四极铁、螺线管、射频腔 / 磁铁场图、二极铁、校正铁、束诊等拖到束线上。落在漂移段内时自动拆分漂移段，
+     下游元件位置不变；落在叠加场范围内时自动生成对应 z0 的 superpose。删除叠加场的第一个元件时自动重设 z0 并在前面补漂移段，位置不变。
+   * **布局图**：元件按类型绘制（聚焦四极铁在轴上方、散焦在下方），下方同一 z 轴上叠加 x（上）/ y（下）包络：
+     上次运行的 rms / 最大值（DataSet.txt）、**线性包络预览**（虚线）、管道孔径、粒子损失位置、能量（右轴）。
+     悬停显示该位置的全部数值。**3D** 视图可旋转缩放、沿束线漫游，并显示包络管。
+   * **元件视图**：选中元件后显示其示意图（四极铁截面与受力方向、螺线管线圈、射频腔 Ez(z) 与相位刻度盘、二极铁弧形、
+     校正铁偏转方向、场图分布曲线），拖动手柄改长度 / 孔径 / 相位 / 偏转角，滑块改梯度、磁场、Ke、Kb。
+     拖动过程中线性预览实时更新（约几十毫秒），松开后写入文本。
+   * **线性包络预览**（`avas/sim/linear_optics.py`）：参考粒子 + 4×4 二阶矩传输，支持 drift / quad / solenoid / bend / edge
+     和场图（静磁场梯度与 Bz、射频腔能量增益与散焦，叠加场相加）、线性空间电荷。与内核对比：能量误差约 0.01 %，
+     rms 尺寸通常差 1–2 %（多粒子非线性效应处最大约 13 %）。只用于快速评估，最终以模拟结果为准。
 4. **Settings** 模拟类型、步长、多线程、相位扫描、空间电荷、场文件目录、纵向限制、边界、密度输出，以及误差分析模式。
 5. **Files** `InputFile/` 下的全部文件，按内容识别类型并分组，每类用显示物理含义的视图打开（结构编辑器、关键字表、
    ini 表、boundary / scanData / SeParticle 表格、.dst 相空间图、场图曲线、TraceWin 结构只读表），「表格 / 文本」两个
@@ -117,6 +134,21 @@ avas gui
    相移、同步相位、腔压、误差分析、密度、接受度。粒子文件查看器和 plt 步查看器是 4 个相空间密度图 + rms 椭圆 +
    百分比发射度文字，放大后自动按新范围重新统计密度；改坐标、改百分比立即重画。「保存图片」用 matplotlib 输出
    白底的论文用图（PNG / PDF / SVG）。可以切换到项目 OutputFile 以外的结果文件夹。工具：扩充粒子数、plt 步转 dst。
+
+### AI 助手
+
+工具栏右侧 **AI 助手**（`Ctrl+Shift+A`）打开右侧对话面板。助手可以读取项目（lattice、beam、设置、结果、日志、用户手册），
+**修改参数**、**运行模拟**、**参数扫描**和**优化**：
+
+* 模型：任何 **OpenAI 兼容接口**，包括本地模型（Ollama `http://localhost:11434/v1`、LM Studio、vLLM、llama.cpp、Xinference）
+  和在线接口（OpenAI、DeepSeek、通义千问、Kimi、硅基流动、智谱、OpenRouter 等）。在助手设置中添加、测试连接、列出模型。
+  模型不支持原生工具调用时自动改用提示词方式。API 密钥保存在 Windows 凭据管理器中，不写入设置文件。
+* 每一项修改都是一张「修改提案」卡片（元件、参数、旧值 → 新值），**点「应用」后才写入**；lattice 已在编辑器中打开时直接应用到
+  编辑器（可撤销）并保存。每次应用前备份到项目下 `.avas_ai/backups/`，卡片上可一键「撤销」。可以在单个对话中打开「自动应用」。
+* 参数扫描 / 优化可以用线性预览（秒级）或内核模拟；模拟在 `.avas_ai/runs/` 中的副本上运行，不改动项目的 InputFile 和
+  OutputFile，结束后把最优参数作为修改提案给出。优化目标可以是指标（如 `emit_x_growth`）或表达式
+  （如 `abs(rms_x_out-1.5)+abs(rms_y_out-1.5)`），方法为 Nelder-Mead / Powell / 随机搜索。
+* 对话按项目保存在 `%LOCALAPPDATA%\AVAS\assistant\`。
 
 外观与操作：
 
@@ -139,28 +171,33 @@ cd frontend && npm install && npm run build
 `python -m avas.gui.devserver` 可以在普通浏览器里打开界面调试（`http://127.0.0.1:8765/index.html?devrpc`，文件对话框不可用）。
 后端接口在 `avas/gui/services/`，每个页面调用的函数都在 `tests/test_gui.py` 中有测试。
 
-### 打包独立程序
+### 打包独立程序与安装包
 
 ```bash
 python packaging/fetch_webview2.py
 ```
 
 ```bash
-pyinstaller packaging/avas.spec
+python packaging/build.py
 ```
 
-第一条命令从微软官方地址下载 WebView2 安装程序（约 1.7 MB）；`dist/AVAS/` 中包含 `AVAS.exe`（命令行）、
-`AVASGui.exe`（无控制台窗口的界面）和该安装程序，在缺少 WebView2 的电脑上启动时会提示安装。
+第一条命令（只需一次）从微软官方地址下载 WebView2 安装程序（约 1.7 MB）。第二条命令写入构建信息（时间、git 提交，显示在
+**帮助 → 关于** 和 `AVAS.exe info` 中），用 PyInstaller 生成 `dist/AVAS/`（`AVAS.exe` 命令行、`AVASGui.exe` 界面、
+WebView2 安装程序），如果安装了 [Inno Setup 6](https://jrsoftware.org/isinfo.php)（`winget install JRSoftware.InnoSetup`），
+再生成安装包 `dist/installer/AVAS-2.0.0-setup.exe`：默认为当前用户安装（无需管理员），开始菜单和桌面快捷方式，
+可选把 `AVAS.exe` 加入 PATH，缺少 WebView2 时自动安装。界面源码有改动时加 `--frontend` 先重新编译前端。
+**exe 不会随源码自动更新**，修改代码后需要重新运行 `build.py`。安装后可运行 `AVAS.exe doctor` 自检。
 
 ### 目录结构
 
 ```
 avas/            Python 包
-  cli/           命令行入口（avas run / plot / gui / info）
+  cli/           命令行入口（avas run / plot / gui / info / doctor）
   gui/           桌面界面后端：app.py 窗口入口，services/ 各页面调用的接口，web/ 编译好的前端
+  ai/            AI 助手：OpenAI 兼容客户端、工具调用循环、AVAS 工具、沙盒模拟、手册检索、密钥存储
   api/           basic.py：模拟与画图的统一入口；qt/：界面用接口
   core/          ctypes 封装的 C++ 计算内核
-  sim/           模拟流程：多粒子、包络、误差、匹配、接受度
+  sim/           模拟流程：多粒子、包络、误差、匹配、接受度；linear_optics.py 线性包络预览
   post/          后处理：analysis/ 数据分析，plot/ 画图
   data/          输出文件解析（DataSet、BeamSet、dst …）
   utils/         读写与配置工具
@@ -171,7 +208,7 @@ frontend/        界面前端源码（React + TypeScript）
 examples/        示例项目（hwr010）
 tests/           pytest 冒烟测试
 scripts/         个人分析脚本（不属于软件本体）
-packaging/       PyInstaller 打包脚本
+packaging/       打包：build.py、PyInstaller 配置、Inno Setup 安装包脚本、图标
 docs/            使用说明与更新记录
 ```
 
@@ -240,13 +277,18 @@ avas plot emittance_x --output "C:\proj\Results_001" --save emit_x.png
 avas plot phase --dst "C:\proj\Results_001\outData_0.210000.dst"
 avas gui --lang en
 avas info
+avas doctor                                                          # self-test of an installation
 ```
 
 `avas plot --help` lists every plot type. The input directory for plots is read from `avas_run.json` in the output directory, or given with `--input`.
 
 ### GUI
 
-`avas gui` (or `avas-gui`) opens a desktop window (pywebview + Edge WebView2; no browser involved) with a VS Code-like layout: menu bar, side bar, pages, log panel, status bar. Seven pages follow the workflow: **Project**, **Beam** (saving keeps keywords the page does not manage, and comments), **Lattice** (run-lattice selection; Monaco text editor with highlighting, folding, completion, hover help and problem markers, side by side with the physical-parameter editor: beamline schematic, element tree, property form, per-keyword parameter table), **Settings**, **Files** (content-aware views of everything in `InputFile/`, table and text tabs on the same content, rename / duplicate / recycle bin / import), **Run** (child `avas run` process, live progress incl. min/h ETAs, engine output in the log) and **Results** (interactive Plotly plots; phase-space viewers with density re-binning on zoom and percent emittances; publication-quality export through matplotlib; any results folder). Theme switching (system / light / dark) takes one frame (~20 ms); UI scale 90–150 %; Chinese / English switch instantly. Unsaved pages are marked and prompted for before closing or switching projects. Settings: `%LOCALAPPDATA%\AVAS\gui.json`; logs: `%LOCALAPPDATA%\AVAS\logs`.
+`avas gui` (or `avas-gui`) opens a desktop window (pywebview + Edge WebView2; no browser involved) with a VS Code-like layout: menu bar, side bar, pages, log panel, status bar. Seven pages follow the workflow: **Project** (a welcome page without a project; with one, an overview of the last run including DataSet diagnostics such as NaN columns or a lost beam, the beam, lattice statistics and settings; switching projects lives in the File menu and the project switcher in the title and status bars), **Beam** (saving keeps keywords the page does not manage, and comments), **Lattice** (run-lattice selection; Monaco text editor with highlighting, folding, completion, hover help and problem markers, side by side with the physical-parameter editor: beamline schematic, element tree, property form, per-keyword parameter table), **Settings**, **Files** (content-aware views of everything in `InputFile/`, table and text tabs on the same content, rename / duplicate / recycle bin / import), **Run** (child `avas run` process, live progress incl. min/h ETAs, engine output in the log) and **Results** (interactive Plotly plots; phase-space viewers with density re-binning on zoom and percent emittances; publication-quality export through matplotlib; any results folder). Theme switching (system / light / dark) takes one frame (~20 ms); UI scale 90–150 %; Chinese / English switch instantly. Unsaved pages are marked and prompted for before closing or switching projects. Settings: `%LOCALAPPDATA%\AVAS\gui.json`; logs: `%LOCALAPPDATA%\AVAS\logs`.
+
+The Lattice page also has a **visual editor** on the same text model (one undo history): a component palette to drag elements onto the beamline (dropping into a drift splits it so downstream positions stay put; dropping into a superpose block adds a superpose at that z0), a large layout with element glyphs and the x/y envelope of the last run, the **linear envelope preview** (`avas/sim/linear_optics.py`: reference particle, 4×4 moment transport through matrix elements and field maps, linear space charge; energies within ~0.01 % and rms sizes typically within 1–2 % of the engine), apertures, losses and energy; a three.js 3D view with fly-through; and a component inspector (quadrupole cross-section and forces, cavity Ez(z) and phase dial, …) whose handles and sliders update the preview live while dragging.
+
+The **AI assistant** (`Ctrl+Shift+A`) works with any OpenAI-compatible endpoint, local (Ollama, LM Studio, vLLM, llama.cpp, Xinference) or hosted, with native or prompted tool calls. It reads the project, results, log and user manual; changes to the lattice, beam.txt, input.txt or ini.ini are proposals applied only after approval (backed up under `<project>/.avas_ai/backups`, undoable); it can run the simulation, scan parameters and optimise (Nelder-Mead / Powell / random) with the linear preview or with engine runs in a sandbox copy (`<project>/.avas_ai/runs`) that never touches the project's files. API keys go to the Windows Credential Manager.
 
 The front end lives in `frontend/` (React + TypeScript + Vite); its build output `avas/gui/web/` is committed, so running AVAS needs no Node.js. Rebuild with `cd frontend && npm install && npm run build`. `python -m avas.gui.devserver` serves the GUI to an ordinary browser for development. Back-end calls are in `avas/gui/services/` and tested in `tests/test_gui.py`.
 
@@ -257,10 +299,10 @@ python packaging/fetch_webview2.py
 ```
 
 ```bash
-pyinstaller packaging/avas.spec
+python packaging/build.py
 ```
 
-`dist/AVAS/` then holds `AVAS.exe` (command line), `AVASGui.exe` (GUI without a console) and the WebView2 bootstrapper that is offered on machines without the runtime.
+`build.py` stamps the build (time, git commit; shown in Help > About and `AVAS.exe info`), runs PyInstaller (`dist/AVAS/`: `AVAS.exe` command line, `AVASGui.exe` GUI, WebView2 bootstrapper) and, when [Inno Setup 6](https://jrsoftware.org/isinfo.php) is installed, compiles `dist/installer/AVAS-<version>-setup.exe` (per-user install without admin rights, shortcuts, optional PATH entry, WebView2 installed when missing). Add `--frontend` to rebuild the web page first. The exe does not follow source changes: rebuild after editing. `AVAS.exe doctor` checks an installation.
 
 ### Tests
 

@@ -1,0 +1,623 @@
+说明
+目录
+说明1
+使用方法3
+多粒子模型3
+元件3
+场模型元件3
+矩阵模型元件4
+命令5
+误差分析5
+叠加场8
+lattice起点9
+Lattice终点9
+折叠命令9
+outputplane10
+输入文件的说明10
+input.txt10
+beam.txt11
+Lattice_mulp.txt12
+scanData.txt12
+SeParticle.txt13
+输出文件13
+edst13
+inData.dst14
+outData_x.dst14
+DataSet.txt14
+Phase.txt15
+synParticle.txt15
+DynamicErrorData.txt15
+Beamset.plt15
+density17
+synData.txt17
+pchistogram.dat18
+SingleParticle.txt18
+errors_par.txt18
+errors_par_tot.txt19
+接受度测量使用方法20
+使用方法
+打开软件：
+双击AVAS文件夹中的AVAS.exe开启软件
+导入或创建项目
+注意：
+项目所有的文件都放在inputfile 和outputfile中，
+beam页面手动填写初始分布后，需要点解refresh 里的beam，才会计算和展示相关参数
+lattice多粒子情况写在lattice页面，包络情况写在lattice_env.
+input界面，space-chage step只对包络模型起效，目前只能用m作为单位，不能使用,同时包络模型只有space-chage step和space charge 2个选项起作用。
+设置束流参数，lattice, 模拟参数
+在function页面选择程序运行的类型
+多粒子模型
+元件
+场模型元件
+用户给出元件的电磁场分布文件，在场模型元件中AVAS采用t-code进行模拟。
+Drift   长度（m）  半径（m）   0
+Field   长度（m）  半径（m）   V3 类型  频率   同步相位  Ke   Kb   场文件名
+类型有两种 1：高频场 2：静电场 3：静磁场。对于静磁场不存在的参数写0即可。
+V3：0代表同步相位 1代表粒子到入口的RF相位 2 代表t=0时刻的rf相位
+例：
+start
+drift 0.0835 0.02 0
+!静磁场
+field 0.1 0.02 0 3 0 0 1 0.677098 sol_1
+!高频场
+field 0.1 0.02 0 1 162.5e6 -33 3 -1.36 hwr010b
+end
+矩阵模型元件
+用户给出元件的对应参数，在矩阵模型元件中AVAS采用z-code进行模拟。
+Quad     长度（m）半径（m）  0 磁场梯度（T/m）
+Solenoid  长度（m）半径（m）  0  磁场（T）
+Bend     （m） 半径（m）  0 偏转角  曲率半径 四极场指数 方向(0/1)
+*二极铁的长度默认等于。方向：横向(x)偏转为0，纵向(y)偏转为1
+Steerer        0      半径（m）  0   Bx/Ex(T or V/m)   By/Ey   类型   最大值
+*矫正铁长度必须为0，长度默认为下个元件的长度并位于下个元件的中间。类型：磁场校正铁为0，电场校正铁为1.
+Bend
+原件
+参数
+定义
+Bend
+α*ρ
+长度,用户写0即可，具体长度程序自动计算
+R （m）
+孔径
+0
+α (deg)
+旋转平面上的弯曲角度
+ρ (m)
+中心轨迹的曲率半径
+N
+场梯度指数
+HV
+0：水平，1：垂直
+Edge
+原件
+参数
+定义
+Edge
+0
+R （m）
+孔径
+0
+β (deg)
+极面旋转角度
+ρ (m)
+弯曲曲率半径
+G (m)
+磁体总间隙
+K1
+Fringe-field factor
+K2
+Fringe-field factor
+HV
+0：水平，1：垂直
+多粒子模型第一个和最后一个元件避免使用矩阵模型元件，可以加超级短的drift避免这个问题.
+命令
+误差分析
+当添加误差后，模拟的结果将放在outputFile文件夹下的error_output文件夹下。相关命令如下：
+err_step a b
+a为分组数， b为每组运行多少次
+动态误差
+err_beam_dyn  r
+(mm)   ()   (mrad)  (MeV)      (%)          (%)        (mA)
+*用于设定初始束团的误差，不需要写满参数，后续空置参数默认不设置误差。
+err_quad_ncpl_dyn   N   r
+(mm)        ()       (%) (mm)
+*用于设定静磁元件的误差，不需要写满参数，后续空置参数默认不设置误差。
+err_cav_ncpl_dyn   N   r
+(mm)         ()        (%)   ()   (mm)
+*用于设定射频腔的误差，不需要写满参数，后续空置参数默认不设置误差。
+静态误差
+err_beam_stat  0
+(mm)   ()   (mrad)  (MeV)      (%)          (%)        (mA)
+*用于设定初始束团的误差，不需要写满参数，后续空置参数默认不设置误差。
+err_quad_ncpl_stat   N  r
+(mm)        ()       (%) (mm)
+*用于设定静磁元件的误差，不需要写满参数，后续空置参数默认不设置误差。
+err_cav_ncpl_stat   N   r
+(mm)         ()        (%)   ()   (mm)
+*用于设定射频腔的误差，不需要写满参数，后续空置参数默认不设置误差。
+参数解释:
+N: 作用于命令下面元件的数量， 想做用于所有元件，可以填写一个较大值
+R：误差类型
+r=0：固定值误差
+r=1: 均匀分布的误差
+r=2: 高斯分布的误差
+r = -1：等步长误差（等价于tracewin中的0类型）
+例：
+err_step 2 2
+err_cav_stat_on 1 0 0 0 0 0 0
+err_cav_ncpl_stat 10 r 2 0 0.0 0.0 0.0 0.0 0.0
+以上面的为例：
+当r为1，那么第一组为[-1, +1]之间的误差，第二组为[-2, +2]之间的误差
+当r为-1，那么第一组为标准差为1的高斯分布误差，第二组为标准差为2的高斯分布误差
+当r为2，那么第一组误差为1，第二组为2
+误差开启
+err_beam_dyn_on
+err_quad_dyn_on
+err_cav_dyn_on
+err_beam_stat_on
+err_quad_stat_on
+err_cav_stat_on
+*上面三条命令用于启用相应误差，参数顺序与对应命令一致，每个参数只能写0或1，0表示关闭对应误差，1代表开启对应误差。
+例：
+start
+err_step 2 2
+err_cav_stat_on 1 0 0 0 0 0 0
+err_cav_ncpl_stat 10 1 2 0 0.0 0.0 0.0 0.0 0.0
+err_cav_dyn_on 1 0 0 0 0 0 0
+err_cav_ncpl_dyn 10 1 2 0 0.0 0.0 0.0 0.0 0.0
+drift 0.0835 0.02 0
+field 0.1 0.02 0 3 0 0 1 0.677098 sol_1
+field 0.1 0.02 0 3 0 0 1 0.677098 sol_1
+field      0.21   0.02     0   1   162.5e6   -33  3    -1.36   hwr010b
+field      0.21   0.02     0   1   162.5e6   -33  3    -1.36   hwr010b
+end
+静态误差校正
+Adjust N, v, n, min, max, first_step
+N：目前无意义，写0即可
+v: 修改下面元件的第v个参数
+n:具有相同n的元件参数，他们矫正时具有相同的值,默认为0
+min:参数的最小值
+max: 参数的最大值
+first_step：是否使用元件的初值作为梯度下降的初始值，0 不使用， 1使用
+束诊命令
+DIAG_ENERGY N w dw
+N: 无意义 填写0即可
+W：目标能量（MeV）
+Dw：无意义 填写0即可
+DIAG_SIZE 0 sx sy 0
+Sx: x方向包络（mm）
+Sy：y方向包络（mm）
+DIAG_position 0 x y 0
+x: x方向中心位置（mm）
+y：y方向中心位置（mm）
+例：
+start
+err_step 1 1
+err_cav_stat_on 1 0 0 0 0 0 0
+err_cav_ncpl_stat 5 1 2 0 0 0 0 0 0
+drift 0.0835 0.02 0
+field 0.1 0.02 0 3 0 0 1 0.677098 sol_1
+adjust 1 7 5 0 3 0
+!修改第七个值，也就是ke
+field      0.21  0.02     0   1   162.5e6   -3  3    -1.36   hwr010b
+drift 0.0835 0.02 0
+DIAG_ENERGY 1 5 0
+drift 0.000001 0.02 0
+end
+叠加场
+Superpose
+Superposeend
+Superposeout
+* 1、第一条Superpose命令后面的参数必须全为0，以提供其他Superpose命令的零点。
+2、Superpose（Superposeout）后面的6个参数给出该命令之后一个元件的入口平面（转换平面）相对于第一条Superpose命令后元件的入口平面的位置和角度。
+3、在一段叠加场结束后需要添加Superposeend或者Superposeout命令来结束叠加场，并且只有以Superposeout命令结束时，Superpose命令后以外的参数才会生效，即以Superposeend命令结束时，元件只会在纵向位置上叠加。
+4、一组叠加场中只能存在小于等于一个射频腔。
+5、在一段叠加场中，每个元件前要有且只有一个Superpose命令。
+例：
+start
+drift      0.085  0.02   0
+superpose  0 0 0 0 0 0
+field      0.35   0.02     0   3   0   0   1    0.531  sol_yuan
+superpose  0.345 0 0 0 0 0 0
+field      0.21   0.02     0   1   162.5e6   -33   1.36    -1.36   hwr010
+superposeend
+end
+lattice起点
+lattice n1 n2
+n1：每个基础lattice的元件数量
+n2: 写为1.
+Lattice终点
+lattice_end
+Lattice结束.
+折叠命令
+Sction module{
+}
+使用这个命令，在页面上可以让{}中间的内容进行折叠复制。
+例：
+sction mebt
+{
+drift 0.05089 0.025 0
+drift 0.1254 0.025 0
+}
+outputplane
+outputplane V1在 outputplane 关键字所在位置的下游（正值）或上游（负值）输出束流分布。V1 double；输出平面的相对位置（米）
+automaticoutput v1 v2 v3按等间距批量插入输出平面。V1 double；第一个输出平面的相对位置（米）V2 double；输出平面间距（米）V3 double；从第一个到最后一个输出平面的最大间距（米）
+输入文件的说明
+该程序的输入主要包括三个部分：input.txt、beam.txt、lattice.txt
+input.txt 用于设置程序功能及算法信息，beam.txt 用于输入束团信息，lattice.txt 用于输入加速器元件信息。输入文件中!开头的行代表注释，注释内容不生效。关键字不区分大小写。
+input.txt
+input.txt中大部分关键字在程序中存在默认参数，不设置也可以正常模拟。
+关键词
+参数
+说明
+multiThreading
+V1
+是否启用多线程并行计算0：关闭，1：启用
+stepPerCycle
+V1， V2
+推进步长,
+V1 只有主束
+V2 次级粒子传输
+Δt = 1/T × 1/V1
+Δt = V2/Vb
+scanPhase
+V1
+控制相位扫描方式0：不扫描，1：扫描相位，2：从文件读取相位
+spaceCharge
+V1
+是否计算空间电荷效应0：不计算，1：计算
+scMethod
+FFT 或 PICNIC
+numOfGrid
+V1,V2,V3
+方向网格数
+Nx, Ny, Nz
+meshRms
+V1,V2,V3
+三个方向上的网格边长，按对应方向束团的 RMS 尺寸乘以 2 进行缩放
+dumpPeriodicity
+V1
+每 V1 步输出一次（0 表示不输出）
+longLimits
+V1,V2,V3
+纵向束流损失边界条件V1 int；0：禁用，1：启用V2 double；相位边界（度）
+3 double；能量边界（MeV
+boundary
+V1
+是否单独设置束流损失边界
+0：否，1：是
+meshRms三个方向上的网格边长，按对应方向束团的 RMS 尺寸乘以 2 进行缩放V1 double；Lx = V1 × x 方向 RMS 尺寸 × 2V2 double；Ly = V2 × y 方向 RMS 尺寸 × 2V3 double；Lz = V3 × z 方向 RMS 尺寸 × 2
+  当启用二次粒子输运功能时，应在 beam.txt 中设置加速器同步粒子参数。
+  当启用纵向周期性边界条件时，空间电荷效应求解算法会自动切换为 FFT，并且纵向网格长度会实时设置为束团的周期长度，需要设置更多的纵向网格点数（Numofgrid）。
+  当单独设置边界时，lattice.txt 中的半径设置将不再生效，束流损失将根据 boundary.txt 中设置的边界来判断。
+beam.txt
+关键词
+参数
+说明
+readparticledistribution
+V1
+导入已有束团分布的文件
+numofcharge
+V1
+束团总电荷量（单位：e）
+particlerestmass
+V1
+粒子静止质量（单位：MeV）
+particlenumber
+V1
+束团中宏粒子的总数。当设置为 1 时，将进行单粒子输运
+kindofparticle
+V1
+粒子种类
+distribution
+V1, V2
+束团分布类型，
+V1 string；横向束团分布（KV 或 GS 或 PB 或 WB）
+V2 string；纵向束团分布（KV 或 GS 或 PB 或 WB）
+twissx
+V1,V2,V3
+V1 double；alpha
+V2 double；beta（mm/π·mrad）
+V3 double；emit（π·mm·mrad）
+twissy
+V1,V2,V3
+同上
+twissZ
+V1,V2,V3
+frequency
+V1
+束流频率（单位：Hz）
+current
+V1
+束流电流（单位：mA）
+kindofparticle
+V1
+粒子种类
+beamtype
+V1
+设置为 dc 时生成直流束流（DC beam）
+randomseed
+V1
+生成束流时所用的随机数
+initpos
+V1,V2,V3
+Xyz三个方向的位置偏移，单位mm
+initmom
+V1,V2,V3
+Xyz三个方向的x’,y’,z’，单位mrad
+说明：
+当导入已有束团分布文件时，除“numofcharge”外的所有关键词均不生效。
+Lattice_mulp.txt
+第一个start之后到第一个end之前的内容为有效内容，程序会模拟第一个start之后到第一个end之前的元件。
+scanData.txt
+用于记录AVAS扫相结果或手动设置射频场相位，文件的每一行分别为一个射频腔的 入口相位（角度）、入口时间（s）。射频场在lattice中的排列顺序即为数据的排列顺序。
+SeParticle.txt
+当在input.txt 中将 secondarybeam 设置为 1 时，可以在 ReadParticleDistribution 之后输入此文件。SeParticle.txt 文件用于记录二次粒子束，每一行代表一个粒子。
+由于二次粒子束不包含同步粒子信息，为了正确模拟某些元件的作用，即使已经提供了初始束团分布，仍然需要在 beam.txt 文件中设置同步粒子信息。
+x
+y
+z
+vx
+vy
+vz
+charge
+mass
+weight
+time
+Kind
+m
+m
+m
+m/s
+m/s
+m/s
+e
+MeV
+double
+s
+string
+Boundary.txt
+当在 input.txt 中将 boundary 设置为 1 时，Boundary.txt 文件生效。束流损失将根据该文件中设定的边界进行判断，束流损失的粒子信息将输出到 CollisionData.txt 文件中。此时，lattice.txt 中设置的元件半径将被屏蔽。
+文件格式如下：
+type
+material
+Length
+r1
+r2
+RLP
+z0
+x0
+y0
+θz0
+θx0
+θy0
+int
+string
+m
+m
+m
+m
+m
+m
+m
+deg
+deg
+deg
+输出文件
+edst
+.esdt文件为扩展的束团分布文件，可以描述由多种粒子组成的混合束团在指定纵向位置的束团分布信息。使用混合束团时无需额外设置，在beam.txt中的ReadParticleDistribution关键字后跟随.edst格式的初始束团文件时，程序会自行切换到混合束团模拟，此时原来所有会输出.dst格式的束团分布的功能都将输出.edst格式的束团分布
+.edst文件中记录每个粒子的六维坐标及电荷量、静止质量、权重。具体格式为：
+2xCHAR+INT(Np)+DOUBLE(Ib(mA))+DOUBLE(freq(MHz))+CHAR+
+(Np+1)×[9×DOUBLE(x(cm),x'(rad),y(cm),y'(rad),phi(rad),Energie(MeV),Charge(e),mc2(Mev),weight)]+DOUBLE(mc2(MeV))
+其中最后一个粒子为束团同步粒子，weight的含义为当前宏粒子代表多少个真实粒子。
+CHAR的长度为1字节，INT的长度为4字节，DOUBLE的长度为8字节。
+Np是粒子的数量，Ib是流强（这里不生效），freq是束流频率，mc2是粒子的静止质量。
+inData.dst
+记录了模拟中使用的初始束团分布。
+outData_x.dst
+输出了指定平面上的束团分布，x为输出平面的位置，为二进制文件。
+DataSet.txt
+记录了模拟过程中的束团参数（s坐标系下），每一行为一组束团参数，每一行的格式为：
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+Index
+40
+t
+*sign==0：这组束团数据处于直线段。sign==1：这组束团数据处于曲线段。sign==2:这组数据无效，处理时跳过这组数据。当存在束流轨迹包含曲线时从DataSet.txt中读取有效数据的代码如下：
+中心x = 同步粒子x + 质心相对于同步粒子的偏移 （ 29 +1）
+最大值x = 同步粒子x + 质心相对于同步粒子的偏移  + 最大值 （ 29 + 1 + 22）
+Phase.txt
+每两行输出1个射频腔入口及出口处的信息。具体格式如下：
+射频腔序号 射频腔入口时间(s)  射频腔入口位置(m)  同步粒子在射频腔入口处能量(MeV)
+射频腔序号 射频腔出口时间(s)  射频腔出口位置(m)  同步粒子在射频腔出口处能量(MeV)
+synParticle.txt
+记录了同步粒子在传输中的相关信息。具体格式如下：
+*T：现实时间。dir==0：同步粒子沿z方向飞行；dir==1:同步粒子向x方向偏转；dir==2:同步粒子向y方向偏转。：偏转角度（rad）。
+DynamicErrorData.txt
+当存在误差时，会生成该文件，这个文件中记录了初始束团和每个元件的具体误差。第一行是初始束团的误差，从第二行开始每一行是一个元件的具体误差。
+Beamset.plt
+.plt是一个二进制文件，该文件存储了束流传输过程中每一步束团的信息，
+Char + Char + dumpPeriodicity(int) + Np(int) + Ib[mA](double) + freq[MHz](double) + mc2[MeV](double)
++ Nx * [Char + tpye(int) + Index(int) + time[s](double) + location[m](double) +
+Np * [x(double) + px(double) +  y(double) + py(double) + z(double) + pz(double) + lossFlag(int)]]（场元件）
+Np * [x(double) + px(double) +  y(double) + py(double) + t(double) + pz(double) + recordFlag(int)]] （矩阵元件）
+说明
+dumpPeriodicity：每推进多少步记录一次
+Np: 粒子总数
+Ib：流强
+Freq：频率
+mc2：能量
+tpye：zcode(1)或 tcode(0)
+index：第几步， 0为初始分布，步数与dassaset.txt的步数为一一对应
+times：tcode为同步粒子运行至该位置时间，zcode为所有粒子的平均时间
+location：tcode为同步粒子位置， zcode所有粒子位置
+p：动量（）
+lossflag: 1(损失) 2（通过输出平面）0（未丢失）
+recordFlag：1（未丢失），0（丢失）
+双束的plt文件与单束的结构不一样
+File format =
+char
++ char
++ dumpPeriod(int)
++ Np(int)
++ Ib[mA](double)
++ Freq[MHz](double)
++ RestMass[MeV/c^2](double)
++ Nx × {
+char
++ type(int)
++ index(int)
++ time[s](double)
++ location[m](double)
++ Np × [
+x(double)
++ px(double)
++ y(double)
++ py(double)
++ z(double) or t(double)
++ pz(double)
++ lossFlag(int)
++ particleIndex(int)
++ charge[e](int)
++ RestMass[MeV/c^2](double)
++ weight(double)
+]
+}
+density
+zg(f) + emit_x(f) + emit_y(f) + emit_z(f) + rms_x(f) + rms_y(f) + rms_z(f) + nownumofp(i)
++ lost(i) + maxlost(i) + minlost(i) + moy( 4* f) + maxb(4*f) + minb(4*f) + maxr(4*f) + minr(4*f)
+tab_x(i * 300) + tab_y(i * 300) + tab_r(i * 300)+ tab_z(i * 300)
+x, y, r, z
+（指束团中的单个粒子）
+Zg:纵向距离
+emit_x（f） + emit_y（f） + emit_z（f）： 发射度
+rms_x(f) + rms_y(f) + rms_z(f)： 包络
+nownumofp(i)：粒子数
+loss（i）： 束损
+maxlost(i)：最大束损 ，
+minlost : 最小束损
+moy( 4* f)： x, y, r, z的平均值
+maxb：最大偏移粒子的最大值
+minb：最小偏移粒子的最小值
+maxr：最大偏移粒子的最小值
+minr：最小偏移粒子的最大值
+tab_x： (i) * 300, 统计粒子，将x_min – x_max分为300个网格， 统计每个网格内的粒子数
+synData.txt
+该文件记录了同步粒子到达每个元件入口时的时间和能量。
+字段说明：
+order name length zstart tin γβ ϕs ϕRF
+0       1     2       3    4  5 6  7   8
+如果设置了 RF 相位或同步相位，将计算对应的同步相位或 RF 相位。
+pchistogram.dat
+当在 input.txt 中将 pchistogram 的 V1 设置为 1 时，会生成 pchistogram.dat 文件。
+该文件记录了将每个方向的最小值到最大值范围划分为 V2 等份，并统计每一份中宏粒子的数量。
+该文件为二进制文件，格式为：char + Index(int) + V2(int) + V2 · tabx(int) + V2 · taby(int) + V2 · tabr(int) + V2 · tabz(int) + xmin(double) + xmax(double) + avex(double) + ymin(double) + ymax(double) + avey(double) + rmin(double) + rmax(double) + aver(double) + zmin(double) + zmax(double) + avez(double)
+SingleParticle.txt
+在 beam.txt 中将关键字 particlenumber 设置为 1 时，将启用单粒子模拟，输出 SingleParticle.txt 文件，并记录该单粒子的轨迹。
+x
+y
+z
+γβx
+γβy
+γβz
+Ek
+time
+m
+m
+m
+MeV
+s
+此时，beam.txt 中与多粒子相关的关键字（如 twissx、twissy、twissz、current 和 distribution）将不再生效。关键词 displacepos 和 displacedpos 会生效，用于设置初始单粒子的位置和动量偏移。
+displaceposV1 double；dx（米）V2 double；dy（米）V3 double；dz（米）
+displacedposV1 double；dpx（%）V2 double；dpy（%）V3 double；dpz（%）
+errors_par.txt
+step_err  误差组数
+ave(ratio_loss)
+ave(emit_x_increase)
+ave(emit_y_increase)
+ave(emit_z_increase)
+ave(x_center(m))
+ave(y_center(m))
+ave(x_'(rad))
+ave(y_'(rad))
+ave(rms_x(m))
+ave(rms_y(m))
+ave(rms_x'(rad))
+ave(rms_y'(rad))
+ave(delat_energy)
+rms(x_center(m))
+rms(y_center(m))
+rms(x_'(rad))
+rms(y_'(rad))
+rms(rms_x(m))
+rms(rms_y(m))
+rms(rms_x'(rad))
+rms(rms_y'(rad))
+rms(delat_energy(MeV))
+errors_par_tot.txt
+step_err 误差组数与次数
+ratio_loss 误差损失率， 损失粒子数/总的粒子数
+emit_x_increase   emit_x(output)/ emit_x(input) - 1
+emit_y_increase   emit_y(output)/ emit_y(input) - 1
+emit_z_increase   emit_z(output)/ emit_z(input) - 1
+x_center(m)
+y_center(m)
+x_'(rad)
+y_'(rad)
+rms_x(m)
+rms_y(m)
+rms_x'(rad)
+rms_y'(rad)
+delat_energy(MeV),
+alpha_xx’,
+beta_xx’,
+alpha_yy’,
+beta_yy’,
+alpha_zz’,
+beta_zz’,
+接受度测量使用方法
+导入束团
+如果存在dst文件，在图1处导入文件，然后点击Import all beam parameters from file按钮，计算束团的参数。
+然后将文件路径删掉，将要测量方向的发射度现就改为较大值进行模拟。如果束团本身就满足要求，发射度较大，可以直接进行模拟，
+如果不存在dst文件，需要手动填写参数。
+模拟的时候，注意input界面的Output step in plt 不要填写0，填0会不记录过程信息，则无法计算接受度，填写1或其他数字。
+计算接受度
+在该页面，选择要计算方向的接受度，点击run按钮，会返回发射度，归一化发射度，计算出该发射度的最小坐标（xx’，yy’，或zz’）。

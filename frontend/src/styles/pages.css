@@ -33,6 +33,7 @@
 .caption { color: var(--fg-soft); font-size: 12px; }
 .state { font-size: 15px; font-weight: 700; }
 .state-running { color: var(--accent); }
+.state-paused { color: var(--warning); }
 .state-ok { color: var(--success); }
 .state-fail { color: var(--danger); }
 .state-idle { color: var(--fg-muted); font-weight: 600; }
@@ -40,6 +41,7 @@
 .stat { display: flex; flex-direction: column; gap: 1px; min-width: 90px; }
 .engine-line { font-size: 12px; color: var(--fg-muted); word-break: break-all; user-select: text; min-height: 18px; }
 .progress.big { height: 6px; border-radius: 3px; }
+.progress.paused .progress-fill { background: var(--warning); }
 .recent-path { color: var(--fg-soft); font-size: 12px; }
 .check-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .check-list span { display: inline-flex; align-items: center; gap: 4px; }
@@ -105,3 +107,63 @@
 .phase-plot { flex: 1 1 auto; position: relative; min-width: 0; min-height: 360px; }
 .twiss-text { width: 340px; flex: none; margin: 0; padding: 10px 12px; overflow: auto; border-left: 1px solid var(--border); font-size: 12px; line-height: 1.55; background: var(--panel-bg); white-space: pre; }
 .tool-panel { padding: 20px 24px; }
+
+/* ---------------------------------------------------------------- welcome (no project) */
+.welcome { max-width: 1040px; margin: 0 auto; padding: 56px 40px 40px; }
+.welcome-hero { display: flex; align-items: center; gap: 20px; margin-bottom: 44px; }
+.welcome-logo { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+.welcome-logo .codicon { font-size: 40px; }
+.welcome-title { font-size: 34px; font-weight: 300; letter-spacing: .5px; margin: 0; color: var(--fg-strong); }
+.welcome-sub { color: var(--fg-muted); font-size: 14px; }
+.welcome-columns { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.2fr); gap: 48px; align-items: start; }
+@media (max-width: 900px) { .welcome-columns { grid-template-columns: 1fr; } }
+.welcome-h { font-size: 13px; font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+.welcome-action { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--button-bg); color: var(--fg); cursor: pointer; }
+.welcome-action:hover { background: var(--button-hover); border-color: var(--accent); }
+.welcome-action > .codicon { font-size: 22px; color: var(--accent); }
+.welcome-action.primary { border-color: var(--accent); }
+.welcome-action-title { display: block; font-size: 14px; font-weight: 600; color: var(--fg-strong); }
+.welcome-action-desc { display: block; font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+.welcome-note { margin-top: 18px; }
+.recent-list { display: flex; flex-direction: column; }
+.recent-row { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 6px 0 10px; border-radius: 6px; cursor: pointer; }
+.recent-row:hover { background: var(--list-hover); }
+.recent-row > .codicon { color: var(--fg-muted); }
+.recent-name { color: var(--accent); font-weight: 500; white-space: nowrap; }
+.recent-row .recent-path { color: var(--fg-soft); font-size: 12px; }
+.recent-remove { visibility: hidden; width: 22px; height: 22px; }
+.recent-row:hover .recent-remove { visibility: visible; }
+
+/* ---------------------------------------------------------------- project overview */
+.page-inner.overview { max-width: 1320px; }
+.ov-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.ov-header .page-title { margin: 0; }
+.ov-icon { width: 44px; height: 44px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; flex: none; }
+.ov-icon .codicon { font-size: 24px; }
+.ov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; align-items: start; }
+.ov-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px 16px; background: var(--editor-bg); min-width: 0; }
+.ov-card.ov-wide { grid-column: 1 / -1; }
+.ov-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; min-height: 26px; }
+.ov-card-header h3 { font-size: 14px; }
+.ov-card-header > .codicon { color: var(--fg-muted); }
+.ov-card-actions { margin-left: auto; display: flex; gap: 14px; font-size: 12px; }
+.ov-kv { gap: 6px 18px; }
+.ov-stats { display: flex; gap: 36px; flex-wrap: wrap; margin: 4px 0; }
+.ov-note { display: flex; gap: 8px; align-items: flex-start; padding: 7px 10px; border-radius: 6px; background: var(--panel-bg); border: 1px solid var(--border); user-select: text; }
+.ov-note > .codicon { font-size: 15px; margin-top: 1px; color: var(--accent); }
+.ov-note.warning > .codicon { color: var(--warning); }
+.ov-note.danger { border-color: var(--danger); }
+.ov-note.danger > .codicon { color: var(--danger); }
+.ov-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ov-chip { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--badge-bg); color: var(--fg-muted); }
+.ov-chip b { color: var(--fg-strong); font-weight: 600; margin-left: 2px; }
+.ov-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 8px; }
+.ov-file { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--fg); cursor: pointer; text-align: left; min-width: 0; }
+.ov-file:hover { background: var(--list-hover); }
+.ov-file.missing { color: var(--fg-soft); }
+.ov-file .codicon { font-size: 14px; }
+.status-project { max-width: 260px; }
+.menubar-title.clickable { cursor: pointer; border-radius: 4px; padding: 2px 8px; }
+.menubar-title.clickable:hover { background: var(--list-hover); color: var(--fg-strong); }
+
+.results-source-note { font-size: 12px; margin: -4px 0 2px; }

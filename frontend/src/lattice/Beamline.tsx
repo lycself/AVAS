@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
+import { cssColor, drawGlyph, elementShape, isZeroLength, niceStep, polarity, type Shape } from "./glyphs";
 import { elementColorVar, fmt6, worstIssue, type LatticeDoc, type Schema } from "./types";
 
 type Item = {
@@ -12,6 +13,8 @@ type Item = {
   color: string;
   lane: number;
   kind: "marker" | "line" | "box";
+  shape: Shape;
+  pol: number;
   label: string;
   title: string;
   issue: "error" | "warning" | null;
@@ -19,18 +22,6 @@ type Item = {
 
 const LANES = [1.0, 0.72, 0.48, 0.3];
 const HEIGHT = 104;
-
-function niceStep(raw: number) {
-  if (raw <= 0) return 1;
-  const exp = Math.floor(Math.log10(raw));
-  const base = raw / 10 ** exp;
-  for (const n of [1, 2, 5, 10]) if (base <= n) return n * 10 ** exp;
-  return 10 ** (exp + 1);
-}
-
-function cssColor(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
 
 export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc | null; schema: Schema; selected: number | null; onSelect: (line: number) => void }) {
   const t = useT();
@@ -62,13 +53,16 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
         const z1 = s.zEnd ?? z0;
         const label = s.name || (s.key === "field" ? s.params[8] : "") || s.keyword;
         const title = titles.get(s.key);
+        const shape = elementShape(s);
         return {
           line: s.line,
           z0,
           z1,
           color: elementColorVar(s),
           lane,
-          kind: z1 - z0 <= 0 ? "marker" : s.key === "drift" ? "line" : "box",
+          kind: z1 - z0 <= 0 || isZeroLength(shape) ? "marker" : s.key === "drift" ? "line" : "box",
+          shape,
+          pol: polarity(s),
           label,
           title: `${label} · ${title ? pick(title) : s.keyword}\nz = ${fmt6(z0)} … ${fmt6(z1)} m`,
           issue: worstIssue(s),
@@ -153,31 +147,8 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
       if (it.z1 < view[0] || it.z0 > view[1]) continue;
       const r = itemRect(it);
       const color = cssColor(it.color);
-      if (it.kind === "line") {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(r.x, cy);
-        ctx.lineTo(r.x + r.w, cy);
-        ctx.stroke();
-      } else if (it.kind === "marker") {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(r.x + 3, rect.top + 4);
-        ctx.lineTo(r.x + 3, rect.top + rect.height - 4);
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = color;
-        ctx.globalAlpha = it.lane ? 0.59 : 0.43;
-        roundRect(ctx, r.x, r.y, r.w, r.h, 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        roundRect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, 2);
-        ctx.stroke();
-      }
+      if (it.kind === "marker") drawGlyph(ctx, it.shape, it.pol, r.x, r.x + r.w, cy, (rect.height / 2) * 0.8, color);
+      else drawGlyph(ctx, it.shape, it.pol, r.x, r.x + r.w, cy, (rect.height / 2) * LANES[it.lane], color, { alpha: it.lane ? 0.59 : 0.43 });
       if (it.issue) {
         ctx.fillStyle = cssColor(it.issue === "error" ? "--danger" : "--warning");
         ctx.beginPath();
@@ -290,15 +261,4 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
       {!items.length && <div className="beamline-empty">{t("No active elements between start and end")}</div>}
     </div>
   );
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
 }

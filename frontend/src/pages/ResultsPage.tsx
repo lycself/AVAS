@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { call, on } from "../bridge";
 import { reportError, toast } from "../components/overlays";
 import { Button, cx, Empty, Icon, IconButton, Radio, Select, Spinner, Tabs, TextInput } from "../components/ui";
+import { runStatusLabel } from "../format";
 import { useT } from "../i18n";
 import { AcceptanceFooter, PlotTab } from "../results/PlotTab";
 import { PhaseViewer } from "../results/PhaseViewer";
@@ -448,16 +449,49 @@ function PltToDstTool({ ov }: { ov: Overview }) {
   );
 }
 
+type ResultSource = {
+  kind: "project" | "segment";
+  label: string;
+  outputDir: string;
+  status?: string | null;
+  time?: string | null;
+  zStart?: number;
+  zEnd?: number;
+  entry?: string | null;
+};
+
+const ENTRY_LABEL: Record<string, string> = {
+  beam: "beam.txt",
+  dst: "particle file of the full run",
+  upstream: "upstream simulated first",
+  twiss: "Twiss beam (approximate)",
+  segment: "exit beam of an earlier segment run",
+};
+
+const ENTRY_SHORT: Record<string, string> = {
+  beam: "beam.txt",
+  dst: "particle file",
+  segment: "from previous segment",
+  upstream: "with upstream",
+  twiss: "Twiss beam",
+};
+
+function samePath(a?: string, b?: string) {
+  return !!a && !!b && a.replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
+}
+
 export default function ResultsPage() {
   const tt = useT();
   const project = useApp((s) => s.project);
   const lastFinished = useApp((s) => s.lastFinished);
-  const [outputDir, setOutputDir] = useState<string | undefined>(undefined);
+  const request = useApp((s) => s.resultsRequest);
+  const [outputDir, setOutputDir] = useState<string | undefined>(request?.outputDir);
   const [ov, setOv] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [active, setActive] = useState<string>("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [sources, setSources] = useState<ResultSource[]>([]);
 
   const loadOverview = useCallback(async () => {
     try {
@@ -468,23 +502,76 @@ export default function ResultsPage() {
     }
   }, [outputDir]);
 
+  const loadSources = useCallback(async () => {
+    try {
+      setSources(await call<ResultSource[]>("results.sources"));
+    } catch {
+      setSources([]);
+    }
+  }, []);
+
+  const lastProject = useRef(project.path);
   useEffect(() => {
+    if (lastProject.current === project.path) return;
+    lastProject.current = project.path;
     setOutputDir(undefined);
     setTabs([]);
   }, [project.path]);
 
   useEffect(() => {
-    if (project.open) loadOverview();
-  }, [project.open, project.path, loadOverview]);
+    if (project.open) {
+      loadOverview();
+      loadSources();
+    }
+  }, [project.open, project.path, loadOverview, loadSources]);
+
+  // "Show results" of a run: switch to its folder
+  const handled = useRef<number | null>(null);
+  useEffect(() => {
+    if (!request || handled.current === request.nonce) return;
+    handled.current = request.nonce;
+    if (!samePath(request.outputDir, outputDir) && (request.outputDir || outputDir)) {
+      setOutputDir(request.outputDir);
+      setTabs([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
 
   // new results after a successful run
   useEffect(() => {
     if (lastFinished?.ok) {
       loadOverview();
+      loadSources();
       setRefreshKey((k) => k + 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastFinished]);
+
+  const shownDir = ov?.outputDir ?? outputDir ?? project.outputDir;
+  const current = sources.find((s) => (outputDir ? samePath(s.outputDir, outputDir) : s.kind === "project"));
+  const sourceOptions = sources.map((s) => ({
+    value: s.outputDir,
+    label:
+      s.kind === "project"
+        ? `${tt("Full lattice")} (OutputFile)`
+        : [
+            tt("Segment {label}", { label: s.label }),
+            `z ${s.zStart ?? "?"}–${s.zEnd ?? "?"} m`,
+            s.entry ? tt(ENTRY_SHORT[s.entry] ?? s.entry) : null,
+            s.time ?? "",
+            s.status && s.status !== "finished" ? runStatusLabel(s.status) : null,
+          ]
+            .filter(Boolean)
+            .join("  ·  "),
+  }));
+  if (outputDir && !current) sourceOptions.push({ value: outputDir, label: tt("Other folder") });
+  const pickSource = (dir: string) => {
+    const src = sources.find((s) => samePath(s.outputDir, dir));
+    const next = src?.kind === "project" ? undefined : dir;
+    if (samePath(next, outputDir) || (!next && !outputDir)) return;
+    setOutputDir(next);
+    setTabs([]);
+  };
 
   if (!project.open) return <NoProject />;
 
@@ -520,13 +607,24 @@ export default function ResultsPage() {
         hint={tt("Plots are drawn from the results folder (OutputFile/ of the project by default). Drag to zoom, double-click to reset; 'Save image' writes a publication-quality figure.")}
       />
       <div className="row" style={{ gap: 8 }}>
-        <span className="muted">{tt("Results folder")}</span>
-        <span className="selectable ellipsis" style={{ maxWidth: 640 }} data-tip={ov?.outputDir}>
-          {ov?.outputDir ?? project.outputDir}
-        </span>
+        <span className="muted">{tt("Results")}</span>
+        {sourceOptions.length > 0 ? (
+          <Select
+            value={outputDir ?? sources.find((s) => s.kind === "project")?.outputDir ?? ""}
+            options={sourceOptions}
+            onChange={pickSource}
+            style={{ minWidth: 260, maxWidth: 520 }}
+            tip={shownDir}
+          />
+        ) : (
+          <span className="selectable ellipsis" style={{ maxWidth: 640 }} data-tip={shownDir}>
+            {shownDir}
+          </span>
+        )}
         <Button
           small
           icon="folder-opened"
+          tip={tt("Open another results folder")}
           onClick={async () => {
             const p = await call<string | null>("dialog.openFolder", { directory: ov?.outputDir ?? "" });
             if (p) {
@@ -537,19 +635,30 @@ export default function ResultsPage() {
         >
           {tt("Choose...")}
         </Button>
-        {outputDir && (
-          <Button small variant="ghost" onClick={() => setOutputDir(undefined)}>
-            {tt("Back to OutputFile")}
-          </Button>
-        )}
         <div className="grow" />
-        <Button small variant="ghost" icon="refresh" onClick={refreshAll}>
+        <Button
+          small
+          variant="ghost"
+          icon="refresh"
+          onClick={() => {
+            refreshAll();
+            loadSources();
+          }}
+        >
           {tt("Refresh all")}
         </Button>
-        <Button small variant="ghost" icon="folder" onClick={() => call("shell.open", { path: ov?.outputDir ?? project.outputDir }).catch(reportError)}>
+        <Button small variant="ghost" icon="folder" onClick={() => call("shell.open", { path: shownDir }).catch(reportError)}>
           {tt("Open folder")}
         </Button>
       </div>
+      {current?.kind === "segment" && (
+        <div className="muted results-source-note">
+          {tt("Segment run: z starts at 0 at the segment entry (z = {z} m of the full lattice). Entry beam: {entry}.", {
+            z: current.zStart ?? "?",
+            entry: tt(ENTRY_LABEL[current.entry ?? ""] ?? current.entry ?? "–"),
+          })}
+        </div>
+      )}
       <div className="results-layout">
         <div className="results-tree">
           {TREE.map((g) => (

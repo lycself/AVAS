@@ -359,7 +359,9 @@ _BEAM = [
         P("xp", "x'", "x'", "mrad"), P("yp", "y'", "y'", "mrad"), P("zp", "z'", "z'", "mrad")]),
     Keyword("displacepos", ("Single-particle offset", "单粒子位置偏移"), "beam", [
         P("dx", "dx", "dx", "m"), P("dy", "dy", "dy", "m"), P("dz", "dz", "dz", "m")],
-        ("Single-particle mode (particlenumber 1).", "单粒子模拟时生效。")),
+        ("Single-particle mode (particlenumber 1).  The manual gives metres, but the engine was found to "
+         "read these values in millimetres (checked 2026-09-17).",
+         "单粒子模拟时生效。手册写单位为米，但经核对引擎实际按毫米读取（2026-09-17）。")),
     Keyword("displacedpos", ("Single-particle momentum offset", "单粒子动量偏移"), "beam", [
         P("dpx", "dpx", "dpx", "%"), P("dpy", "dpy", "dpy", "%"), P("dpz", "dpz", "dpz", "%")],
         ("Single-particle mode (particlenumber 1).", "单粒子模拟时生效。")),

@@ -105,7 +105,8 @@ textarea.input { height: auto; padding: 6px 8px; resize: vertical; }
 .check.disabled, .radio.disabled { opacity: .5; cursor: default; }
 
 .segmented { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 5px; overflow: hidden; }
-.segmented button { border: 0; background: transparent; height: 24px; padding: 0 10px; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; color: var(--fg-muted); }
+.segmented button { border: 0; background: transparent; height: 24px; padding: 0 10px; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; color: var(--fg-muted); white-space: nowrap; }
+.segmented { flex: none; }
 .segmented button + button { border-left: 1px solid var(--border-strong); }
 .segmented button:hover { background: var(--list-hover); }
 .segmented button.active { background: var(--accent-soft); color: var(--fg-strong); }

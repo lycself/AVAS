@@ -10,6 +10,9 @@ import { useDirty } from "./store/pages";
 import "./styles/shell.css";
 import "./styles/pages.css";
 import "./styles/lattice.css";
+import "./styles/assistant.css";
+import { initAssistant } from "./assistant/store";
+import { initFrontRequests } from "./assistant/front";
 
 // For automated UI checks (tests drive the window through evaluate_js).
 (window as any).__avasDebug = { useApp, useDirty, setPage, setTheme, setLanguage, runSimulation, saveAll };
@@ -25,7 +28,10 @@ export function App() {
       window.addEventListener("pywebviewready", () => window.clearTimeout(timer), { once: true });
     }
     initLog();
-    initApp().catch((e) => setError(String(e?.message ?? e)));
+    initFrontRequests();
+    initApp()
+      .then(() => initAssistant())
+      .catch((e) => setError(String(e?.message ?? e)));
   }, []);
   // suppress the browser's own context menu except in text fields
   useEffect(() => {

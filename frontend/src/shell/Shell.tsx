@@ -5,14 +5,19 @@ import {
   isTyping,
   newProject,
   openProject,
+  pauseSimulation,
+  projectMenuItems,
   quit,
+  resumeSimulation,
+  revealProject,
+  runPauseResume,
   runSimulation,
   saveAll,
   showAbout,
   stopSimulation,
   blockedByDialog,
 } from "../actions";
-import { closeMenu, openMenuBelow, type MenuItem } from "../components/overlays";
+import { closeMenu, openMenu, openMenuBelow, type MenuItem } from "../components/overlays";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { cx, Icon, IconButton, Spinner } from "../components/ui";
 import { LANGUAGES, useT, type Language } from "../i18n";
@@ -35,6 +40,8 @@ import {
 } from "../store/app";
 import { useDirty } from "../store/pages";
 import { LogPanel, useLog } from "./LogPanel";
+import { setAssistantOpen, setAssistantWidth, useAssistant } from "../assistant/store";
+const AssistantPanel = lazy(() => import("../assistant/AssistantPanel").then((m) => ({ default: m.AssistantPanel })));
 import { fmtSeconds } from "../format";
 import { useLang } from "../i18n";
 
@@ -70,6 +77,7 @@ function MenuBar() {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const open = app.project.open;
   const running = app.run.running;
+  const paused = running && !!app.run.paused;
 
   const menus: { label: string; items: () => MenuItem[] }[] = [
     {
@@ -84,6 +92,9 @@ function MenuBar() {
         },
         { label: t("Close project"), disabled: !open, onClick: closeProject },
         { type: "separator" },
+        { label: t("Project overview"), icon: "home", disabled: !open, onClick: () => setPage("project") },
+        { label: t("Show in Explorer"), icon: "folder", disabled: !open, onClick: revealProject },
+        { type: "separator" },
         { label: t("Save"), shortcut: "Ctrl+S", icon: "save", disabled: !open, onClick: () => saveAll() },
         { type: "separator" },
         { label: t("Exit"), shortcut: "Ctrl+Q", onClick: quit },
@@ -92,7 +103,11 @@ function MenuBar() {
     {
       label: t("Run"),
       items: () => [
-        { label: t("Run simulation"), shortcut: "F5", icon: "play", disabled: !open || running, onClick: runSimulation },
+        !running
+          ? { label: t("Run simulation"), shortcut: "F5", icon: "play", disabled: !open, onClick: runSimulation }
+          : paused
+            ? { label: t("Resume"), shortcut: "F5", icon: "debug-continue", onClick: resumeSimulation }
+            : { label: t("Pause"), shortcut: "F5", icon: "debug-pause", onClick: pauseSimulation },
         { label: t("Stop"), shortcut: "Shift+F5", icon: "debug-stop", disabled: !running, onClick: stopSimulation },
       ],
     },
@@ -103,6 +118,7 @@ function MenuBar() {
         { type: "separator" as const },
         { label: t("Collapse sidebar"), shortcut: "Ctrl+B", checked: app.sidebarCollapsed, onClick: () => setSidebarCollapsed(!app.sidebarCollapsed) },
         { label: t("Show log panel"), shortcut: "Ctrl+J", checked: app.logVisible, onClick: () => setLogVisible(!app.logVisible) },
+        { label: t("AI assistant"), shortcut: "Ctrl+Shift+A", checked: useAssistant.getState().open, onClick: () => setAssistantOpen(!useAssistant.getState().open) },
         { type: "separator" as const },
         {
           label: t("Theme"),
@@ -173,13 +189,28 @@ function MenuBar() {
         </button>
       ))}
       <div className="grow" />
-      <div className="menubar-title ellipsis">{app.project.open ? `${app.project.name} — AVAS` : "AVAS"}</div>
+      <div
+        className={cx("menubar-title ellipsis", "clickable")}
+        data-tip={app.project.open ? app.project.path : t("Open or create a project")}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          openMenuBelow(e.currentTarget as HTMLElement, projectMenuItems());
+        }}
+      >
+        {app.project.open ? `${app.project.name} — AVAS` : "AVAS"}
+      </div>
       <div className="grow" />
       <div className="toolbar-actions">
         <IconButton icon="folder-opened" tip={`${t("Open project...")}  (Ctrl+O)`} onClick={() => openProject()} />
         <IconButton icon="save" tip={`${t("Save")}  (Ctrl+S)`} disabled={!open} onClick={() => saveAll()} />
         <div className="divider-v" />
-        <IconButton icon="play" className="run-btn" tip={`${t("Run simulation")}  (F5)`} disabled={!open || running} onClick={runSimulation} />
+        <IconButton
+          icon={!running ? "play" : paused ? "debug-continue" : "debug-pause"}
+          className={cx("run-btn", running && !paused && "pause")}
+          tip={`${!running ? t("Run simulation") : paused ? t("Resume") : t("Pause")}  (F5)`}
+          disabled={!open && !running}
+          onClick={runPauseResume}
+        />
         <IconButton icon="debug-stop" className="stop-btn" tip={`${t("Stop")}  (Shift+F5)`} disabled={!running} onClick={stopSimulation} />
         <div className="divider-v" />
         <IconButton
@@ -188,8 +219,22 @@ function MenuBar() {
           onClick={() => setSidebarCollapsed(!app.sidebarCollapsed)}
         />
         <IconButton icon={app.logVisible ? "layout-panel" : "layout-panel-off"} tip={t("Toggle log panel (Ctrl+J)")} onClick={() => setLogVisible(!app.logVisible)} />
+        <div className="divider-v" />
+        <AssistantToggle />
       </div>
     </div>
+  );
+}
+
+function AssistantToggle() {
+  const t = useT();
+  const open = useAssistant((s) => s.open);
+  const busy = useAssistant((s) => !!s.current?.busy);
+  return (
+    <button className={cx("assistant-toggle", open && "active")} data-tip={t("AI assistant (Ctrl+Shift+A)")} onClick={() => setAssistantOpen(!open)}>
+      {busy ? <Spinner size={14} /> : <Icon name="sparkle" />}
+      <span>{t("Assistant")}</span>
+    </button>
   );
 }
 
@@ -199,6 +244,7 @@ function Sidebar() {
   const page = useApp((s) => s.page);
   const collapsed = useApp((s) => s.sidebarCollapsed);
   const running = useApp((s) => s.run.running);
+  const paused = useApp((s) => !!s.run.paused);
   const version = useApp((s) => s.version);
   const projectOpen = useApp((s) => s.project.open);
   const dirty = useDirty((s) => s.dirty);
@@ -220,7 +266,7 @@ function Sidebar() {
               else setPage(p);
             }}
           >
-            {busy ? <Spinner size={20} /> : <Icon name={meta.icon} />}
+            {busy && paused ? <Icon name="debug-pause" className="nav-paused" /> : busy ? <Spinner size={20} /> : <Icon name={meta.icon} />}
             {!collapsed && <span className="nav-label">{t(meta.label)}</span>}
             {dirtyByPage[p] && <span className="nav-dot" data-tip={t("Unsaved changes")} />}
           </button>
@@ -261,15 +307,31 @@ function StatusBar() {
   let message = status?.text ?? "";
   if (run.running) {
     const parts = [`${(run.percent ?? 0).toFixed(0)} %`];
+    if (run.stages && run.stages > 1) parts.push(`${t("stage")} ${run.stage}/${run.stages}`);
     if (run.step != null && run.all_step) parts.push(`${run.step}/${run.all_step}`);
-    if (run.eta_s != null) parts.push(t("{time} left", { time: fmtSeconds(run.eta_s) }));
-    message = [t("Simulation running"), ...parts].join("  ·  ");
+    if (run.eta_s != null && !run.paused) parts.push(t("{time} left", { time: fmtSeconds(run.eta_s) }));
+    const what =
+      run.source === "assistant"
+        ? t(run.paused ? "Assistant {task} paused" : "Assistant {task} running", { task: t(run.label ?? "") })
+        : run.source === "segment"
+          ? t(run.paused ? "Segment {label} paused" : "Segment {label} running", { label: run.label ?? "" })
+          : t(run.paused ? "Simulation paused" : "Simulation running");
+    message = [what, ...parts].join("  ·  ");
   }
   return (
     <div className={cx("statusbar", run.running && "running")}>
-      <button className="status-item" data-tip={project.open ? project.path : t("Open or create a project")} onClick={() => setPage("project")}>
+      <button
+        className="status-item status-project"
+        data-tip={project.open ? `${project.path}
+${t("Click to switch project")}` : t("Open or create a project")}
+        onClick={(e) => {
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          openMenu(projectMenuItems(), r.left, r.top - 4, { anchorBottom: true });
+        }}
+      >
         <Icon name="root-folder" />
-        <span>{project.open ? project.name : t("No project")}</span>
+        <span className="ellipsis">{project.open ? project.name : t("No project")}</span>
+        <Icon name="chevron-up" style={{ fontSize: 12 }} />
       </button>
       <button className="status-item" data-tip={t("Errors and warnings in the log (click to show the log)")} onClick={() => setLogVisible(true)}>
         <Icon name="error" />
@@ -281,8 +343,8 @@ function StatusBar() {
         {message}
       </div>
       {run.running && (
-        <button className="status-item" onClick={() => setPage("run")}>
-          <Spinner size={14} />
+        <button className="status-item" data-tip={t("Show the Run page")} onClick={() => setPage("run")}>
+          {run.paused ? <Icon name="debug-pause" /> : <Spinner size={14} />}
         </button>
       )}
       <button className="status-item" data-tip={resolved === "dark" ? t("Switch to light theme") : t("Switch to dark theme")} onClick={toggleTheme}>
@@ -302,13 +364,14 @@ function useShortcuts() {
       const key = e.key.toLowerCase();
       let handled = true;
       if (e.key === "F5" && e.shiftKey) stopSimulation();
-      else if (e.key === "F5") runSimulation();
+      else if (e.key === "F5") runPauseResume();
       else if (ctrl && !e.shiftKey && key === "s") saveAll();
       else if (ctrl && key === "o") openProject();
       else if (ctrl && key === "n") newProject();
       else if (ctrl && key === "q") quit();
       else if (ctrl && key === "b") setSidebarCollapsed(!app.sidebarCollapsed);
       else if (ctrl && key === "j") setLogVisible(!app.logVisible);
+      else if (ctrl && e.shiftKey && key === "a") setAssistantOpen(!useAssistant.getState().open);
       else if (ctrl && (key === "=" || key === "+")) stepScale(1);
       else if (ctrl && key === "-") stepScale(-1);
       else if (ctrl && key === "0") setScale(100);
@@ -339,6 +402,9 @@ export function Shell() {
   const [visited, setVisited] = useState<Set<PageId>>(() => new Set([page]));
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   const [liveHeight, setLiveHeight] = useState<number | null>(null);
+  const assistantOpen = useAssistant((s) => s.open);
+  const assistantWidth = useAssistant((s) => s.width);
+  const [liveAssistantW, setLiveAssistantW] = useState<number | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -393,6 +459,21 @@ export function Shell() {
 
   const panelStyle = logMax ? { flex: "1 1 auto" } : { height: liveHeight ?? logHeight };
 
+  const startAssistantDrag = (e: React.MouseEvent) => {
+    const start = assistantWidth;
+    let result = start;
+    startDrag(
+      (dx) => {
+        result = Math.max(320, Math.min(Math.round(window.innerWidth * 0.6), start - dx));
+        setLiveAssistantW(result);
+      },
+      () => {
+        setLiveAssistantW(null);
+        setAssistantWidth(result);
+      },
+    )(e);
+  };
+
   return (
     <div className="shell">
       <MenuBar />
@@ -424,6 +505,18 @@ export function Shell() {
             </>
           )}
         </div>
+        {assistantOpen && (
+          <>
+            <div className="sash sash-v" onMouseDown={startAssistantDrag} />
+            <div className="assistant-wrap" style={{ width: liveAssistantW ?? assistantWidth }}>
+              <ErrorBoundary name="assistant">
+                <Suspense fallback={<div className="page-loading"><Spinner size={20} /></div>}>
+                  <AssistantPanel />
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          </>
+        )}
       </div>
       <StatusBar />
     </div>
