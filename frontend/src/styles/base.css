@@ -185,7 +185,8 @@ fieldset.lockable:disabled .select { opacity: .55; }
 
 /* ---------------------------------------------------------------- tooltip / menu */
 .tooltip {
-  position: fixed; z-index: 1000; pointer-events: none; max-width: 420px; white-space: pre-wrap;
+  /* width: max-content keeps a tip near the right edge from being squeezed into a narrow column before it is shifted back */
+  position: fixed; z-index: 1000; pointer-events: none; width: max-content; max-width: 420px; white-space: pre-wrap;
   background: var(--tooltip-bg); border: 1px solid var(--tooltip-border); color: var(--fg); padding: 4px 8px;
   border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.16); font-size: 12px;
 }

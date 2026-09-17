@@ -107,6 +107,8 @@ packaging/        PyInstaller + Inno Setup 打包
   分段运行每个阶段开始时才复制 InputFile。实现分三层，新增写输入文件的入口时三层都要照顾到：
   后端写入接口先调用 `avas/gui/locks.py` 的 `require_unlocked()`；前端用 `useInputsLocked()` 让页面只读并显示 `RunLockBanner`；
   AI 修改提案在提出和应用时都检查（`assistant.py` 的 `_refuse_if_locked`），直接拒绝而不是挂起等待。AI 自己的沙盒试算不加锁。
+  结构页的文件下拉框只是"打开"（查看 / 编辑），任何时候都可用，运行中只读；把文件设为运行使用（`lattice.setSource`，写 ini.ini）
+  是单独的「设为运行结构」按钮，只有它受运行锁约束。不要把"打开哪个文件"和"运行用哪个文件"重新耦合到一个控件上。
 - **实时显示**：`avas/data/dataset_stream.py` 增量读取正在写的 DataSet.txt（比运行开始时间更早的文件是上一次运行的，忽略到被重写为止）；
   `avas/gui/services/live.py` 每秒轮询当前运行（一个 job 或一次 AI 研究，每次内核运行一个 episode），用 `run.live` 事件推送新增行，
   `run.liveSnapshot` 一次取全；前端 `store/live.ts` 保存，`lattice/bunchPlayer.ts` 统一给出束团位置（实时跟随 / 回放），

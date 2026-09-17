@@ -36,9 +36,11 @@ type Props = {
   /** Unsaved changes on the page, and how to save them (for "Done" in the visual editor). */
   dirty?: boolean;
   onSave?: () => Promise<void>;
+  /** False when the shown file is not the lattice used for the run: the visual editor hides run results. */
+  runResults?: boolean;
 };
 
-export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function LatticeEditor({ initialText, readOnly, fieldDirs, onChange, layout = "split", dirty, onSave }, ref) {
+export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function LatticeEditor({ initialText, readOnly, fieldDirs, onChange, layout = "split", dirty, onSave, runResults }, ref) {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [doc, setDoc] = useState<LatticeDoc | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -292,6 +294,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
             onStartEdit={startEditing}
             onFinishEdit={finishEditing}
             onSave={onSave}
+            runResults={runResults}
             showText={showText}
             onToggleText={toggleText}
             onUndo={() => textRef.current?.undo()}

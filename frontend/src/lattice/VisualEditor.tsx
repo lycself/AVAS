@@ -38,6 +38,8 @@ type Props = {
   onStartEdit: () => void;
   onFinishEdit: () => void;
   onSave?: () => Promise<void>;
+  /** False when the opened file is not the lattice the run uses: run results (last run, live run, segments) belong to another lattice and are hidden. */
+  runResults?: boolean;
   showText: boolean;
   onToggleText: () => void;
   onUndo: () => void;
@@ -75,12 +77,13 @@ const DEFAULT_SHOW: LayoutShow = { run: true, preview: true, aperture: true, los
 
 // the assistant's sandbox studies use their own lattices: only the Run page shows them
 const BUNCH_KINDS: ("project" | "segment")[] = ["project", "segment"];
+const NO_BUNCH: ("project" | "segment")[] = [];
 
 function samePath(a: string | null | undefined, b: string | null | undefined) {
   return !!a && !!b && a.replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
 }
 
-export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, showText, onToggleText, onUndo, onRedo }: Props) {
+export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, runResults, showText, onToggleText, onUndo, onRedo }: Props) {
   const t = useT();
   const hintAt = useRef(0);
   const browseHint = () => {
@@ -106,7 +109,10 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
       return next;
     });
 
-  const run = useRunEnvelope(show.run);
+  // run results belong to the lattice the run uses; another opened file shows none of them
+  const runOn = show.run && runResults !== false;
+  const bunchKinds = runResults !== false ? BUNCH_KINDS : NO_BUNCH; // the moving bunch belongs to the run lattice too
+  const run = useRunEnvelope(runOn);
   const preview = useLinearPreview({ enabled: show.preview, fieldDirs, spaceCharge });
   const drafting = useRef(false);
 
@@ -119,7 +125,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   const liveBand = useLive((s) => s.band);
   const livePrevious = useLive((s) => s.previous);
   const liveVersion = useLive((s) => s.version);
-  const liveHere = !!liveRun && liveRun.kind !== "assistant" && (!liveRun.project || samePath(liveRun.project, projectPath));
+  const liveHere = runResults !== false && !!liveRun && liveRun.kind !== "assistant" && (!liveRun.project || samePath(liveRun.project, projectPath));
   const liveRunning = liveHere && liveRun!.running;
   const projectRunning = liveRunning && liveRun!.kind === "project";
   const live = useMemo<EnvelopeCurves | null>(
@@ -141,7 +147,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
 
   // ---- a segment run's result below the full lattice (the finished one is shown automatically)
   const [segmentSource, setSegmentSource] = useState<SegmentSource | null>(null);
-  const segmentEnv = useSegmentEnvelope(segmentSource);
+  const segmentEnv = useSegmentEnvelope(runResults !== false ? segmentSource : null);
   useEffect(() => {
     if (lastFinished?.source !== "segment" || !lastFinished.ok || !lastFinished.outputDir) return;
     listSegmentResults()
@@ -270,11 +276,11 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
         ? { z: Float64Array.from(live.z), x: Float64Array.from(live.rmsX), y: Float64Array.from(live.rmsY), label: liveLabel }
         : show.preview && pv
           ? { z: pv.z, x: pv.rms_x, y: pv.rms_y, label: t("linear preview") }
-          : show.run && run.data
+          : runOn && run.data
             ? { z: run.data.z, x: run.data.rmsX, y: run.data.rmsY, label: t("last run") }
             : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [show.preview, show.run, pv, run.data, !!live, live3dVersion],
+    [show.preview, runOn, pv, run.data, !!live, live3dVersion],
   );
 
   if (!doc) return <div className="empty-state"><Spinner size={24} /></div>;
@@ -452,7 +458,13 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             {t("{label} · {pct} %", { label: liveLabel, pct: (percent ?? 0).toFixed(1) })}
           </span>
         )}
-        {show.run && !projectRunning && (
+        {runResults === false && (
+          <span className="ve-status-item soft" data-tip={t("The last run, the run in progress and segment results belong to the lattice used for the run; they are shown when that file is opened.")}>
+            <Icon name="info" />
+            {t("not the lattice used for the run: no run results")}
+          </span>
+        )}
+        {runOn && !projectRunning && (
           <span className="ve-status-item">
             {run.data ? (
               <>
@@ -465,7 +477,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             )}
           </span>
         )}
-        {stale && show.run && (
+        {stale && runOn && (
           <span className="ve-status-item warning-text" data-tip={t("The curves of the last run belong to the lattice as it was when that run started.")}>
             <Icon name="warning" />
             {t("lattice changed since the last run")}
@@ -482,7 +494,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
           {t("{n} elements", { n: doc.elementCount })} · {t("total length {v} m", { v: Number(doc.totalLength.toPrecision(6)) })}
         </span>
         <span className="grow" />
-        {show.run && !liveRunning && replayTrack && (
+        {runOn && !liveRunning && replayTrack && (
           <PlayerBar id={`lastrun:${run.data?.started ?? ""}`} label={t("last run")} track={replayTrack} restMass={restMass} kind="project" compact />
         )}
       </div>
@@ -493,24 +505,24 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             schema={schema}
             selected={selected}
             onSelect={(l) => onSelect(l, "layout")}
-            run={show.run && !projectRunning ? run.data : null}
+            run={runOn && !projectRunning ? run.data : null}
             preview={show.preview ? pv : null}
             show={show}
             live={live}
             liveLabel={liveLabel}
             liveVersion={liveVersion}
-            previous={show.run || projectRunning ? previousEnv : null}
+            previous={runOn || projectRunning ? previousEnv : null}
             previousLabel={previousLabel}
             band={band}
             segment={segmentEnv}
-            bunchKinds={BUNCH_KINDS}
+            bunchKinds={bunchKinds}
             onDropElement={dropElement}
             readOnly={readOnly}
             fitSignal={fitSignal}
           />
         ) : (
           <Suspense fallback={<div className="empty-state"><Spinner size={24} /></div>}>
-            <Beamline3D doc={doc} selected={selected} onSelect={(l) => onSelect(l, "3d")} envelope={envelope3d} theme={theme} bunchKinds={BUNCH_KINDS} />
+            <Beamline3D doc={doc} selected={selected} onSelect={(l) => onSelect(l, "3d")} envelope={envelope3d} theme={theme} bunchKinds={bunchKinds} />
           </Suspense>
         )}
       </div>
