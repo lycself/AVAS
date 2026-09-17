@@ -87,6 +87,7 @@ def parse_progress(line):
     if pos:
         try:
             out["pos_m"] = float(pos.group(2))
+            out["alive"] = int(pos.group(1))            # macro-particles still in the beam
         except ValueError:
             pass
     return out
@@ -106,12 +107,15 @@ class Stage:
 
     *prepare* is called right before the stage starts (after the previous stage
     finished) and returns ``{input_dir, output_dir, mode?, field_dir?, lattice?}``.
+    *z_offset* (m) is where z = 0 of this stage's lattice lies on the project's
+    beam line (the entry of a segment); the live display adds it.
     """
 
-    def __init__(self, key, label, prepare):
+    def __init__(self, key, label, prepare, z_offset=0.0):
         self.key = key
         self.label = label
         self.prepare = prepare
+        self.z_offset = float(z_offset or 0.0)
         self.status = "pending"
         self.elapsed_s = None
         self.output_dir = None
@@ -191,6 +195,14 @@ class Runner:
             return own if own is not None else engine
         return engine
 
+    def current_stage(self):
+        """``(job, stage)`` of the running job, or ``(None, None)``."""
+        with self.lock:
+            job = self.job
+            if job is None or not 0 <= self._stage < len(job.stages):
+                return job, None
+            return job, job.stages[self._stage]
+
     def state(self):
         with self.lock:
             job = self.job
@@ -233,8 +245,10 @@ class Runner:
             self._stage_paused0 = 0.0
             self._resumed_at = 0.0
             self._frozen_eta = None
-            self._state = {"percent": 0.0, "eta_s": None, "run_s": None, "pos_m": None, "elapsed_s": 0.0,
+            self._state = {"percent": 0.0, "eta_s": None, "run_s": None, "pos_m": None, "alive": None, "elapsed_s": 0.0,
                            "step": None, "all_step": None, "line": ""}
+        from avas.gui.services import live
+        live.monitor().begin_job(job)            # before the run info and DataSet.txt are rewritten
         if job.source == "project":
             os.makedirs(job.project.output_dir, exist_ok=True)
             job.project.write_run_info({
@@ -268,7 +282,7 @@ class Runner:
             self._stage_paused0 = self._paused_total
             self._tail = []
             self._samples = []
-            self._state.update(percent=0.0, eta_s=None, run_s=None, pos_m=None, line="")
+            self._state.update(percent=0.0, eta_s=None, run_s=None, pos_m=None, alive=None, line="")
             if job.source != "project" and len(job.stages) > 1:
                 self._state.update(step=None, all_step=None)
         self._emit()
@@ -514,6 +528,8 @@ class Runner:
                 job.on_finished(job, ok, message, stopped)
             except Exception:  # noqa: BLE001 - the run itself is over
                 log.exception("finishing %s failed", job.label)
+        from avas.gui.services import live
+        live.monitor().end_job(job)              # the last rows reach the page before run.finished
         with self.lock:
             self._state["elapsed_s"] = elapsed
             self._state["eta_s"] = 0.0 if ok else None

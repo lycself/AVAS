@@ -1,5 +1,6 @@
 // Calls into Python (pywebview js_api) and events coming back from it.
 // See avas/gui/bridge.py for the other side.
+import { t } from "./i18n";
 
 declare global {
   interface Window {
@@ -111,7 +112,8 @@ export async function call<T = unknown>(method: string, params?: Record<string, 
   await ready();
   const raw = await window.pywebview!.api.call(method, params ?? {});
   const reply = JSON.parse(raw) as { ok: boolean; result?: unknown; error?: string; detail?: string; user?: boolean };
-  if (!reply.ok) throw new RpcError(reply.error ?? "Error", reply.detail, !!reply.user);
+  // messages of expected problems (bridge.UserError) are translated when zh_CN.json has them
+  if (!reply.ok) throw new RpcError(reply.user && reply.error ? t(reply.error) : reply.error ?? "Error", reply.detail, !!reply.user);
   return (await resolveBlobs(reply.result)) as T;
 }
 

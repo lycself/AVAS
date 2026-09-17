@@ -120,6 +120,15 @@ avas gui
    * **元件视图**：选中元件后显示其示意图（四极铁截面与受力方向、螺线管线圈、射频腔 Ez(z) 与相位刻度盘、二极铁弧形、
      校正铁偏转方向、场图分布曲线），拖动手柄改长度 / 孔径 / 相位 / 偏转角，滑块改梯度、磁场、Ke、Kb。
      拖动过程中线性预览实时更新（约几十毫秒），松开后写入文本。
+   * **浏览 / 编辑**：可视化编辑器打开时处于浏览状态（可以选中、缩放、查看数值，但不会改动 lattice），点工具栏「编辑」后才出现元件面板、
+     手柄和参数输入；点「完成」时如有未保存修改，询问「保存 / 放弃本次编辑 / 继续编辑」。
+   * **曲线高亮**：单击布局图中的曲线或图例项高亮该曲线（其余变淡），双击图例项只显示这一条，Esc 取消。
+   * **运行中实时显示**：模拟运行时，布局图下方的包络随 DataSet.txt 逐行增长，虚线标出束团当前位置，发生损失处闪红圈；
+     前一次运行显示为灰线作对照（叠加显示菜单中可在运行结束后继续「与前一次运行对比」）。误差研究显示已完成的误差种子；
+     分段运行结束后自动叠加该分段结果（按分段起点对齐 z，也可在叠加显示菜单中选择）。lattice 在上次运行后被修改时，状态栏提示。
+   * **回放**：状态栏「回放」让示意束团按上次运行的包络沿束线走一遍，可暂停、拖动、调速，可选「匀速」或「束流速度」
+     （按能量和静止质量换算飞行时间，β 小的地方走得慢）。3D 视图同时显示粒子云和「示意」标记，可让镜头跟随束团。
+     束团和粒子只是按 rms 包络画出的示意，不是模拟得到的粒子分布。
    * **线性包络预览**（`avas/sim/linear_optics.py`）：参考粒子 + 4×4 二阶矩传输，支持 drift / quad / solenoid / bend / edge
      和场图（静磁场梯度与 Bz、射频腔能量增益与散焦，叠加场相加）、线性空间电荷。与内核对比：能量误差约 0.01 %，
      rms 尺寸通常差 1–2 %（多粒子非线性效应处最大约 13 %）。只用于快速评估，最终以模拟结果为准。
@@ -129,7 +138,12 @@ avas gui
    标签页编辑同一内容，数据行上的注释保留。右键菜单：重命名、创建副本、移到回收站、在资源管理器中显示、用默认程序打开、
    复制路径；工具栏可新建文件、把外部文件复制进 InputFile。
 6. **Run** 一键运行：先检查并保存有修改的页面，再在子进程中运行 `avas run`；进度、剩余时间（秒 / 分钟 / 小时都能识别）、
-   位置、误差分析的步数实时显示，内核输出进入日志面板。
+   位置、误差分析的步数实时显示，内核输出进入日志面板。下方「束流实时示意」按运行使用的 lattice 画出紧凑束线图、已输出的包络、
+   移动的束团和损失位置，并显示束团位置、存活宏粒子数、传输效率、能量和 rms 尺寸；分段运行显示所在阶段，误差研究显示第 i / n 个种子，
+   AI 助手的试算也在这里显示（用它自己的 lattice）。运行结束后保留最终状态，可以回放。
+   **运行锁**：完整运行、误差研究和分段运行进行中（包括暂停）时，所有输入文件只读——结构、束流、设置、文件页以及运行用的 lattice
+   选择都不能修改，后端同样拒绝写入，AI 助手此时提出的修改会被直接拒绝并说明原因。原因是误差研究每组都会重新读取 lattice，
+   分段运行每个阶段开始时才复制输入文件，运行中修改会让结果混入两套输入。AI 助手自己的参数扫描 / 优化使用副本，不加锁。
 7. **Results** 左边选择分析项，右边以标签页显示**可交互的图**（拖动放大、双击复原、悬停读数）：包络、发射度、损失、能量、
    相移、同步相位、腔压、误差分析、密度、接受度。粒子文件查看器和 plt 步查看器是 4 个相空间密度图 + rms 椭圆 +
    百分比发射度文字，放大后自动按新范围重新统计密度；改坐标、改百分比立即重画。「保存图片」用 matplotlib 输出
@@ -145,6 +159,7 @@ avas gui
   模型不支持原生工具调用时自动改用提示词方式。API 密钥保存在 Windows 凭据管理器中，不写入设置文件。
 * 每一项修改都是一张「修改提案」卡片（元件、参数、旧值 → 新值），**点「应用」后才写入**；lattice 已在编辑器中打开时直接应用到
   编辑器（可撤销）并保存。每次应用前备份到项目下 `.avas_ai/backups/`，卡片上可一键「撤销」。可以在单个对话中打开「自动应用」。
+  模拟运行中输入文件锁定，助手此时提出或应用修改都会被拒绝，并由助手向你说明、等运行结束后再提。
 * 参数扫描 / 优化可以用线性预览（秒级）或内核模拟；模拟在 `.avas_ai/runs/` 中的副本上运行，不改动项目的 InputFile 和
   OutputFile，结束后把最优参数作为修改提案给出。优化目标可以是指标（如 `emit_x_growth`）或表达式
   （如 `abs(rms_x_out-1.5)+abs(rms_y_out-1.5)`），方法为 Nelder-Mead / Powell / 随机搜索。
@@ -154,6 +169,8 @@ avas gui
 
 * 主题：**视图 → 主题** 选择 跟随系统 / 浅色 / 深色，状态栏最右边按钮一键切换；切换在一帧内完成（约 20 ms）。
 * 缩放：**视图 → 界面缩放**（90 – 150 %，`Ctrl+=` / `Ctrl+-` / `Ctrl+0`）；**设置 → 语言** 即时切换中文 / English。
+* 动效：**视图 → 动效** 选择 完整（默认，束团移动和粒子云）/ 精简（只移动位置标记）/ 关闭（每秒更新一次）/
+  自动（跟随 Windows「动画效果」设置，该设置关闭时等同「关闭」）。动画最多 30 帧 / 秒，页面不可见时停止。
 * 快捷键：`Ctrl+S` 保存全部、`F5` 运行、`Shift+F5` 停止、`Ctrl+O` / `Ctrl+N` 打开 / 新建项目、`Ctrl+B` 侧边栏、
   `Ctrl+J` 日志面板、`Ctrl+1` … `Ctrl+7` 切换页面。
 * 有未保存修改的页面在侧边栏显示圆点；打开其他项目、关闭窗口前会询问是否保存；运行中关闭窗口会先确认。
@@ -169,7 +186,10 @@ cd frontend && npm install && npm run build
 ```
 
 `python -m avas.gui.devserver` 可以在普通浏览器里打开界面调试（`http://127.0.0.1:8765/index.html?devrpc`，文件对话框不可用）。
-后端接口在 `avas/gui/services/`，每个页面调用的函数都在 `tests/test_gui.py` 中有测试。
+加 `--fake-engine 60` 时，「运行」不调用内核，而是把输出目录里已有的 DataSet.txt 在 60 秒内逐行重放（`--fake-lose 0.1` 模拟损失），
+用于检查实时显示。后端接口在 `avas/gui/services/`，每个页面调用的函数都在 `tests/test_gui.py` 中有测试；
+`tests/test_design_rules.py` 检查写死的颜色、缺少的中文翻译以及 `avas/gui/web/` 是否由当前前端源码构建。
+给 AI 编程助手和开发者的规则见 [AGENTS.md](AGENTS.md)。
 
 ### 打包独立程序与安装包
 
@@ -286,11 +306,13 @@ avas doctor                                                          # self-test
 
 `avas gui` (or `avas-gui`) opens a desktop window (pywebview + Edge WebView2; no browser involved) with a VS Code-like layout: menu bar, side bar, pages, log panel, status bar. Seven pages follow the workflow: **Project** (a welcome page without a project; with one, an overview of the last run including DataSet diagnostics such as NaN columns or a lost beam, the beam, lattice statistics and settings; switching projects lives in the File menu and the project switcher in the title and status bars), **Beam** (saving keeps keywords the page does not manage, and comments), **Lattice** (run-lattice selection; Monaco text editor with highlighting, folding, completion, hover help and problem markers, side by side with the physical-parameter editor: beamline schematic, element tree, property form, per-keyword parameter table), **Settings**, **Files** (content-aware views of everything in `InputFile/`, table and text tabs on the same content, rename / duplicate / recycle bin / import), **Run** (child `avas run` process, live progress incl. min/h ETAs, engine output in the log) and **Results** (interactive Plotly plots; phase-space viewers with density re-binning on zoom and percent emittances; publication-quality export through matplotlib; any results folder). Theme switching (system / light / dark) takes one frame (~20 ms); UI scale 90–150 %; Chinese / English switch instantly. Unsaved pages are marked and prompted for before closing or switching projects. Settings: `%LOCALAPPDATA%\AVAS\gui.json`; logs: `%LOCALAPPDATA%\AVAS\logs`.
 
-The Lattice page also has a **visual editor** on the same text model (one undo history): a component palette to drag elements onto the beamline (dropping into a drift splits it so downstream positions stay put; dropping into a superpose block adds a superpose at that z0), a large layout with element glyphs and the x/y envelope of the last run, the **linear envelope preview** (`avas/sim/linear_optics.py`: reference particle, 4×4 moment transport through matrix elements and field maps, linear space charge; energies within ~0.01 % and rms sizes typically within 1–2 % of the engine), apertures, losses and energy; a three.js 3D view with fly-through; and a component inspector (quadrupole cross-section and forces, cavity Ez(z) and phase dial, …) whose handles and sliders update the preview live while dragging.
+The Lattice page also has a **visual editor** on the same text model (one undo history): a component palette to drag elements onto the beamline (dropping into a drift splits it so downstream positions stay put; dropping into a superpose block adds a superpose at that z0), a large layout with element glyphs and the x/y envelope of the last run, the **linear envelope preview** (`avas/sim/linear_optics.py`: reference particle, 4×4 moment transport through matrix elements and field maps, linear space charge; energies within ~0.01 % and rms sizes typically within 1–2 % of the engine), apertures, losses and energy; a three.js 3D view with fly-through; and a component inspector (quadrupole cross-section and forces, cavity Ez(z) and phase dial, …) whose handles and sliders update the preview live while dragging. The visual editor opens in a browse state and changes the lattice only after **Edit**; **Done** asks about unsaved changes (save / discard this editing session / keep editing). Clicking a curve or its legend entry highlights it, double-clicking a legend entry shows only that curve (the Results plots behave the same). While a simulation runs, the envelope grows row by row as the engine writes DataSet.txt, a schematic bunch marks the current position, losses flash where they happen and the previous run stays as a grey reference; error studies show the finished seeds, a finished segment run is overlaid at its entry, and the status bar tells when the lattice was edited after the last run. **Replay** walks the bunch along the last run at uniform speed or with the beam's time of flight; the 3D view draws a particle cloud (labelled *schematic*: sizes from the rms envelope, particles are random samples) and can follow it with the camera.
 
 The **AI assistant** (`Ctrl+Shift+A`) works with any OpenAI-compatible endpoint, local (Ollama, LM Studio, vLLM, llama.cpp, Xinference) or hosted, with native or prompted tool calls. It reads the project, results, log and user manual; changes to the lattice, beam.txt, input.txt or ini.ini are proposals applied only after approval (backed up under `<project>/.avas_ai/backups`, undoable); it can run the simulation, scan parameters and optimise (Nelder-Mead / Powell / random) with the linear preview or with engine runs in a sandbox copy (`<project>/.avas_ai/runs`) that never touches the project's files. API keys go to the Windows Credential Manager.
 
-The front end lives in `frontend/` (React + TypeScript + Vite); its build output `avas/gui/web/` is committed, so running AVAS needs no Node.js. Rebuild with `cd frontend && npm install && npm run build`. `python -m avas.gui.devserver` serves the GUI to an ordinary browser for development. Back-end calls are in `avas/gui/services/` and tested in `tests/test_gui.py`.
+**Run page and input lock.** Below the progress, *Live beam* draws the lattice the run uses with the envelope written so far, the moving bunch and the losses, and shows the bunch position, macro-particles alive, transmission, energy and rms sizes (segment stages, error seeds and the assistant's sandbox evaluations included); after the run it keeps the final state and offers a replay. While a project run, error study or segment run is running or paused, all input files are read-only (Lattice, Beam, Settings and Files pages, the run-lattice selection; the back end refuses writes too, and the assistant's change proposals are refused with an explanation), because error studies re-read the lattice for every group and segment runs copy InputFile at every stage. The assistant's own scans work on copies and do not lock. **View → Motion** chooses full (the default) / reduced / off / automatic (follows Windows' animation effects).
+
+The front end lives in `frontend/` (React + TypeScript + Vite); its build output `avas/gui/web/` is committed, so running AVAS needs no Node.js. Rebuild with `cd frontend && npm install && npm run build`. `python -m avas.gui.devserver` serves the GUI to an ordinary browser for development; with `--fake-engine 60` a run replays the DataSet.txt already in the output folder over 60 s instead of starting the engine (`--fake-lose 0.1` loses particles), for checking the live display. Back-end calls are in `avas/gui/services/` and tested in `tests/test_gui.py`; `tests/test_design_rules.py` checks for hard-coded colours, missing Chinese translations and a stale `avas/gui/web/` build. Rules for AI coding assistants and developers: [AGENTS.md](AGENTS.md).
 
 ### Stand-alone build
 

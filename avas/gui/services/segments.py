@@ -319,7 +319,7 @@ def start(project, spec, choice=None, label=None):
         stages.append(runner.Stage("reference", "reference timing", prepare_reference))
     if choice == "upstream":
         stages.append(runner.Stage("upstream", "upstream beam", prepare_upstream))
-    stages.append(runner.Stage("segment", p.label, prepare_segment))
+    stages.append(runner.Stage("segment", p.label, prepare_segment, z_offset=p.z_start))
 
     def finished(job, ok, message, stopped):
         meta.update(status="finished" if ok else ("stopped" if stopped else "failed"),

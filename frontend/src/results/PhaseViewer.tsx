@@ -53,7 +53,7 @@ function basename(p: string) {
 
 /** In dark mode empty pixels take the plot background instead of white. */
 function darkScale(scale: [number, string][]): [number, string][] {
-  const bg = getComputedStyle(document.documentElement).getPropertyValue("--editor-bg").trim() || "#1f1f1f";
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--editor-bg").trim() || "#1f1f1f"; // design:allow-colour fallback of --editor-bg
   const hex = (c: string) => {
     let v = c.replace("#", "");
     if (v.length === 3) v = v.split("").map((x) => x + x).join("");
@@ -181,7 +181,7 @@ export function PhaseViewer({ source, outputDir, refreshKey }: { source: Source;
         yaxis: `y${s}`,
         hovertemplate: `${p.xTitle}=%{x:.4g}<br>${p.yTitle}=%{y:.4g}<extra></extra>`,
       });
-      if (p.ellipse) traces.push({ type: "scatter", mode: "lines", x: p.ellipse.x, y: p.ellipse.y, xaxis: `x${s}`, yaxis: `y${s}`, line: { color: "#ff2020", width: 1.6 }, hoverinfo: "skip" });
+      if (p.ellipse) traces.push({ type: "scatter", mode: "lines", x: p.ellipse.x, y: p.ellipse.y, xaxis: `x${s}`, yaxis: `y${s}`, line: { color: "#ff2020", width: 1.6 }, hoverinfo: "skip" }); // design:allow-colour rms ellipse, same red as the matplotlib export
       layout[`xaxis${s}`] = { range: [p.range[0], p.range[1]], showgrid: true, griddash: "dash", zeroline: false };
       layout[`yaxis${s}`] = { range: [p.range[2], p.range[3]], showgrid: true, griddash: "dash", zeroline: false };
       layout.annotations.push({ text: `<b>${p.title}</b>`, xref: `x${s} domain`, yref: `y${s} domain`, x: 0.5, y: 1.08, showarrow: false, font: { size: 13 } });

@@ -4,17 +4,20 @@
 // saving and the dirty state work exactly as in the text mode.
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { call } from "../bridge";
-import { openMenu, openMenuBelow } from "../components/overlays";
+import { openMenu, openMenuBelow, reportError, toast } from "../components/overlays";
 import { Button, cx, Icon, IconButton, Segmented, Spinner } from "../components/ui";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
+import { useLive } from "../store/live";
+import type { Track } from "./bunchPlayer";
 import { ComponentView, type Draft } from "./ComponentView";
-import { LayoutView, PALETTE_MIME, type LayoutShow } from "./LayoutView";
+import { PlayerBar } from "./PlayerBar";
+import { LayoutView, PALETTE_MIME, type EnvelopeCurves, type LayoutShow } from "./LayoutView";
 import { PropertyPanel, StructureTree, structureTreeHandlers } from "./StructureEditor";
 import { applyResult, elementOptions, PALETTE, structureMenu, type ApplyRange } from "./structureMenu";
 import { defaultLength, deleteUnit, duplicateUnit, insertAfter, insertAtZ, moveUnit, newElementText, type NewElementKind } from "./structureOps";
 import { formatStatement, type Edit, type LatticeDoc, type Schema, type Statement } from "./types";
-import { replaceLine, useLinearPreview, useRunEnvelope } from "./usePreview";
+import { listSegmentResults, replaceLine, textFingerprint, useLinearPreview, useRunEnvelope, useSegmentEnvelope, type SegmentSource } from "./usePreview";
 
 const Beamline3D = lazy(() => import("./Beamline3D"));
 
@@ -29,11 +32,27 @@ type Props = {
   fieldDirs: string[] | null;
   fieldmaps: Record<string, string[]>;
   readOnly?: boolean;
+  /** browse: look only, "Edit" enters the edit state; locked: a run locks the input files */
+  editState: "browse" | "edit" | "locked";
+  dirty: boolean;
+  onStartEdit: () => void;
+  onFinishEdit: () => void;
+  onSave?: () => Promise<void>;
   showText: boolean;
   onToggleText: () => void;
   onUndo: () => void;
   onRedo: () => void;
 };
+
+// keys that change the lattice in the edit state; in the browse state they show a hint
+function isEditKey(e: React.KeyboardEvent) {
+  const key = e.key.toLowerCase();
+  const mod = e.ctrlKey || e.metaKey;
+  return e.key === "Delete" || (mod && (key === "z" || key === "y" || key === "d")) || (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown"));
+}
+
+// inspector targets that edit values (disabled outside the edit state)
+const EDIT_TARGETS = "input, select, textarea, button, .cv-slider, .cv-handle, .check, .radio, .select, .form-field, svg";
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -52,10 +71,23 @@ function save(key: string, value: unknown) {
   }
 }
 
-const DEFAULT_SHOW: LayoutShow = { run: true, preview: true, aperture: true, losses: true, max: false, energy: false, scale: "beam" };
+const DEFAULT_SHOW: LayoutShow = { run: true, preview: true, aperture: true, losses: true, max: false, energy: false, scale: "beam", compare: false, band: true };
 
-export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, showText, onToggleText, onUndo, onRedo }: Props) {
+// the assistant's sandbox studies use their own lattices: only the Run page shows them
+const BUNCH_KINDS: ("project" | "segment")[] = ["project", "segment"];
+
+function samePath(a: string | null | undefined, b: string | null | undefined) {
+  return !!a && !!b && a.replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
+}
+
+export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, showText, onToggleText, onUndo, onRedo }: Props) {
   const t = useT();
+  const hintAt = useRef(0);
+  const browseHint = () => {
+    if (editState === "edit" || Date.now() - hintAt.current < 4000) return;
+    hintAt.current = Date.now();
+    toast(editState === "locked" ? t("A simulation is running: the input files are locked until it finishes or is stopped.") : t("Click “Edit” to change the lattice."), "info", 3000);
+  };
   const theme = useApp((s) => s.resolvedTheme);
   const kw = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k])), [schema]);
   const [show, setShowState] = useState<LayoutShow>(() => load("avas.visual.show", DEFAULT_SHOW));
@@ -78,9 +110,74 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   const preview = useLinearPreview({ enabled: show.preview, fieldDirs, spaceCharge });
   const drafting = useRef(false);
 
+  // ---- the run in progress (project runs, error studies, segment runs of this project)
+  const projectPath = useApp((s) => (s.project.open ? s.project.path : null));
+  const percent = useApp((s) => s.run.percent);
+  const lastFinished = useApp((s) => s.lastFinished);
+  const liveRun = useLive((s) => s.run);
+  const liveEpisode = useLive((s) => s.episode);
+  const liveBand = useLive((s) => s.band);
+  const livePrevious = useLive((s) => s.previous);
+  const liveVersion = useLive((s) => s.version);
+  const liveHere = !!liveRun && liveRun.kind !== "assistant" && (!liveRun.project || samePath(liveRun.project, projectPath));
+  const liveRunning = liveHere && liveRun!.running;
+  const projectRunning = liveRunning && liveRun!.kind === "project";
+  const live = useMemo<EnvelopeCurves | null>(
+    () => (liveRunning && liveEpisode ? { ...liveEpisode.rows, losses: liveEpisode.losses } : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveRunning, liveEpisode, liveVersion],
+  );
+  let liveLabel = t("this run (running)");
+  if (liveRun?.kind === "segment") liveLabel = t("segment {label} (running)", { label: liveRun.label });
+  else if (liveRun?.mode && liveRun.mode !== "basic" && liveEpisode?.index) liveLabel = t("error seed {i} of {n} (running)", { i: liveEpisode.index, n: liveEpisode.total ?? "?" });
+  // while a project run rewrites DataSet.txt the loaded last run becomes the grey reference
+  const previousEnv = projectRunning
+    ? ((livePrevious as EnvelopeCurves | null) ?? run.data)
+    : liveHere && liveRun!.kind === "project" && show.compare
+      ? (livePrevious as EnvelopeCurves | null)
+      : null;
+  const previousLabel = t("run of {date}", { date: (projectRunning ? livePrevious?.started ?? run.data?.started : livePrevious?.started) ?? "?" });
+  const band = liveHere && liveRun!.kind === "project" && show.band ? liveBand : undefined;
+
+  // ---- a segment run's result below the full lattice (the finished one is shown automatically)
+  const [segmentSource, setSegmentSource] = useState<SegmentSource | null>(null);
+  const segmentEnv = useSegmentEnvelope(segmentSource);
+  useEffect(() => {
+    if (lastFinished?.source !== "segment" || !lastFinished.ok || !lastFinished.outputDir) return;
+    listSegmentResults()
+      .then((list) => {
+        const found = list.find((s) => samePath(s.outputDir, lastFinished.outputDir));
+        if (found) setSegmentSource(found);
+      })
+      .catch(() => undefined);
+  }, [lastFinished]);
+  useEffect(() => setSegmentSource(null), [projectPath]);
+
+  // ---- was the lattice changed since the last run?
+  const [textHash, setTextHash] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      textFingerprint(getText()).then(setTextHash).catch(() => setTextHash(null));
+    }, 400);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc]);
+  const stale = !projectRunning && !!run.data?.latticeHash && !!textHash && run.data.latticeHash !== textHash;
+
+  // replay of the last run
+  const replayTrack = useMemo<Track | null>(() => {
+    const d = run.data;
+    if (!d || d.z.length < 2) return null;
+    return { z: d.z, rmsX: d.rmsX, rmsY: d.rmsY, rmsZ: d.rmsZ, energy: d.energy, alive: d.alive, losses: d.losses, particles0: d.particles };
+  }, [run.data]);
+
+  const [restMass, setRestMass] = useState<number | null>(null);
   useEffect(() => {
     call<{ form: Record<string, string> }>("beam.load")
-      .then((b) => setFrequency(Number(b.form.frequency) || undefined))
+      .then((b) => {
+        setFrequency(Number(b.form.frequency) || undefined);
+        setRestMass(Number(b.form.particlerestmass) || null);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -165,15 +262,19 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
 
   const pv = preview.data;
   // memoised: the 3D view rebuilds its envelope tube whenever this object changes
+  // (while a run is in progress its growing envelope; rebuilt at most every 2 s)
+  const live3dVersion = Math.floor(liveVersion / 2);
   const envelope3d = useMemo(
     () =>
-      show.preview && pv
-        ? { z: pv.z, x: pv.rms_x, y: pv.rms_y, label: t("linear preview") }
-        : show.run && run.data
-          ? { z: run.data.z, x: run.data.rmsX, y: run.data.rmsY, label: t("last run") }
-          : null,
+      live && live.z.length > 1
+        ? { z: Float64Array.from(live.z), x: Float64Array.from(live.rmsX), y: Float64Array.from(live.rmsY), label: liveLabel }
+        : show.preview && pv
+          ? { z: pv.z, x: pv.rms_x, y: pv.rms_y, label: t("linear preview") }
+          : show.run && run.data
+            ? { z: run.data.z, x: run.data.rmsX, y: run.data.rmsY, label: t("last run") }
+            : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [show.preview, show.run, pv, run.data],
+    [show.preview, show.run, pv, run.data, !!live, live3dVersion],
   );
 
   if (!doc) return <div className="empty-state"><Spinner size={24} /></div>;
@@ -188,7 +289,11 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
       onKeyDown={(e) => {
         // the text editor is hidden here: route undo / redo to it unless a field has the focus
         const el = e.target as HTMLElement;
-        if (readOnly || el.closest("input, textarea, select, .monaco-editor")) return;
+        if (el.closest("input, textarea, select, .monaco-editor")) return;
+        if (readOnly) {
+          if (isEditKey(e)) browseHint();
+          return;
+        }
         const key = e.key.toLowerCase();
         if ((e.ctrlKey || e.metaKey) && key === "z" && !e.shiftKey) {
           e.preventDefault();
@@ -200,9 +305,38 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
       }}
     >
       <div className="ve-toolbar">
-        <IconButton icon="discard" tip={t("Undo (Ctrl+Z)")} disabled={readOnly} onClick={onUndo} />
-        <IconButton icon="redo" tip={t("Redo (Ctrl+Y)")} disabled={readOnly} onClick={onRedo} />
-        <div className="divider-v" />
+        {editState !== "edit" ? (
+          <>
+            <Button
+              small
+              icon="edit"
+              disabled={editState === "locked"}
+              onClick={onStartEdit}
+              tip={editState === "locked" ? t("The input files are locked while a simulation runs") : t("Change the lattice: add, move and delete components, edit parameters")}
+            >
+              {t("Edit")}
+            </Button>
+            <span className="ve-mode-hint soft">
+              <Icon name={editState === "locked" ? "lock" : "eye"} />
+              {editState === "locked" ? t("Locked while a simulation runs") : t("Browsing: select, zoom and read values")}
+            </span>
+          </>
+        ) : (
+          <>
+            <Button small variant="primary" icon="check" onClick={onFinishEdit} tip={t("Leave the edit state (unsaved changes are asked about)")}>
+              {t("Done")}
+            </Button>
+            <Button small icon="save" disabled={!dirty} onClick={() => onSave?.().catch(reportError)} tip={t("Save the lattice file (Ctrl+S saves all pages)")}>
+              {t("Save")}
+            </Button>
+            {dirty && <Icon name="circle-filled" className="ve-unsaved" title={t("Unsaved changes")} />}
+            <div className="divider-v" />
+            <IconButton icon="discard" tip={t("Undo (Ctrl+Z)")} onClick={onUndo} />
+            <IconButton icon="redo" tip={t("Redo (Ctrl+Y)")} onClick={onRedo} />
+            <div className="divider-v" />
+          </>
+        )}
+        {editState === "edit" && (
         <div className="ve-palette" data-tip={t("Drag a component onto the beamline, or click to insert it after the selection")}>
           {PALETTE.slice(0, 8).map((p) => (
             <button
@@ -228,6 +362,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             onClick={(e) => openMenuBelow(e.currentTarget, PALETTE.slice(8).map((p) => ({ label: t(p.label), onClick: () => insertKind(p.kind) })))}
           />
         </div>
+        )}
         <div className="grow" />
         <Segmented
           value={view}
@@ -243,7 +378,9 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
         <Button
           small
           icon="layers"
-          onClick={(e) =>
+          onClick={async (e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const segments = await listSegmentResults().catch(() => [] as SegmentSource[]);
             openMenu(
               [
                 { type: "header", label: t("Envelope") },
@@ -253,7 +390,27 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
                   setSpaceCharge(!spaceCharge);
                   localStorage.setItem("avas.visual.sc", spaceCharge ? "0" : "1");
                 } },
-                { label: t("Maximum sizes (last run)"), checked: show.max, disabled: !show.run, onClick: () => setShow({ max: !show.max }) },
+                { label: t("Maximum sizes"), checked: show.max, onClick: () => setShow({ max: !show.max }) },
+                {
+                  label: t("Compare with the run before"),
+                  checked: !!show.compare,
+                  disabled: !(liveHere && liveRun?.kind === "project" && livePrevious),
+                  onClick: () => setShow({ compare: !show.compare }),
+                },
+                { label: t("Finished error seeds"), checked: show.band !== false, disabled: !liveBand.length || !liveHere, onClick: () => setShow({ band: show.band === false }) },
+                {
+                  label: t("Segment run result"),
+                  disabled: !segments.length,
+                  submenu: [
+                    { label: t("None"), checked: !segmentSource, onClick: () => setSegmentSource(null) },
+                    { type: "separator" as const },
+                    ...segments.map((s) => ({
+                      label: `${s.label}${s.time ? `  ·  ${s.time}` : ""}`,
+                      checked: samePath(segmentSource?.outputDir, s.outputDir),
+                      onClick: () => setSegmentSource(s),
+                    })),
+                  ],
+                },
                 { type: "separator" },
                 { label: t("Pipe apertures"), checked: show.aperture, onClick: () => setShow({ aperture: !show.aperture }) },
                 { label: t("Particle losses"), checked: show.losses, onClick: () => setShow({ losses: !show.losses }) },
@@ -262,10 +419,10 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
                 { label: t("Vertical scale: beam"), checked: show.scale === "beam", onClick: () => setShow({ scale: "beam" }) },
                 { label: t("Vertical scale: pipe"), checked: show.scale === "pipe", onClick: () => setShow({ scale: "pipe" }) },
               ],
-              (e.currentTarget as HTMLElement).getBoundingClientRect().left,
-              (e.currentTarget as HTMLElement).getBoundingClientRect().bottom + 2,
-            )
-          }
+              r.left,
+              r.bottom + 2,
+            );
+          }}
         >
           {t("Overlays")}
         </Button>
@@ -289,7 +446,13 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             )}
           </span>
         )}
-        {show.run && (
+        {liveRunning && (
+          <span className="ve-status-item accent-text">
+            <Icon name="pulse" />
+            {t("{label} · {pct} %", { label: liveLabel, pct: (percent ?? 0).toFixed(1) })}
+          </span>
+        )}
+        {show.run && !projectRunning && (
           <span className="ve-status-item">
             {run.data ? (
               <>
@@ -302,9 +465,26 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             )}
           </span>
         )}
+        {stale && show.run && (
+          <span className="ve-status-item warning-text" data-tip={t("The curves of the last run belong to the lattice as it was when that run started.")}>
+            <Icon name="warning" />
+            {t("lattice changed since the last run")}
+          </span>
+        )}
+        {segmentEnv && (
+          <span className="ve-status-item">
+            <i className="lg-line" style={{ background: "var(--curve-segment)" }} />
+            {t("segment {label}", { label: segmentEnv.label })}
+            <IconButton icon="close" className="ve-status-close" tip={t("Hide the segment result")} onClick={() => setSegmentSource(null)} />
+          </span>
+        )}
         <span className="ve-status-item">
           {t("{n} elements", { n: doc.elementCount })} · {t("total length {v} m", { v: Number(doc.totalLength.toPrecision(6)) })}
         </span>
+        <span className="grow" />
+        {show.run && !liveRunning && replayTrack && (
+          <PlayerBar id={`lastrun:${run.data?.started ?? ""}`} label={t("last run")} track={replayTrack} restMass={restMass} kind="project" compact />
+        )}
       </div>
       <div className="ve-layout" style={{ height: layoutH }}>
         {view === "2d" ? (
@@ -313,16 +493,24 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             schema={schema}
             selected={selected}
             onSelect={(l) => onSelect(l, "layout")}
-            run={show.run ? run.data : null}
+            run={show.run && !projectRunning ? run.data : null}
             preview={show.preview ? pv : null}
             show={show}
+            live={live}
+            liveLabel={liveLabel}
+            liveVersion={liveVersion}
+            previous={show.run || projectRunning ? previousEnv : null}
+            previousLabel={previousLabel}
+            band={band}
+            segment={segmentEnv}
+            bunchKinds={BUNCH_KINDS}
             onDropElement={dropElement}
             readOnly={readOnly}
             fitSignal={fitSignal}
           />
         ) : (
           <Suspense fallback={<div className="empty-state"><Spinner size={24} /></div>}>
-            <Beamline3D doc={doc} selected={selected} onSelect={(l) => onSelect(l, "3d")} envelope={envelope3d} theme={theme} />
+            <Beamline3D doc={doc} selected={selected} onSelect={(l) => onSelect(l, "3d")} envelope={envelope3d} theme={theme} bunchKinds={BUNCH_KINDS} />
           </Suspense>
         )}
       </div>
@@ -339,7 +527,12 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
           />
         </div>
         <div className="sash sash-v" onMouseDown={startResize("x")} />
-        <div className="ve-inspector">
+        <div
+          className="ve-inspector"
+          onPointerDownCapture={(e) => {
+            if (readOnly && st && (e.target as HTMLElement).closest(EDIT_TARGETS)) browseHint();
+          }}
+        >
           {st ? (
             <>
               <div className="ve-inspector-head">

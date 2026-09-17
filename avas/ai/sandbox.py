@@ -29,7 +29,7 @@ from avas.gui import proctree
 log = logging.getLogger("avas.gui")
 
 _lock = threading.RLock()
-_active = {"proc": None, "job": None}
+_active = {"proc": None, "job": None, "out": None, "index": None, "lattice": None, "field_dirs": None}
 _activity = None                  # dict while a study is active, see Sandbox.begin
 KEEP_OUTPUT = ("DataSet.txt", "avas_run.json", "Phase.txt", "synData.txt")
 TEXT_SUFFIXES = (".txt", ".ini", ".dat", ".csv")
@@ -91,6 +91,24 @@ def _active_seconds(act, now=None):
     now = now or time.time()
     paused = act["paused_total"] + (now - act["paused_since"] if act["paused_since"] else 0.0)
     return max(0.0, now - act["t0"] - paused)
+
+
+def live_source():
+    """The active study for the Run page's live display, or None.
+
+    ``{job, label, total, running, index, out, lattice, field_dirs}``: *running* tells whether one of
+    its simulations is in progress (between two of them only *job*, *label* and *total* are set);
+    *out* is that simulation's output folder and *lattice* its candidate lattice file.
+    """
+    with _lock:
+        act = _activity
+        running = _active.get("proc") is not None and bool(_active.get("out"))
+        if act is None and not running:
+            return None
+        return {"job": (act or {}).get("job") or _active.get("job"), "label": act["label"] if act else "Assistant simulation",
+                "total": act["total"] if act else None, "running": running,
+                "index": _active.get("index") if running else None, "out": _active.get("out") if running else None,
+                "lattice": _active.get("lattice") if running else None, "field_dirs": _active.get("field_dirs") or []}
 
 
 def activity_state():
@@ -243,12 +261,18 @@ class Sandbox:
                 raise SandboxError("Another simulation is running; wait for it to finish.")
             proc = subprocess.Popen(cmd, cwd=self.root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, creationflags=flags)
-            _active.update(proc=proc, job=self.job_id)
+            _active.update(proc=proc, job=self.job_id, out=out, index=self.count,
+                           lattice=os.path.join(self.input_dir, self.lattice_name), field_dirs=[self.field_dir])
             if _activity is not None:
                 _activity.update(index=self.count, percent=0.0, line="")
                 if _activity["paused_since"] is not None:      # paused while starting
                     proctree.suspend(proc.pid)
         _publish()
+        try:
+            from avas.gui.services import live
+            live.monitor().wake()                # the Run page follows this simulation's DataSet.txt
+        except Exception:  # noqa: BLE001 - display only
+            pass
         tail = []
 
         def reader():
@@ -310,7 +334,7 @@ class Sandbox:
             code = proc.returncode
         finally:
             with _lock:
-                _active.update(proc=None, job=None)
+                _active.update(proc=None, job=None, out=None, index=None, lattice=None, field_dirs=None)
         seconds = max(0.0, time.time() - started - paused_s)
         if code != 0:
             if self._stopped(stop_event):

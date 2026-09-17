@@ -212,6 +212,43 @@ def test_stop_while_waiting_for_approval(project):
         assert "spacecharge 1" in fh.read()
 
 
+def test_edits_are_refused_while_a_run_locks_the_inputs(project):
+    from avas.ai import ToolContext, ToolError
+    from avas.ai.avas_tools import build_tools
+    from avas.gui.services import assistant, runner
+    before = lattice_text(project)
+    r = runner.runner()
+    # a change asked for during the run: refused at once, no card
+    conv = assistant.Conversation(project)
+    tools = {t.name: t for t in build_tools(assistant.Host(conv))}
+    ctx = ToolContext(call_id="t", emit=lambda e: None, stop_event=threading.Event(), agent=None)
+    r.job = object()
+    try:
+        for name, args in (("edit_lattice", {"changes": [{"line": 2, "param": "phase", "value": -30}]}),
+                           ("edit_beam", {"values": {"current": 1.0}}),
+                           ("set_run_lattice", {"name": "lattice_mulp.txt"})):
+            with pytest.raises(ToolError, match="locked"):
+                tools[name].handler(args, ctx)
+        assert not any(i["role"] == "proposal" for i in conv.items)
+    finally:
+        r.job = None
+    # a card approved after the run started: not applied either
+    SCRIPT.replies = [("tools", [("edit_lattice", {"changes": [{"line": 2, "param": "phase", "value": -31}]})]), ("text", "Later.")]
+    c = ok("assistant.new")
+    ok("assistant.send", conversation=c["id"], text="set the phase to -31")
+    conv = assistant._get(c["id"])
+    prop = wait_for(lambda: next((i for i in conv.items if i["role"] == "proposal" and i["status"] == "pending"), None))
+    r.job = object()
+    try:
+        ok("assistant.decide", conversation=c["id"], id=prop["id"], decision="apply")
+        wait_idle(c["id"])
+    finally:
+        r.job = None
+    assert next(i for i in conv.items if i["role"] == "proposal")["status"] == "failed"
+    assert "locked" in [m for m in conv.messages if m["role"] == "tool"][0]["content"]
+    assert lattice_text(project) == before
+
+
 def test_preview_scan_and_optimize(project):
     pytest.importorskip("avas.sim.linear_optics")
     from avas.ai import ToolContext
@@ -278,7 +315,8 @@ def test_sandbox_study_shows_on_the_run_page_and_can_be_paused_and_stopped(proje
     thread.start()
     try:
         t0 = time.time()
-        while not (runner.state().get("percent") or 0) and time.time() - t0 < 120:
+        # (the runner keeps the last job's percent, e.g. from test_gui in the same process)
+        while not (runner.state().get("source") == "assistant" and runner.state().get("percent")) and time.time() - t0 < 120:
             time.sleep(0.2)
         state = runner.state()
         assert state["running"] and state["source"] == "assistant" and state["label"] == "parameter scan"

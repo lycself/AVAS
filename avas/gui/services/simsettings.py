@@ -5,6 +5,7 @@ from avas.api.qt.api import create_from_file_input_ini, write_to_file_input_ini
 from avas.utils.iniconfig import IniConfig
 from avas.gui import context
 from avas.gui.bridge import UserError, rpc
+from avas.gui.locks import require_unlocked
 
 
 def safe_int(v, default):
@@ -105,6 +106,7 @@ def _read_triple(texts, cast):
 
 @rpc("settings.save")
 def save(form, meta):
+    require_unlocked()
     p = context.project().require()
     item = p.item()
     scan = form.get("scanphase")

@@ -28,20 +28,30 @@ _NAN_TOKENS = (b"-nan(ind)", b"nan(ind)", b"-nan(snan)", b"nan(snan)", b"-nan(qn
 _INF_TOKENS = ((b"-1.#inf", b"-inf"), (b"1.#inf", b"inf"))
 
 
-def read_dataset_array(path):
-    """``DataSet.txt`` as a float array ``(rows, 41)``; an incomplete last row is dropped."""
-    with open(path, "rb") as fh:
-        raw = fh.read()
+def normalise_tokens(raw):
+    """DataSet bytes with the MSVC NaN / inf spellings replaced by ones numpy reads."""
     low = raw.lower()
     for token in _NAN_TOKENS:
         low = low.replace(token, b"nan")
     for token, repl in _INF_TOKENS:
         low = low.replace(token, repl)
-    lines = low.splitlines()
+    return low
+
+
+def read_dataset_array(path):
+    """``DataSet.txt`` as a float array ``(rows, 41)``; an incomplete last row is dropped."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    lines = normalise_tokens(raw).splitlines()
     while lines and not lines[-1].strip():
         lines.pop()
     if lines and len(lines[-1].split()) != COLUMNS:
         lines.pop()
+    return parse_dataset_lines(lines)
+
+
+def parse_dataset_lines(lines):
+    """Rows (bytes, tokens normalised) as a float array ``(rows, 41)``; lines of another width are skipped."""
     good = [ln for ln in lines if len(ln.split()) == COLUMNS]
     if not good:
         return np.empty((0, COLUMNS))

@@ -11,6 +11,7 @@ from avas.api.qt.api import cal_beam_parameter
 from avas.utils.beamconfig import BeamConfig
 from avas.gui import context
 from avas.gui.bridge import UserError, rpc
+from avas.gui.locks import require_unlocked
 from avas.gui.textio import read_text, write_text
 
 log = logging.getLogger("avas.gui")
@@ -117,6 +118,7 @@ def _format_lines(form):
 
 @rpc("beam.save")
 def save(form):
+    require_unlocked()
     p = context.project().require()
     path = p.input_file("beam.txt")
     new = _format_lines(form)
@@ -148,6 +150,7 @@ def save(form):
 @rpc("beam.importDst")
 def import_dst(source, overwrite=False):
     """Copy a particle file into InputFile (if it is not there yet); returns its name."""
+    require_unlocked()
     p = context.project().require()
     if not source or not os.path.isfile(source):
         raise UserError(f"Not found: {source}")

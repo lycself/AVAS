@@ -3,8 +3,10 @@
 // edit is applied to it as one undo step, then re-parsed.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { call } from "../bridge";
+import { choiceDialog, reportError } from "../components/overlays";
 import { Spinner } from "../components/ui";
-import { useLatticeUi } from "../store/latticeUi";
+import { t } from "../i18n";
+import { setVisualEditing, useLatticeUi } from "../store/latticeUi";
 import { setFieldmapNames } from "./monaco";
 import { StructureEditor } from "./StructureEditor";
 import type { RangeEdit } from "./structureOps";
@@ -31,9 +33,12 @@ type Props = {
   onChange?: (text: string) => void;
   /** Layout: side by side (lattice page), the visual editor, or structure only with the text in a tab. */
   layout?: "split" | "visual" | "structure" | "text";
+  /** Unsaved changes on the page, and how to save them (for "Done" in the visual editor). */
+  dirty?: boolean;
+  onSave?: () => Promise<void>;
 };
 
-export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function LatticeEditor({ initialText, readOnly, fieldDirs, onChange, layout = "split" }, ref) {
+export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function LatticeEditor({ initialText, readOnly, fieldDirs, onChange, layout = "split", dirty, onSave }, ref) {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [doc, setDoc] = useState<LatticeDoc | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -51,10 +56,18 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
   selectedRef.current = selected;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const editing = useLatticeUi((s) => s.visualEditing);
+  const editBase = useRef<string | null>(null);
 
   useEffect(() => {
     loadSchema().then(setSchema);
   }, []);
+
+  // the browse state returns when the visual editor is left or a run locks the inputs
+  useEffect(() => {
+    if (layout === "visual" && readOnly) setVisualEditing(false);
+    if (layout === "split") setVisualEditing(false);
+  }, [layout, readOnly]);
 
   const dirsKey = JSON.stringify(fieldDirs ?? null);
   useEffect(() => {
@@ -181,13 +194,53 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
 
   const getLines = () => (textRef.current?.getText() ?? initialText).split(/\r?\n/);
   const getText = () => textRef.current?.getText() ?? initialText;
+  // the visual editor (and the text shown next to it) change the lattice only in its edit state
+  const visualReadOnly = !!readOnly || !editing;
+
+  const startEditing = () => {
+    if (readOnly) return;
+    editBase.current = getText();
+    setVisualEditing(true);
+  };
+
+  const finishEditing = async () => {
+    if (!dirty) {
+      setVisualEditing(false);
+      return;
+    }
+    const choice = await choiceDialog(
+      t("The lattice has unsaved changes."),
+      [
+        { key: "save", label: t("Save"), variant: "primary" },
+        { key: "discard", label: t("Discard this editing session") },
+        { key: "keep", label: t("Keep editing") },
+      ],
+      { title: t("Finish editing") },
+    );
+    if (choice === "save") {
+      try {
+        await onSave?.();
+        setVisualEditing(false);
+      } catch (e) {
+        reportError(e);
+      }
+    } else if (choice === "discard") {
+      const base = editBase.current;
+      if (base != null && textRef.current && base !== getText()) {
+        textRef.current.setText(base, false); // one undoable step
+        onChangeRef.current?.(base);
+        parse(base, 0);
+      }
+      setVisualEditing(false);
+    }
+  };
 
   const text = (
     <TextEditor
       ref={textRef}
       schema={schema}
       initialText={initialText}
-      readOnly={readOnly}
+      readOnly={layout === "visual" ? visualReadOnly : readOnly}
       doc={doc}
       onChange={(t) => {
         onChangeRef.current?.(t);
@@ -233,7 +286,12 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
             getText={getText}
             fieldDirs={fieldDirs ?? null}
             fieldmaps={fieldmaps}
-            readOnly={readOnly}
+            readOnly={visualReadOnly}
+            editState={readOnly ? "locked" : editing ? "edit" : "browse"}
+            dirty={!!dirty}
+            onStartEdit={startEditing}
+            onFinishEdit={finishEditing}
+            onSave={onSave}
             showText={showText}
             onToggleText={toggleText}
             onUndo={() => textRef.current?.undo()}

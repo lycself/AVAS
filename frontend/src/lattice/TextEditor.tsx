@@ -159,11 +159,18 @@ export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEdito
     setText: (text, resetUndo = true) => {
       const editor = editorRef.current;
       if (!editor) return;
+      // Monaco refuses executeEdits on a read-only editor; whole-text replacements come from
+      // the page (revert, approved assistant changes) and must apply in the browse state too
+      const ro = !!editor.getOption(monaco.editor.EditorOption.readOnly);
       syncing.current = true;
       try {
         if (resetUndo) editor.getModel()!.setValue(text);
-        else editor.executeEdits("avas", [{ range: editor.getModel()!.getFullModelRange(), text }]);
+        else {
+          if (ro) editor.updateOptions({ readOnly: false });
+          editor.executeEdits("avas", [{ range: editor.getModel()!.getFullModelRange(), text }]);
+        }
       } finally {
+        if (ro && !resetUndo) editor.updateOptions({ readOnly: true });
         syncing.current = false;
       }
       updateNumbers();

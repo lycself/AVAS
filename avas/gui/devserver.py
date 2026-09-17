@@ -18,7 +18,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--settings", help="settings file (default: a separate dev file)")
+    ap.add_argument("--fake-engine", type=float, metavar="SECONDS",
+                    help="runs replay the DataSet.txt already in the output folder over SECONDS (avas.gui.fake_engine)")
+    ap.add_argument("--fake-lose", type=float, default=0.0, help="with --fake-engine: fraction of macro-particles lost")
     args = ap.parse_args()
+    if args.fake_engine:
+        import sys
+        from avas.gui.services import runner
+
+        def fake_command(input_dir, output_dir, mode):
+            return [sys.executable, "-u", "-m", "avas.gui.fake_engine", "--input", input_dir, "--output", output_dir,
+                    "--mode", mode or "basic", "--duration", str(args.fake_engine), "--lose", str(args.fake_lose)]
+        runner.simulation_command = fake_command
     os.environ.setdefault("AVAS_GUI_SETTINGS", args.settings or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".dev-gui.json"))
     logbridge.install()
     from avas import i18n

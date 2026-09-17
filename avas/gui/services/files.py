@@ -12,6 +12,7 @@ from avas.data.lattice_doc import LatticeDocument
 from avas.data.particles import read_dst, read_edst
 from avas.gui import bridge, context
 from avas.gui.bridge import UserError, rpc
+from avas.gui.locks import require_unlocked
 from avas.gui.textio import read_text, write_text
 
 log = logging.getLogger("avas.gui")
@@ -107,6 +108,7 @@ def open_file(path):
 
 @rpc("files.save")
 def save_file(path, text):
+    require_unlocked()
     p = _check(path)
     info = _entry(p, path) if os.path.isfile(path) else None
     if info is not None and not info["editable"]:
@@ -118,6 +120,7 @@ def save_file(path, text):
 
 @rpc("files.useLattice")
 def use_lattice(path):
+    require_unlocked()
     p = _check(path)
     p.set_lattice_name(os.path.basename(path))
     log.info("lattice used for the run: %s", os.path.basename(path))
@@ -128,6 +131,7 @@ def use_lattice(path):
 
 @rpc("files.rename")
 def rename_file(path, newName):
+    require_unlocked()
     p = _check(path)
     new_name = (newName or "").strip()
     if not new_name or any(c in new_name for c in '\\/:*?"<>|'):
@@ -147,6 +151,7 @@ def rename_file(path, newName):
 
 @rpc("files.trash")
 def trash_file(path):
+    require_unlocked()
     _check(path)
     from send2trash import send2trash
     send2trash(os.path.normpath(path))
@@ -158,6 +163,7 @@ def trash_file(path):
 
 @rpc("files.import")
 def import_files(sources, overwrite=False):
+    require_unlocked()
     p = context.project().require()
     copied, existing = [], []
     for src in sources or []:
@@ -178,6 +184,7 @@ def import_files(sources, overwrite=False):
 
 @rpc("files.create")
 def create_file(name):
+    require_unlocked()
     p = context.project().require()
     name = (name or "").strip()
     if not name or any(c in name for c in '\\/:*?"<>|'):
@@ -191,6 +198,7 @@ def create_file(name):
 
 @rpc("files.duplicate")
 def duplicate_file(path):
+    require_unlocked()
     p = _check(path)
     base, ext = os.path.splitext(os.path.basename(path))
     for i in range(1, 1000):

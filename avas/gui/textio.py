@@ -1,5 +1,17 @@
 """Reading and writing the project's text files."""
+import hashlib
 import os
+import re
+
+
+def text_fingerprint(text):
+    """SHA-1 of *text* with LF line endings and without trailing newlines.
+
+    Tells whether the lattice in the editor is the one a run used (``lattice_sha1`` in
+    avas_run.json); the front end computes the same (``textFingerprint`` in usePreview.ts).
+    """
+    norm = re.sub(r"\r\n?", "\n", text.lstrip("﻿")).rstrip("\n")
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()
 
 
 def read_text(path):

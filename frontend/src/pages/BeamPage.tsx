@@ -5,9 +5,9 @@ import { Plot, seriesColor } from "../components/Plot";
 import { Button, Checkbox, Section, Select, Spinner, TextInput } from "../components/ui";
 import { fmtG } from "../format";
 import { t, useT } from "../i18n";
-import { useApp } from "../store/app";
+import { useApp, useInputsLocked } from "../store/app";
 import { fileSaved } from "../store/pages";
-import { FormRow, NoProject, PageHeader, useProjectOpen } from "./common";
+import { FormRow, NoProject, PageHeader, RunLockBanner, useProjectOpen } from "./common";
 import { useEditable } from "./useEditable";
 import { isFloat, isInt } from "./widgets";
 
@@ -136,6 +136,7 @@ export default function BeamPage() {
   const inputDir = useApp((s) => s.project.inputDir);
   const [busy, setBusy] = useState(false);
   const [showEllipse, setShowEllipse] = useState(false);
+  const locked = useInputsLocked();
   const ed = useEditable<Data>({
     id: "beam",
     label: () => "beam.txt",
@@ -201,20 +202,21 @@ export default function BeamPage() {
           actions={
             <>
               {ed.dirty && (
-                <Button variant="ghost" icon="discard" onClick={ed.revert}>
+                <Button variant="ghost" icon="discard" disabled={locked} onClick={ed.revert}>
                   {tt("Revert")}
                 </Button>
               )}
-              <Button variant="primary" icon="save" disabled={!ed.dirty} onClick={ed.saveNow}>
+              <Button variant="primary" icon="save" disabled={!ed.dirty || locked} onClick={ed.saveNow}>
                 {tt("Save")}
               </Button>
             </>
           }
         />
+        <RunLockBanner />
         <div className="columns">
           <div>
             <Section title={tt("Particle source")} icon="file-binary">
-              <div className="form">
+              <fieldset className="lockable form" disabled={locked}>
                 <FormRow>
                   <Checkbox checked={f.use_dst} onChange={(v) => set("use_dst", v)} label={tt("Read particles from a .dst file")} />
                 </FormRow>
@@ -235,10 +237,10 @@ export default function BeamPage() {
                   </Button>
                   {busy && <Spinner />}
                 </FormRow>
-              </div>
+              </fieldset>
             </Section>
             <Section title={tt("Beam parameters")} icon="symbol-parameter">
-              <div className="form">
+              <fieldset className="lockable form" disabled={locked}>
                 {row(tt("Charge"), "numofcharge", "e", true)}
                 {row(tt("Rest mass"), "particlerestmass", "MeV")}
                 {row(tt("Current"), "current", "mA")}
@@ -248,19 +250,19 @@ export default function BeamPage() {
                 <FormRow>
                   <Checkbox checked={f.cw} onChange={(v) => set("cw", v)} label={tt("CW (DC) beam - no longitudinal Twiss")} />
                 </FormRow>
-              </div>
+              </fieldset>
             </Section>
           </div>
           <div>
             <Section title={tt("Distribution")} icon="graph-scatter">
-              <div className="form">
+              <fieldset className="lockable form" disabled={locked}>
                 <FormRow label={tt("Transverse")}>
                   <Select value={f.distribution_x} options={DISTRIBUTIONS.map((d) => ({ value: d, label: d }))} onChange={(v) => set("distribution_x", v)} />
                 </FormRow>
                 <FormRow label={tt("Longitudinal")}>
                   <Select value={f.distribution_y} options={DISTRIBUTIONS.map((d) => ({ value: d, label: d }))} onChange={(v) => set("distribution_y", v)} />
                 </FormRow>
-              </div>
+              </fieldset>
             </Section>
             <Section
               title={tt("Twiss parameters and emittance")}
@@ -271,6 +273,7 @@ export default function BeamPage() {
                 </Button>
               }
             >
+              <fieldset className="lockable" disabled={locked}>
               <table className="twiss-table">
                 <thead>
                   <tr>
@@ -306,6 +309,7 @@ export default function BeamPage() {
                   ))}
                 </tbody>
               </table>
+              </fieldset>
             </Section>
           </div>
         </div>

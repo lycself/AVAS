@@ -2,7 +2,8 @@ import { call } from "../bridge";
 import { Button, Checkbox, Icon, Radio, Section, Spinner, TextInput } from "../components/ui";
 import { fileSaved } from "../store/pages";
 import { t, useT } from "../i18n";
-import { NoProject, PageHeader, FormRow, useProjectOpen } from "./common";
+import { useInputsLocked } from "../store/app";
+import { NoProject, PageHeader, FormRow, RunLockBanner, useProjectOpen } from "./common";
 import { useEditable } from "./useEditable";
 import { PathPicker, isFloat, isInt } from "./widgets";
 
@@ -53,6 +54,7 @@ function validate(d: Data): string[] {
 export default function SettingsPage() {
   const tt = useT();
   const open = useProjectOpen();
+  const locked = useInputsLocked();
   const ed = useEditable<Data>({
     id: "settings",
     label: () => "input.txt / ini.ini",
@@ -89,17 +91,18 @@ export default function SettingsPage() {
           actions={
             <>
               {ed.dirty && (
-                <Button variant="ghost" icon="discard" onClick={ed.revert}>
+                <Button variant="ghost" icon="discard" disabled={locked} onClick={ed.revert}>
                   {tt("Revert")}
                 </Button>
               )}
-              <Button variant="primary" icon="save" disabled={!ed.dirty} onClick={ed.saveNow}>
+              <Button variant="primary" icon="save" disabled={!ed.dirty || locked} onClick={ed.saveNow}>
                 {tt("Save")}
               </Button>
             </>
           }
         />
-        <div className="columns">
+        <RunLockBanner />
+        <fieldset className="lockable columns" disabled={locked}>
           <div>
             <Section title={tt("Model")} icon="symbol-class">
               <div className="form">
@@ -238,7 +241,7 @@ export default function SettingsPage() {
               </div>
             </Section>
           </div>
-        </div>
+        </fieldset>
       </div>
     </div>
   );

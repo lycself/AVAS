@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { call, on, setBaseUrl } from "../bridge";
 import { useLang, type Language } from "../i18n";
+import { initLive } from "./live";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type PageId = "project" | "beam" | "lattice" | "settings" | "files" | "run" | "results";
@@ -50,6 +51,8 @@ export type RunState = {
   eta_s?: number | null;
   run_s?: number | null;
   pos_m?: number | null;
+  /** macro-particles still in the beam (engine progress line) */
+  alive?: number | null;
   elapsed_s?: number;
   step?: number | null;
   all_step?: number | null;
@@ -58,6 +61,20 @@ export type RunState = {
   message?: string;
   stopped?: boolean;
 };
+
+/**
+ * Input files are read-only while a project run, error study or segment run is
+ * running or paused (they may read the inputs again later); the assistant's
+ * sandbox studies work on copies and do not lock.  The back end refuses writes
+ * too (avas/gui/locks.py).
+ */
+export function inputsLocked(run: RunState): boolean {
+  return !!run.running && run.source !== "assistant";
+}
+
+export function useInputsLocked(): boolean {
+  return useApp((s) => inputsLocked(s.run));
+}
 
 type Settings = Record<string, any>;
 
@@ -253,6 +270,7 @@ export async function initApp() {
   on("project", (summary: ProjectSummary) => setProject(summary));
   on("run.progress", (state: RunState) => set({ run: state }));
   on("run.finished", (state: RunState) => set({ run: { ...state, running: false }, lastFinished: state }));
+  initLive();
   const run = await call<RunState>("run.state");
   set({ run });
   const summary = await call<ProjectSummary>("project.restoreLast");

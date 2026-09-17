@@ -23,6 +23,7 @@ import { cx, Icon, IconButton, Spinner } from "../components/ui";
 import { LANGUAGES, useT, type Language } from "../i18n";
 import {
   PAGES,
+  persist,
   SCALES,
   setLanguage,
   setLogHeight,
@@ -137,6 +138,17 @@ function MenuBar() {
             { label: t("Zoom out"), shortcut: "Ctrl+-", onClick: () => stepScale(-1) },
             { label: t("Reset zoom"), shortcut: "Ctrl+0", onClick: () => setScale(100) },
           ],
+        },
+        {
+          label: t("Motion"),
+          submenu: (
+            [
+              ["full", t("Full: moving bunch and particle cloud")],
+              ["lite", t("Reduced: moving marker only")],
+              ["off", t("Off: update once per second")],
+              ["auto", t("Automatic (follow Windows animation effects)")],
+            ] as const
+          ).map(([value, label]) => ({ label, checked: (app.settings["ui/motion"] ?? "full") === value, onClick: () => persist({ "ui/motion": value }) })),
         },
       ],
     },

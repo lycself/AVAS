@@ -4,11 +4,11 @@ import { choiceDialog, reportError, toast } from "../components/overlays";
 import { Button, Segmented, Select, Spinner } from "../components/ui";
 import { t, useT } from "../i18n";
 import { LatticeEditor, type LatticeEditorHandle } from "../lattice/LatticeEditor";
-import { refreshProject, useApp } from "../store/app";
+import { refreshProject, useApp, useInputsLocked } from "../store/app";
 import { registerLatticeEditor } from "../assistant/front";
-import { setLatticeMode, useLatticeUi } from "../store/latticeUi";
+import { setLatticeMode, setVisualEditing, useLatticeUi } from "../store/latticeUi";
 import { fileSaved, markDirty, onFileSaved, registerPage } from "../store/pages";
-import { NoProject, PageHeader } from "./common";
+import { NoProject, PageHeader, RunLockBanner } from "./common";
 
 type ListInfo = { active: string; activePath: string; files: { name: string; missing: boolean }[]; fieldDirs: string[]; envOverride: string | null };
 
@@ -22,6 +22,7 @@ export default function LatticePage() {
   const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<LatticeEditorHandle>(null);
   const mode = useLatticeUi((s) => s.mode);
+  const locked = useInputsLocked();
   const savedText = useRef("");
   const current = useRef<{ name: string; path: string } | null>(null);
 
@@ -32,6 +33,7 @@ export default function LatticePage() {
       const file = await call<{ name: string; path: string; text: string }>("lattice.read", { name: list.active });
       savedText.current = normalize(file.text);
       current.current = { name: file.name, path: file.path };
+      setVisualEditing(false); // a (re)loaded lattice opens in the browse state
       setLoaded({ ...file, key: Date.now() });
       setDirty(false);
       markDirty("lattice", false);
@@ -163,6 +165,7 @@ export default function LatticePage() {
         <span className="muted nowrap">{tt("Lattice used for the run")}</span>
         <Select
           value={loaded.name}
+          disabled={locked}
           style={{ minWidth: 260 }}
           tip={tt("Every AVAS-format lattice found in InputFile/. The choice is stored in ini.ini and used by the GUI and by 'avas run'.")}
           options={info.files.map((f) => ({
@@ -179,6 +182,7 @@ export default function LatticePage() {
           <Button
             variant="ghost"
             icon="discard"
+            disabled={locked}
             onClick={() => {
               editorRef.current?.setText(loaded.text);
               setDirty(false);
@@ -188,17 +192,21 @@ export default function LatticePage() {
             {tt("Revert")}
           </Button>
         )}
-        <Button variant="primary" icon="save" disabled={!dirty} tip={tt("Save the lattice file (Ctrl+S saves all pages)")} onClick={() => save().catch(reportError)}>
+        <Button variant="primary" icon="save" disabled={!dirty || locked} tip={tt("Save the lattice file (Ctrl+S saves all pages)")} onClick={() => save().catch(reportError)}>
           {tt("Save")}
         </Button>
       </div>
+      <RunLockBanner />
       <div className="editor-host">
         <LatticeEditor
           key={loaded.key}
           ref={editorRef}
+          readOnly={locked}
           initialText={loaded.text}
           fieldDirs={info.fieldDirs}
           layout={mode === "visual" ? "visual" : "split"}
+          dirty={dirty}
+          onSave={save}
           onChange={(text) => {
             const d = normalize(text) !== savedText.current;
             setDirty(d);

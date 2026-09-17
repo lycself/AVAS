@@ -43,6 +43,13 @@
 }
 .b3d-tip::first-line { font-weight: 600; color: var(--fg-strong); }
 
+.b3d-schematic {
+  position: absolute; right: 8px; bottom: 38px; z-index: 3; display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; font-size: 11px; color: var(--fg-muted); border-radius: 3px;
+  background: color-mix(in srgb, var(--toolbar-bg) 85%, transparent); border: 1px solid var(--border);
+}
+.b3d-schematic .codicon { font-size: 12px; }
+
 .b3d-message {
   position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 16px; text-align: center; color: var(--fg-soft); pointer-events: none;

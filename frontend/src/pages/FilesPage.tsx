@@ -6,11 +6,11 @@ import { humanSize } from "../format";
 import { pick, t, useT } from "../i18n";
 import { LatticeEditor, type LatticeEditorHandle } from "../lattice/LatticeEditor";
 import { loadSchema, type Schema } from "../lattice/types";
-import { refreshProject, setPage, useApp } from "../store/app";
+import { refreshProject, setPage, useApp, useInputsLocked } from "../store/app";
 import { fileSaved, getPage, markDirty, onFileSaved, registerPage } from "../store/pages";
 import { BOUNDARY_COLUMNS, IniTable, KeywordTable, scanDataColumns, TokenTable, TraceWinTable } from "../files/tables";
 import { FieldMapView, ParticlesView, PlainEditor, type PlainEditorHandle } from "../files/views";
-import { NoProject, PageHeader } from "./common";
+import { NoProject, PageHeader, RunLockBanner } from "./common";
 
 type FileEntry = { name: string; path: string; kind: string; group: string; role: string; accent: boolean; editable: boolean; size: number; mtime: number };
 type Listing = { dir: string; files: FileEntry[]; latticeName: string; latticePath: string; fieldDirs: string[] };
@@ -93,6 +93,7 @@ export default function FilesPage() {
   const tt = useT();
   const projectPath = useApp((s) => (s.project.open ? s.project.path : null));
   const page = useApp((s) => s.page);
+  const locked = useInputsLocked();
   const [listing, setListing] = useState<Listing | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ fieldmaps: true });
   const [opened, setOpened] = useState<Opened | null>(null);
@@ -339,13 +340,14 @@ export default function FilesPage() {
     openMenu(
       [
         { label: tt("Open"), icon: "go-to-file", onClick: () => select(f) },
-        ...(f.role === "lattice" ? [{ label: tt("Use for the run"), icon: "play-circle", onClick: () => useForRun(f) }] : []),
-        ...(f.kind === "particles" ? [{ label: tt("Use as initial beam"), icon: "arrow-right", onClick: () => useAsBeam(f.name) }] : []),
+        ...(f.role === "lattice" ? [{ label: tt("Use for the run"), icon: "play-circle", disabled: locked, onClick: () => useForRun(f) }] : []),
+        ...(f.kind === "particles" ? [{ label: tt("Use as initial beam"), icon: "arrow-right", disabled: locked, onClick: () => useAsBeam(f.name) }] : []),
         { type: "separator" },
-        { label: tt("Rename..."), icon: "edit", onClick: () => rename(f) },
+        { label: tt("Rename..."), icon: "edit", disabled: locked, onClick: () => rename(f) },
         {
           label: tt("Duplicate"),
           icon: "copy",
+          disabled: locked,
           onClick: async () => {
             try {
               await call("files.duplicate", { path: f.path });
@@ -355,7 +357,7 @@ export default function FilesPage() {
             }
           },
         },
-        { label: tt("Move to recycle bin"), icon: "trash", danger: true, onClick: () => trash(f) },
+        { label: tt("Move to recycle bin"), icon: "trash", danger: true, disabled: locked, onClick: () => trash(f) },
         { type: "separator" },
         { label: tt("Reveal in Explorer"), icon: "folder-opened", onClick: () => call("shell.reveal", { path: f.path }).catch(reportError) },
         { label: tt("Open with the default program"), icon: "link-external", onClick: () => call("shell.open", { path: f.path }).catch(reportError) },
@@ -374,7 +376,7 @@ export default function FilesPage() {
   const renderContent = () => {
     if (!opened) return <div className="empty-state soft">{tt("Choose a file on the left.")}</div>;
     if (opened.view === "info") {
-      if (opened.kind === "particles" || opened.kind === "particles_ext") return <ParticlesView path={opened.path} onUseAsBeam={() => useAsBeam(opened.name)} />;
+      if (opened.kind === "particles" || opened.kind === "particles_ext") return <ParticlesView path={opened.path} onUseAsBeam={locked ? undefined : () => useAsBeam(opened.name)} />;
       if (opened.kind === "fieldmap") return <FieldMapView path={opened.path} />;
       const why = opened.tooLarge ? tt("Larger than {size} - open it with an external editor.", { size: "2.0 MB" }) : roleDescription(opened, listing.latticeName);
       return (
@@ -393,7 +395,7 @@ export default function FilesPage() {
         </div>
       );
     }
-    const readOnly = !opened.editable;
+    const readOnly = !opened.editable || locked;
     const isLattice = opened.kind === "lattice" || opened.kind === "generated_lattice";
     let table: React.ReactNode = null;
     const tprops = { text, editable: !readOnly, onChange: (v: string) => edit(v, "table" as const), schema };
@@ -447,12 +449,13 @@ export default function FilesPage() {
   return (
     <div className="page-fill">
       <PageHeader title={tt("Files")} hint={tt("Everything in InputFile/, recognised by content. Every file opens in a view that shows the physical meaning of its values.")} />
+      <RunLockBanner />
       <div className="files-layout">
         <div className="files-tree">
           <div className="toolbar compact">
             <span className="caption grow">InputFile</span>
-            <IconButton icon="new-file" tip={tt("New file...")} onClick={newFile} />
-            <IconButton icon="cloud-download" tip={tt("Copy files into InputFile...")} onClick={importFiles} />
+            <IconButton icon="new-file" tip={tt("New file...")} disabled={locked} onClick={newFile} />
+            <IconButton icon="cloud-download" tip={tt("Copy files into InputFile...")} disabled={locked} onClick={importFiles} />
             <IconButton icon="refresh" tip={tt("Refresh")} onClick={refresh} />
             <IconButton icon="folder-opened" tip={tt("Open folder")} onClick={() => call("shell.open", { path: listing.dir }).catch(reportError)} />
           </div>
@@ -498,7 +501,7 @@ export default function FilesPage() {
               <Badge tone={opened.accent ? "accent" : "neutral"}>{roleLabel(opened.role)}</Badge>
               <div className="grow" />
               {opened.role === "lattice" && (
-                <Button icon="play-circle" onClick={() => useForRun(opened)}>
+                <Button icon="play-circle" disabled={locked} onClick={() => useForRun(opened)}>
                   {tt("Use for the run")}
                 </Button>
               )}
@@ -509,7 +512,7 @@ export default function FilesPage() {
                 {tt("Reload")}
               </Button>
               {opened.view === "text" && opened.editable && (
-                <Button variant="primary" icon="save" disabled={!dirty} onClick={() => save().catch(reportError)}>
+                <Button variant="primary" icon="save" disabled={!dirty || locked} onClick={() => save().catch(reportError)}>
                   {tt("Save")}
                 </Button>
               )}

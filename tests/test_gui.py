@@ -83,7 +83,8 @@ def test_bridge_json_is_strict():
 def test_progress_line_parsing():
     from avas.gui.services.runner import parse_progress
     p = parse_progress("Simulate progress 45.34%. Estimated remaining time 9s. Run time 15s.  1  0.35m     ")
-    assert p == {"percent": 45.34, "eta_s": 9.0, "run_s": 15.0, "pos_m": 0.35}
+    assert p == {"percent": 45.34, "eta_s": 9.0, "run_s": 15.0, "pos_m": 0.35, "alive": 1}
+    assert parse_progress("Simulate progress 32.83%. Estimated remaining time 3s. Run time 3s.  5260  0.07m   ")["alive"] == 5260
     p = parse_progress("Simulate progress 70.00%. Estimated remaining time 2.50min. Run time 1.05h.")
     assert p["eta_s"] == pytest.approx(150.0) and p["run_s"] == pytest.approx(3780.0)
     assert parse_progress("[avas] mode=basic") is None
@@ -151,6 +152,41 @@ def test_lattice_page(project):
     assert ok("project.summary")["latticeName"] == "lattice_alt.txt"
     ok("lattice.setSource", name="lattice_mulp.txt")
     ok("lattice.write", name="lattice_mulp.txt", text=text)
+
+
+def test_inputs_are_locked_while_a_run_is_active(project):
+    from avas.gui import locks
+    from avas.gui.services import runner
+    r = runner.runner()
+    inp = project["inputDir"]
+    text = ok("lattice.read", name="lattice_mulp.txt")["text"]
+    beam = ok("beam.load")
+    settings = ok("settings.load")
+    assert not locks.inputs_locked()
+    r.job = object()                      # a project run, error study or segment run (also when paused)
+    try:
+        assert locks.inputs_locked()
+        writes = [
+            ("lattice.write", {"name": "lattice_mulp.txt", "text": text}),
+            ("lattice.setSource", {"name": "lattice_mulp.txt"}),
+            ("beam.save", {"form": beam["form"]}),
+            ("beam.useParticles", {"name": "part_rfq.dst"}),
+            ("settings.save", {"form": settings["form"], "meta": settings["meta"]}),
+            ("files.save", {"path": os.path.join(inp, "input.txt"), "text": "x"}),
+            ("files.create", {"name": "locked.txt"}),
+            ("files.duplicate", {"path": os.path.join(inp, "input.txt")}),
+            ("files.rename", {"path": os.path.join(inp, "input.txt"), "newName": "input2.txt"}),
+            ("files.useLattice", {"path": os.path.join(inp, "lattice_mulp.txt")}),
+        ]
+        for method, params in writes:
+            reply = rpc(method, **params)
+            assert reply["ok"] is False and reply["user"] and "locked" in reply["error"], method
+        assert not os.path.exists(os.path.join(inp, "locked.txt")) and os.path.isfile(os.path.join(inp, "input.txt"))
+        assert ok("lattice.read", name="lattice_mulp.txt")["text"] == text          # reading still works
+        assert ok("files.list")["files"]
+    finally:
+        r.job = None
+    assert not locks.inputs_locked()
 
 
 def test_project_overview(project):

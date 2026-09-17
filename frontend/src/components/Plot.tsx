@@ -87,14 +87,36 @@ export type PlotProps = {
   onClick?: (e: Plotly.PlotMouseEvent) => void;
   /** Called with the graph div once drawn (for image export etc.). */
   onReady?: (el: HTMLElement) => void;
+  /** Curve highlighting (default: on for plots of two or more line traces without images). */
+  highlight?: boolean;
 };
 
-export function Plot({ data, layout, config, className, style, onRelayout, onClick, onReady }: PlotProps) {
+const HIGHLIGHT_DIM = 0.22;
+
+/** Line plots: clicking a curve or its legend entry highlights it (the others fade); Esc clears.
+ *  Double-clicking a legend entry shows only that curve (Plotly's own behaviour). */
+function highlighted(data: Partial<Plotly.Data>[], pinned: number | null): Partial<Plotly.Data>[] {
+  if (pinned == null || pinned >= data.length) return data;
+  return data.map((d: any, i) => {
+    if (i === pinned) return { ...d, opacity: 1, line: { ...(d.line ?? {}), width: (d.line?.width ?? 2) + 1.5 } };
+    return { ...d, opacity: (d.opacity ?? 1) * HIGHLIGHT_DIM };
+  });
+}
+
+export function Plot({ data, layout, config, className, style, onRelayout, onClick, onReady, highlight }: PlotProps) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = useApp((s) => s.resolvedTheme === "dark");
   const [plotly, setPlotly] = useState<PlotlyModule | null>(null);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const canHighlight =
+    highlight ?? (data.length >= 2 && data.every((d: any) => !d.type || d.type === "scatter" || d.type === "scattergl") && data.some((d: any) => String(d.mode ?? "lines").includes("lines")));
+  const canHighlightRef = useRef(canHighlight);
+  canHighlightRef.current = canHighlight;
   const handlers = useRef({ onRelayout, onClick, onReady });
   handlers.current = { onRelayout, onClick, onReady };
+  // a different figure forgets the highlighted curve
+  const traceKey = data.map((d: any) => d.name ?? "").join("|") + `#${data.length}`;
+  useEffect(() => setPinned(null), [traceKey]);
 
   useEffect(() => {
     let alive = true;
@@ -108,7 +130,7 @@ export function Plot({ data, layout, config, className, style, onRelayout, onCli
     const el = ref.current as any;
     if (!plotly || !el) return;
     const fullLayout = withTheme({ autosize: true, ...(layout ?? {}) }, dark);
-    plotly.react(el, data as any, fullLayout as any, {
+    plotly.react(el, (canHighlight ? highlighted(data, pinned) : data) as any, fullLayout as any, {
       responsive: true,
       displaylogo: false,
       scrollZoom: true,
@@ -118,10 +140,19 @@ export function Plot({ data, layout, config, className, style, onRelayout, onCli
     if (!el.__avasBound) {
       el.__avasBound = true;
       el.on("plotly_relayout", (e: any) => handlers.current.onRelayout?.(e, el));
-      el.on("plotly_click", (e: any) => handlers.current.onClick?.(e));
+      el.on("plotly_click", (e: any) => {
+        const curve = e?.points?.[0]?.curveNumber;
+        if (canHighlightRef.current && typeof curve === "number") setPinned((p) => (p === curve ? null : curve));
+        handlers.current.onClick?.(e);
+      });
+      el.on("plotly_legendclick", (e: any) => {
+        if (!canHighlightRef.current) return true;
+        setPinned((p) => (p === e.curveNumber ? null : e.curveNumber));
+        return false; // instead of hiding the curve
+      });
     }
     handlers.current.onReady?.(el);
-  }, [plotly, data, layout, config, dark]);
+  }, [plotly, data, layout, config, dark, pinned, canHighlight]);
 
   useEffect(() => {
     const el = ref.current;
@@ -149,7 +180,17 @@ export function Plot({ data, layout, config, className, style, onRelayout, onCli
   );
 
   return (
-    <div className={className} style={{ position: "relative", minHeight: 120, ...style }}>
+    <div
+      className={className}
+      style={{ position: "relative", minHeight: 120, outline: "none", ...style }}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && pinned != null) {
+          setPinned(null);
+          e.stopPropagation();
+        }
+      }}
+    >
       <div ref={ref} style={{ position: "absolute", inset: 0 }} />
       {!plotly && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>

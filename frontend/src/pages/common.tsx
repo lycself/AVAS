@@ -1,9 +1,33 @@
 import type { ReactNode } from "react";
-import { Empty } from "../components/ui";
+import { Empty, Icon } from "../components/ui";
 import { useT } from "../i18n";
-import { useApp } from "../store/app";
-import { openProject, newProject } from "../actions";
+import { setPage, useApp, useInputsLocked } from "../store/app";
+import { openProject, newProject, stopSimulation } from "../actions";
 import { Button } from "../components/ui";
+
+/** Notice on the input pages while a run locks the input files. */
+export function RunLockBanner() {
+  const t = useT();
+  const locked = useInputsLocked();
+  const paused = useApp((s) => !!s.run.paused);
+  if (!locked) return null;
+  return (
+    <div className="run-lock-banner" role="status">
+      <Icon name="lock" />
+      <span className="grow">
+        {paused
+          ? t("The simulation is paused: the input files stay locked until it finishes or is stopped.")
+          : t("A simulation is running: the input files are locked until it finishes or is stopped.")}
+      </span>
+      <Button small variant="ghost" icon="pulse" onClick={() => setPage("run")}>
+        {t("Show progress")}
+      </Button>
+      <Button small icon="debug-stop" onClick={stopSimulation}>
+        {t("Stop the run")}
+      </Button>
+    </div>
+  );
+}
 
 export function PageHeader({ title, hint, actions }: { title: ReactNode; hint?: ReactNode; actions?: ReactNode }) {
   return (

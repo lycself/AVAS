@@ -32,6 +32,7 @@ import {
   type Pose,
   type Vec3,
 } from "./beamline3dModel";
+import { subscribeBunch, useMotion, type BunchFrame, type MotionMode } from "./bunchPlayer";
 import { fmt6, schemaNow, statementSummary, type LatticeDoc } from "./types";
 
 export type Envelope3D = { z: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; label: string } | null; // z in m, rms sizes in mm
@@ -42,7 +43,22 @@ export type Beamline3DProps = {
   envelope?: Envelope3D; // optional beam envelope to show as a tube
   theme: "light" | "dark";
   className?: string;
+  /** show the schematic bunch of these run kinds (replays always, a live run while it runs) */
+  bunchKinds?: BunchFrame["kind"][];
 };
+
+// Schematic particle cloud: fixed normal samples, ordered by a "survival" threshold so that
+// drawing the first alive/initial of them leaves out the lost share of macro-particles.
+const CLOUD_N = 1200;
+const LOSS_MS = 1500;
+const CLOUD = (() => {
+  let seed = 987654;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const normal = () => Math.sqrt(-2 * Math.log(Math.max(1e-9, rnd()))) * Math.cos(2 * Math.PI * rnd());
+  const pts = Array.from({ length: CLOUD_N }, () => ({ g: [normal(), normal(), normal()] as Vec3, keep: rnd() }));
+  pts.sort((a, b) => a.keep - b.keep);
+  return pts.map((p) => p.g);
+})();
 
 /* ================================================================== constants & helpers */
 const FOV = 35;
@@ -69,6 +85,7 @@ const COLOR_VARS = [
   "--fg-soft",
   "--border",
   "--danger",
+  "--bunch",
 ];
 
 /** Beam coordinates (x, y, z) -> world (z, y, -x): the beam runs along world +X with y up. */
@@ -332,6 +349,7 @@ type Callbacks = {
   onSelect: (line: number) => void;
   onFlyChange: (on: boolean) => void;
   onContextLost: (lost: boolean) => void;
+  onFollowChange: (on: boolean) => void;
 };
 
 const VIEW_DIRS = {
@@ -368,8 +386,22 @@ class Viewer {
     sel: new THREE.LineBasicMaterial({ depthTest: false, transparent: true }),
     hover: new THREE.LineBasicMaterial({ depthTest: false, transparent: true, opacity: 0.85 }),
     dot: new THREE.MeshBasicMaterial(),
+    cloud: new THREE.PointsMaterial({ size: 3, sizeAttenuation: false, transparent: true, opacity: 0.85, depthWrite: false }),
+    lost: new THREE.PointsMaterial({ size: 3.5, sizeAttenuation: false, transparent: true, opacity: 1, depthWrite: false }),
+    bunchDot: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9 }),
   };
   private beamDot = new THREE.Mesh(this.dotGeom, this.mats.dot);
+  // ---- schematic bunch of a live run or a replay (beam coordinates, in root)
+  private cloudGeom = new THREE.BufferGeometry();
+  private lostGeom = new THREE.BufferGeometry();
+  private cloud = new THREE.Points(this.cloudGeom, this.mats.cloud);
+  private lostCloud = new THREE.Points(this.lostGeom, this.mats.lost);
+  private bunchDot = new THREE.Mesh(this.dotGeom, this.mats.bunchDot);
+  private bunch: BunchFrame | null = null;
+  private bunchMode: MotionMode = "full";
+  private keptFrac = 1;
+  private lossAnim: { from: number; to: number; at: number } | null = null;
+  private followBunch = false;
   private selBox: THREE.LineSegments;
   private hoverBox: THREE.LineSegments;
   private envMesh: THREE.Mesh | null = null;
@@ -458,6 +490,19 @@ class Viewer {
 
     this.beamDot.visible = false;
     this.scene.add(this.beamDot);
+    for (const [pts, geom] of [
+      [this.cloud, this.cloudGeom],
+      [this.lostCloud, this.lostGeom],
+    ] as const) {
+      geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(CLOUD_N * 3), 3));
+      pts.frustumCulled = false;
+      pts.visible = false;
+      pts.renderOrder = 5;
+      this.root.add(pts);
+    }
+    this.bunchDot.visible = false;
+    this.bunchDot.renderOrder = 5;
+    this.scene.add(this.bunchDot);
 
     this.camera.position.set(-3, 2, 3);
     this.controls = new OrbitControls(this.camera, canvas);
@@ -521,6 +566,32 @@ class Viewer {
 
   setLabels(on: boolean) {
     this.labelsOn = on;
+    this.invalidate();
+  }
+
+  /** The schematic bunch (null hides it); *mode* "full" draws the particle cloud, otherwise a dot. */
+  setBunch(frame: BunchFrame | null, mode: MotionMode) {
+    const prev = this.bunch;
+    this.bunch = frame;
+    this.bunchMode = mode;
+    if (!frame) {
+      this.keptFrac = 1;
+      this.lossAnim = null;
+    } else if (frame.particles0 > 0 && Number.isFinite(frame.alive)) {
+      const frac = Math.max(0, Math.min(1, frame.alive / frame.particles0));
+      // the particles lost since the previous frame turn red and fly outwards
+      if (mode === "full" && prev && prev.source === frame.source && frac < this.keptFrac - 0.5 / CLOUD_N && frame.z >= prev.z)
+        this.lossAnim = { from: frac, to: this.keptFrac, at: performance.now() };
+      this.keptFrac = frac;
+    }
+    this.invalidate();
+  }
+
+  /** Camera follows the bunch (like the fly-through) until the user moves the view. */
+  setFollow(on: boolean) {
+    this.followBunch = on;
+    if (on) this.stopFly();
+    this.cb.onFollowChange(on);
     this.invalidate();
   }
 
@@ -773,6 +844,8 @@ class Viewer {
     for (const g of Object.values(this.geoms)) g.dispose();
     this.boxEdges.dispose();
     this.dotGeom.dispose();
+    this.cloudGeom.dispose();
+    this.lostGeom.dispose();
     for (const m of Object.values(this.mats)) m.dispose();
     for (const el of this.labelPool) el.remove();
     this.labelPool = [];
@@ -800,6 +873,7 @@ class Viewer {
     let again = false;
     if (this.tween) again = this.stepTween(now) || again;
     if (this.fly) again = this.stepFly(now) || again;
+    again = this.updateBunch(now) || again;
     if (this.controls.update()) again = true; // damping
     this.updateClipping();
     const dist = this.camera.position.distanceTo(this.controls.target);
@@ -851,6 +925,9 @@ class Viewer {
     this.mats.env.emissive.copy(c("--accent")).multiplyScalar(0.25);
     this.mats.sel.color.copy(c("--accent"));
     this.mats.dot.color.copy(c("--accent"));
+    this.mats.cloud.color.copy(c("--bunch"));
+    this.mats.bunchDot.color.copy(c("--bunch"));
+    this.mats.lost.color.copy(c("--danger"));
     this.mats.hover.color.copy(c("--fg"));
     const dark = c("--beamline-bg").getHSL({ h: 0, s: 0, l: 0 }).l < 0.3;
     this.hemi.intensity = dark ? 1.6 : 2.0;
@@ -1641,6 +1718,68 @@ class Viewer {
     return true;
   }
 
+  /** Place the bunch at its arc length; returns whether a loss animation still runs. */
+  private updateBunch(now: number): boolean {
+    const f = this.bunch;
+    const m = this.model;
+    this.cloud.visible = false;
+    this.lostCloud.visible = false;
+    this.bunchDot.visible = false;
+    if (!f || !m || m.total <= 0 || !Number.isFinite(f.z)) return false;
+    const s = Math.max(0, Math.min(m.total, f.z));
+    const P = m.orbit.pose(s);
+    const k = 1e-3 * this.ex; // rms in mm, exaggerated like the envelope tube (1σ here, the tube shows several)
+    const sx = Number.isFinite(f.rmsX) && f.rmsX > 0 ? f.rmsX * k : this.aTyp * 0.3;
+    const sy = Number.isFinite(f.rmsY) && f.rmsY > 0 ? f.rmsY * k : this.aTyp * 0.3;
+    const sz = Math.max(Number.isFinite(f.rmsZ) ? f.rmsZ * k : 0, 0.5 * Math.max(sx, sy)); // same exaggeration as the transverse sizes
+    const place = (geom: THREE.BufferGeometry, i0: number, i1: number, spread: number) => {
+      const attr = geom.getAttribute("position") as THREE.BufferAttribute;
+      const pos = attr.array as Float32Array;
+      let o = 0;
+      for (let i = i0; i < i1; i++) {
+        const g = CLOUD[i];
+        const u = g[0] * sx * spread;
+        const v = g[1] * sy * spread;
+        const w = g[2] * sz;
+        pos[o++] = P.p[0] + P.x[0] * u + P.y[0] * v + P.z[0] * w;
+        pos[o++] = P.p[1] + P.x[1] * u + P.y[1] * v + P.z[1] * w;
+        pos[o++] = P.p[2] + P.x[2] * u + P.y[2] * v + P.z[2] * w;
+      }
+      attr.needsUpdate = true;
+      geom.setDrawRange(0, i1 - i0);
+    };
+    let again = false;
+    if (this.bunchMode === "full") {
+      const n = Math.round(CLOUD_N * this.keptFrac);
+      place(this.cloudGeom, 0, n, 1);
+      this.cloud.visible = n > 0;
+      const a = this.lossAnim;
+      if (a) {
+        const age = now - a.at;
+        if (age >= LOSS_MS) this.lossAnim = null;
+        else {
+          const i0 = Math.round(CLOUD_N * a.from);
+          const i1 = Math.max(i0 + 1, Math.round(CLOUD_N * a.to));
+          place(this.lostGeom, i0, Math.min(CLOUD_N, i1), 1 + (2.5 * age) / LOSS_MS);
+          this.mats.lost.opacity = 1 - age / LOSS_MS;
+          this.lostCloud.visible = true;
+          again = true;
+        }
+      }
+    } else {
+      this.bunchDot.position.copy(toWorld(P.p));
+      this.bunchDot.scale.setScalar(Math.max(sx, sy, this.aTyp * 0.25));
+      this.bunchDot.visible = true;
+    }
+    if (this.followBunch && !this.fly) {
+      const { eye, look } = this.flyCamera(s);
+      this.tween = null;
+      this.camera.position.copy(eye);
+      this.controls.target.copy(look);
+    }
+    return again;
+  }
+
   private stopFly() {
     this.beamDot.visible = false;
     if (!this.fly) return;
@@ -1653,6 +1792,7 @@ class Viewer {
   private onControlStart = () => {
     this.tween = null;
     this.stopFly();
+    if (this.followBunch) this.setFollow(false);
   };
 
   private pick(clientX: number, clientY: number): { line: number; block: number | null; ghost: boolean }[] {
@@ -1832,7 +1972,7 @@ class Viewer {
 const exToSlider = (ex: number) => Math.round((1000 * Math.log(ex / EX_MIN)) / Math.log(EX_MAX / EX_MIN));
 const sliderToEx = (v: number) => roundNice(EX_MIN * Math.exp((v / 1000) * Math.log(EX_MAX / EX_MIN)));
 
-export default function Beamline3D({ doc, selected, onSelect, envelope, theme, className }: Beamline3DProps): JSX.Element {
+export default function Beamline3D({ doc, selected, onSelect, envelope, theme, className, bunchKinds }: Beamline3DProps): JSX.Element {
   const tr = useT();
   const hostRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
@@ -1849,10 +1989,40 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
   const [envScale, setEnvScale] = useState(3);
   const [labels, setLabels] = useState(true);
   const [flying, setFlying] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [hasBunch, setHasBunch] = useState(false);
+  const motion = useMotion();
 
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
+
+  // the schematic bunch of a live run (while it runs) or of a replay
+  const kindsKey = (bunchKinds ?? []).join(",");
+  useEffect(() => {
+    if (!kindsKey) {
+      viewerRef.current?.setBunch(null, motion);
+      setHasBunch(false);
+      return;
+    }
+    const kinds = kindsKey.split(",");
+    let shown = false;
+    const unsub = subscribeBunch(
+      (f) => {
+        const ok = !!f && kinds.includes(f.kind) && (f.source === "replay" || f.running);
+        viewerRef.current?.setBunch(ok ? f : null, motion);
+        if (ok !== shown) {
+          shown = ok;
+          setHasBunch(ok);
+        }
+      },
+      () => !!hostRef.current && hostRef.current.offsetParent !== null,
+    );
+    return () => {
+      unsub();
+      viewerRef.current?.setBunch(null, motion);
+    };
+  }, [kindsKey, motion]);
 
   const model = useMemo(() => buildModel(doc), [doc]);
   const autoEx = useMemo(() => autoExaggeration(model), [model]);
@@ -1865,6 +2035,7 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
         onSelect: (line) => onSelectRef.current(line),
         onFlyChange: setFlying,
         onContextLost: setLost,
+        onFollowChange: setFollowing,
       });
     } catch (err) {
       console.warn("3D beamline view unavailable:", err);
@@ -1936,6 +2107,14 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
             onClick={() => v()?.setFly(!flying)}
             disabled={empty}
           />
+          {hasBunch && (
+            <IconButton
+              icon="target"
+              active={following}
+              tip={following ? tr("Stop following the bunch") : tr("Follow the bunch with the camera")}
+              onClick={() => v()?.setFollow(!following)}
+            />
+          )}
           <div className="divider-v" />
           <label className="b3d-range" data-tip={tr("Transverse exaggeration")}>
             <Icon name="arrow-both" className="b3d-rot90" />
@@ -1975,6 +2154,11 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
           />
           <IconButton icon="tag" active={labels} tip={labels ? tr("Labels: elements near the camera") : tr("Labels: selected element only")} onClick={() => setLabels(!labels)} />
           <IconButton icon="info" tip={tr("Navigation and pointer device")} onClick={(e) => helpMenu(e.currentTarget)} />
+        </div>
+      )}
+      {!failed && hasBunch && (
+        <div className="b3d-schematic" data-tip={tr("The bunch is drawn from the rms envelope (its particles are random samples); it is not the simulated particle distribution.")}>
+          <Icon name="info" /> {tr("schematic")}
         </div>
       )}
       {failed && (

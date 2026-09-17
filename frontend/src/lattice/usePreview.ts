@@ -12,6 +12,7 @@ export type RunEnvelope = {
   z: Arr;
   rmsX: Arr;
   rmsY: Arr;
+  rmsZ?: Arr;
   maxX: Arr;
   maxY: Arr;
   cx: Arr;
@@ -24,6 +25,8 @@ export type RunEnvelope = {
   started?: string;
   status?: string;
   lattice?: string | null;
+  /** fingerprint of the lattice text the run used (textFingerprint), null for older runs */
+  latticeHash?: string | null;
 };
 
 export type PreviewElement = { line: number; z0: number; z1: number; w_in?: number; w_out?: number; phase_rf?: number | null; phase_s?: number | null };
@@ -41,6 +44,8 @@ export type Preview = {
 export function useRunEnvelope(enabled: boolean) {
   const projectPath = useApp((s) => (s.project.open ? s.project.path : null));
   const lastFinished = useApp((s) => s.lastFinished);
+  // a project run rewrites OutputFile/DataSet.txt: keep what was loaded until it is over
+  const projectRunning = useApp((s) => s.run.running && s.run.source === "project");
   const [data, setData] = useState<RunEnvelope | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -48,6 +53,7 @@ export function useRunEnvelope(enabled: boolean) {
       setData(null);
       return;
     }
+    if (projectRunning) return;
     let alive = true;
     call<RunEnvelope | null>("lattice.runEnvelope")
       .then((d) => {
@@ -59,8 +65,50 @@ export function useRunEnvelope(enabled: boolean) {
     return () => {
       alive = false;
     };
-  }, [enabled, projectPath, lastFinished]);
+  }, [enabled, projectPath, lastFinished, projectRunning]);
   return { data, error };
+}
+
+export type SegmentSource = { outputDir: string; label: string; zStart: number | null; zEnd: number | null; time?: string; status?: string };
+
+/** Segment run results of the project (newest first). */
+export async function listSegmentResults(): Promise<SegmentSource[]> {
+  const sources = await call<any[]>("results.sources");
+  return sources.filter((s) => s.kind === "segment").map((s) => ({ outputDir: s.outputDir, label: s.label, zStart: s.zStart ?? null, zEnd: s.zEnd ?? null, time: s.time, status: s.status }));
+}
+
+/** Envelope of a segment run's results folder with z moved onto the project's beam line. */
+export function useSegmentEnvelope(source: SegmentSource | null) {
+  const [data, setData] = useState<(RunEnvelope & { label: string }) | null>(null);
+  const key = source ? `${source.outputDir}|${source.zStart}` : "";
+  useEffect(() => {
+    if (!source) {
+      setData(null);
+      return;
+    }
+    let alive = true;
+    call<RunEnvelope | null>("lattice.segmentEnvelope", { outputDir: source.outputDir })
+      .then((env) => {
+        if (!alive) return;
+        if (!env) return setData(null);
+        const dz = source.zStart ?? 0;
+        setData({ ...env, z: Array.from(env.z, (z) => z + dz), losses: env.losses.map((l) => ({ z: l.z + dz, n: l.n })), label: source.label });
+      })
+      .catch(() => alive && setData(null));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return data;
+}
+
+/** SHA-1 of *text* as the back end computes it (avas/gui/textio.py text_fingerprint). */
+export async function textFingerprint(text: string): Promise<string | null> {
+  if (!window.crypto?.subtle) return null;
+  const norm = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").replace(/\n+$/, "");
+  const buf = await window.crypto.subtle.digest("SHA-1", new TextEncoder().encode(norm));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function useLinearPreview(opts: { enabled: boolean; fieldDirs: string[] | null; spaceCharge: boolean | null }) {
@@ -140,7 +188,7 @@ export function replaceLine(text: string, line: number, newLine: string): string
 }
 
 /** Linear interpolation of a series at z (NaN outside). */
-export function sampleAt(z: Arr, v: Arr, zq: number): number {
+export function sampleAt(z: ArrayLike<number>, v: ArrayLike<number>, zq: number): number {
   const n = z.length;
   if (!n || zq < z[0] || zq > z[n - 1]) return NaN;
   let lo = 0;

@@ -94,6 +94,6 @@ body.dragging .sash-v, body.dragging { cursor: col-resize; }
 }
 .status-item .codicon { font-size: 14px; }
 .status-item:hover { background: var(--list-hover); }
-.statusbar.running .status-item:hover { background: rgba(255, 255, 255, .12); }
+.statusbar.running .status-item:hover { background: var(--on-accent-hover); }
 .status-message { flex: 1 1 auto; padding: 0 8px; min-width: 0; user-select: text; }
 .status-message.error { color: var(--danger); }

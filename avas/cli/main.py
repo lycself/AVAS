@@ -156,6 +156,7 @@ def cmd_run(args):
         "device": device,
         "seed": seed,
         "lattice": lattice_source_name(input_dir),
+        "lattice_sha1": _lattice_fingerprint(input_dir),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "running",
     }
@@ -192,6 +193,16 @@ def cmd_run(args):
             print(f"[avas] {m['level']}: {m['text'][0]}")
     print(f"[avas] done in {info['elapsed_s']} s -> {output_dir}")
     return 0
+
+
+def _lattice_fingerprint(input_dir):
+    """Fingerprint of the lattice text this run uses (the GUI tells whether it was edited since)."""
+    from avas.gui.textio import read_text, text_fingerprint
+    from avas.paths import lattice_source_path
+    try:
+        return text_fingerprint(read_text(lattice_source_path(input_dir)))
+    except OSError:
+        return None
 
 
 def _diagnostics(output_dir):

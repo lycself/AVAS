@@ -8,10 +8,12 @@ import numpy as np
 
 from avas import paths
 from avas.data import filekinds, schema
+from avas.data.dataset_stream import dataset_envelope
 from avas.data.fieldmap import EXT_MEANING
 from avas.data.lattice_doc import Group, LatticeDocument
 from avas.gui import bridge, context
 from avas.gui.bridge import UserError, rpc
+from avas.gui.locks import require_unlocked
 from avas.gui.textio import read_text, write_text
 
 log = logging.getLogger("avas.gui")
@@ -154,6 +156,7 @@ def read(name):
 
 @rpc("lattice.write")
 def write(name, text):
+    require_unlocked()
     path = _path(name)
     write_text(path, text)
     log.info("lattice saved: %s", os.path.basename(path))
@@ -162,6 +165,7 @@ def write(name, text):
 
 @rpc("lattice.setSource")
 def set_source(name):
+    require_unlocked()
     p = context.project().require()
     p.set_lattice_name(name)
     log.info("lattice used for the run: %s", name)
@@ -197,50 +201,9 @@ def _stride(n, max_points):
     return max(1, int(math.ceil(n / max_points))) if n else 1
 
 
-def dataset_envelope(output_dir, max_points=3000):
-    """Envelope along z from ``DataSet.txt`` (mm, MeV), downsampled; ``None`` without a DataSet."""
-    from avas.post.analysis.run_diagnostics import read_dataset_array
-    path = os.path.join(output_dir, "DataSet.txt")
-    if not os.path.isfile(path):
-        return None
-    d = read_dataset_array(path)
-    if not d.shape[0]:
-        return None
-    sign = d[:, 35]
-    if np.all(sign == 0):
-        z = d[:, 5] + d[:, 33]
-    else:                                    # bends: the path length accumulates (same rules as DatasetParameter)
-        z = np.zeros(len(d))
-        keep = np.ones(len(d), dtype=bool)
-        s1 = s2 = 0
-        last = 0.0
-        for i in range(len(d)):
-            step = math.hypot(d[i, 37], d[i, 38])
-            if sign[i] == 0:
-                s2 = 0
-                last = d[i, 5] + d[i, 33] if s1 == 0 else last + d[i, 38]
-            elif sign[i] == 1:
-                last, s1, s2 = last + step, 1, 0
-            elif s2 == 0:
-                last, s2 = last + step, 1
-            else:
-                keep[i] = False
-                continue
-            z[i] = last
-        d, z = d[keep], z[keep]
-    alive = d[:, 28]
-    lost_idx = np.flatnonzero(np.diff(alive) < 0) + 1
-    losses = [{"z": float(z[i]), "n": float(alive[i - 1] - alive[i])} for i in lost_idx[:2000]]
-    sl = slice(None, None, _stride(len(d), max_points))
-
-    def mm(col):
-        return d[sl, col] * 1e3
-
-    return {
-        "z": z[sl], "rmsX": mm(16), "rmsY": mm(18), "maxX": mm(22), "maxY": mm(24),
-        "cx": (d[sl, 1] + d[sl, 29]) * 1e3, "cy": (d[sl, 3] + d[sl, 31]) * 1e3, "energy": d[sl, 0],
-        "alive": alive[sl], "losses": losses, "particles": float(alive[0]), "rows": int(len(d)),
-    }
+def envelope_blobs(env):
+    """An envelope dict for the page: arrays travel as blobs."""
+    return {k: (bridge.blob(v, "float32") if isinstance(v, np.ndarray) else v) for k, v in env.items()}
 
 
 @rpc("lattice.runEnvelope")
@@ -252,10 +215,22 @@ def run_envelope():
     if env is None:
         return None
     run = p.last_run()
-    out = {k: (bridge.blob(v, "float32") if isinstance(v, np.ndarray) else v) for k, v in env.items()}
+    out = envelope_blobs(env)
     out.update(started=run.get("started"), finished=run.get("finished"), lattice=run.get("lattice"),
-               status=run.get("status"), mtime=_stamp(path)[1])
+               latticeHash=run.get("lattice_sha1"), status=run.get("status"), mtime=_stamp(path)[1])
     return out
+
+
+@rpc("lattice.segmentEnvelope")
+def segment_envelope(outputDir):
+    """Beam envelope of a segment run's results folder; z starts at 0 at the segment entry."""
+    p = context.project().require()
+    folder = os.path.normcase(os.path.abspath(outputDir or ""))
+    if not folder.startswith(os.path.normcase(os.path.abspath(p.path)) + os.sep):
+        raise UserError("The results folder is not part of this project.")
+    path = os.path.join(outputDir, "DataSet.txt")
+    env = _cached(("env", folder), _stamp(path), lambda: dataset_envelope(outputDir))
+    return None if env is None else envelope_blobs(env)
 
 
 def _gradient(fm, component, order=None):

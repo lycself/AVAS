@@ -5,6 +5,7 @@ import { reportError } from "../components/overlays";
 import { Badge, Button, cx, ProgressBar, Section } from "../components/ui";
 import { fmtSeconds, runStatusLabel } from "../format";
 import { useT } from "../i18n";
+import { LiveBeamPanel } from "../lattice/LiveBeamPanel";
 import { setPage, showResults, useApp } from "../store/app";
 import { NoProject, PageHeader } from "./common";
 
@@ -150,6 +151,7 @@ export default function RunPage() {
               </div>
             </div>
             <div className="engine-line mono">{engineLine}</div>
+            <LiveBeamPanel />
             {last?.ok && !running && last.source !== "assistant" && (
               <div className="row">
                 <Button icon="graph-line" onClick={() => showResults(last.source === "segment" ? last.outputDir : undefined)}>

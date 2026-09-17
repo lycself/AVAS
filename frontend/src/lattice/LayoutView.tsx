@@ -1,19 +1,58 @@
-// Large beamline layout of the visual editor: element glyphs on top, the beam
-// envelope below on the same z axis (x above the axis, y mirrored below, as in
-// TraceWin), pipe apertures, particle losses, the linear preview and the last
-// run.  Wheel = zoom, drag = pan, double-click = fit, click = select; palette
-// items can be dropped onto the beamline.
+// Beamline layout of the visual editor (and, compact, of the Run page): element
+// glyphs on top, the beam envelope below on the same z axis (x above the axis, y
+// mirrored below, as in TraceWin), pipe apertures and particle losses, with the
+// last run, the linear preview, the run in progress and its schematic bunch, the
+// previous run, finished error seeds and a segment run's result.
+//
+// Wheel = zoom, drag = pan, double-click = fit (the view follows the bunch again),
+// click = select the element, or highlight the curve under the cursor.  Legend
+// entries highlight their curve (click) or show only it (double-click); Esc
+// clears both.  Palette items can be dropped onto the beamline.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { cx } from "../components/ui";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
+import type { LiveBandItem } from "../store/live";
+import { subscribeBunch, useMotion, type BunchFrame } from "./bunchPlayer";
 import { aperture, cssColor, drawGlyph, elementShape, isZeroLength, niceStep, polarity, type Shape } from "./glyphs";
 import { dropMarker, type NewElementKind } from "./structureOps";
 import { elementColorVar, fmt6, worstIssue, type LatticeDoc, type Schema } from "./types";
 import { sampleAt, type Preview, type RunEnvelope } from "./usePreview";
 
-export type LayoutShow = { run: boolean; preview: boolean; aperture: boolean; losses: boolean; max: boolean; energy: boolean; scale: "beam" | "pipe" };
+export type LayoutShow = {
+  run: boolean;
+  preview: boolean;
+  aperture: boolean;
+  losses: boolean;
+  max: boolean;
+  energy: boolean;
+  scale: "beam" | "pipe";
+  /** the run before the last one, after a run in this session */
+  compare?: boolean;
+  /** finished seeds of an error study */
+  band?: boolean;
+};
+
+type Arr = ArrayLike<number>;
+
+/** A beam envelope drawn in the layout: z (m), sizes (mm), energy (MeV), losses. */
+export type EnvelopeCurves = { z: Arr; rmsX: Arr; rmsY: Arr; maxX?: Arr; maxY?: Arr; energy?: Arr; losses?: { z: number; n: number }[] };
 
 type Item = { line: number; z0: number; z1: number; color: string; shape: Shape; pol: number; label: string; typeTitle: string; lane: number; issue: "error" | "warning" | null; r: number | null };
+
+type Series = {
+  /** legend key: the x and y of one envelope have their own keys, all band curves share one */
+  key: string;
+  label: string;
+  color: string;
+  z: Arr;
+  v: Arr;
+  sign: 1 | -1;
+  axis: "size" | "energy";
+  width: number;
+  dash: number[];
+  alpha: number;
+};
 
 export const PALETTE_MIME = "application/x-avas-element";
 
@@ -21,31 +60,92 @@ type Props = {
   doc: LatticeDoc;
   schema: Schema;
   selected: number | null;
-  onSelect: (line: number) => void;
+  onSelect?: (line: number) => void;
   run: RunEnvelope | null;
   preview: Preview | null;
   show: LayoutShow;
+  /** the run in progress (or just finished), in full colour */
+  live?: EnvelopeCurves | null;
+  liveLabel?: string;
+  /** changes whenever rows were appended to *live* (the arrays grow in place) */
+  liveVersion?: number;
+  /** the run before, as a thin grey reference */
+  previous?: EnvelopeCurves | null;
+  previousLabel?: string;
+  band?: LiveBandItem[];
+  /** a segment run's result, z on the project's beam line */
+  segment?: (EnvelopeCurves & { label: string }) | null;
+  /** draw the schematic bunch of these run kinds (replays always, a live run while it runs) */
+  bunchKinds?: BunchFrame["kind"][];
+  /** also keep the bunch of a finished live run (at its end) */
+  bunchWhenDone?: boolean;
   onDropElement?: (z: number, kind: NewElementKind) => void;
   readOnly?: boolean;
   fitSignal?: number;
+  compact?: boolean;
+  /** z range to emphasise (a segment on the Run page) */
+  range?: [number, number] | null;
 };
 
-const GLYPH_H = 76;
 const AXIS_H = 22;
+const HIT_PX = 6;
+const FLASH_MS = 1500;
 
-export function LayoutView({ doc, schema, selected, onSelect, run, preview, show, onDropElement, readOnly, fitSignal }: Props) {
+// fixed pseudo-random normal pairs (and a keep threshold) for the schematic particle cloud
+const CLOUD = (() => {
+  let s = 12345;
+  const rnd = () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i < 160; i++) {
+    const r = Math.sqrt(-2 * Math.log(Math.max(1e-9, rnd())));
+    const a = 2 * Math.PI * rnd();
+    pts.push([r * Math.cos(a), r * Math.sin(a), rnd()]);
+  }
+  return pts;
+})();
+
+export function LayoutView({
+  doc,
+  schema,
+  selected,
+  onSelect,
+  run,
+  preview,
+  show,
+  live,
+  liveLabel,
+  liveVersion,
+  previous,
+  previousLabel,
+  band,
+  segment,
+  bunchKinds,
+  bunchWhenDone,
+  onDropElement,
+  readOnly,
+  fitSignal,
+  compact,
+  range,
+}: Props) {
   const t = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const theme = useApp((s) => s.resolvedTheme);
+  const motion = useMotion();
   const [size, setSize] = useState({ w: 800, h: 360 });
   const [view, setView] = useState<[number, number]>([0, 1]);
   const [hover, setHover] = useState<{ x: number; y: number; z: number } | null>(null);
   const [drop, setDrop] = useState<{ z: number; kind: string } | null>(null);
+  const [pinned, setPinned] = useState<string | null>(null);
+  const [solo, setSolo] = useState<string | null>(null);
   const fitted = useRef(true);
+  const follow = useRef(true);
   const lastTotal = useRef(-1);
   const drag = useRef<{ x: number; v0: number; v1: number; moved: boolean } | null>(null);
+  const lastFrame = useRef<BunchFrame | null>(null);
   const titles = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k.title])), [schema]);
+  const GLYPH_H = compact ? 46 : 76;
 
   const items = useMemo<Item[]>(() => {
     const blockOrder = new Map<number, number>();
@@ -75,11 +175,59 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
       });
   }, [doc, titles]);
 
+  // ---- the curves, back to front
+  const series = useMemo<Series[]>(() => {
+    const out: Series[] = [];
+    const envelope = (group: string, label: string, env: EnvelopeCurves, o: { cx: string; cy: string; width: number; dash?: number[]; alpha?: number; max?: boolean }) => {
+      const alpha = o.alpha ?? 1;
+      const dash = o.dash ?? [];
+      out.push({ key: `${group}.x`, label: `${label} · x`, color: o.cx, z: env.z, v: env.rmsX, sign: 1, axis: "size", width: o.width, dash, alpha });
+      out.push({ key: `${group}.y`, label: `${label} · y`, color: o.cy, z: env.z, v: env.rmsY, sign: -1, axis: "size", width: o.width, dash, alpha });
+      if (o.max && env.maxX && env.maxY) {
+        out.push({ key: `${group}.maxx`, label: `${label} · ${t("max")} x`, color: o.cx, z: env.z, v: env.maxX, sign: 1, axis: "size", width: 1, dash: [4, 3], alpha });
+        out.push({ key: `${group}.maxy`, label: `${label} · ${t("max")} y`, color: o.cy, z: env.z, v: env.maxY, sign: -1, axis: "size", width: 1, dash: [4, 3], alpha });
+      }
+      if (show.energy && env.energy) out.push({ key: `${group}.w`, label: `${label} · W`, color: o.cx, z: env.z, v: env.energy, sign: 1, axis: "energy", width: 1.2, dash: [2, 2], alpha });
+    };
+    if (show.band !== false && band?.length) {
+      const label = t("finished seeds ({n})", { n: band.length });
+      for (const b of band) {
+        out.push({ key: "band", label, color: "--el-bmag", z: b.rows.z, v: b.rows.rmsX, sign: 1, axis: "size", width: 1, dash: [], alpha: 0.28 });
+        out.push({ key: "band", label, color: "--el-quad", z: b.rows.z, v: b.rows.rmsY, sign: -1, axis: "size", width: 1, dash: [], alpha: 0.28 });
+      }
+    }
+    if (previous) envelope("previous", previousLabel ?? t("previous run"), previous, { cx: "--curve-previous", cy: "--curve-previous", width: 1.1, alpha: 0.9 });
+    if (segment) envelope("segment", segment.label, segment, { cx: "--curve-segment", cy: "--curve-segment", width: 1.5, max: show.max });
+    if (show.run && run) envelope("run", t("last run"), run, { cx: "--el-bmag", cy: "--el-quad", width: 1.6, max: show.max });
+    if (show.preview && preview) envelope("preview", t("linear preview"), { z: preview.z, rmsX: preview.rms_x, rmsY: preview.rms_y, energy: preview.energy }, { cx: "--el-rf", cy: "--el-rf", width: 1.8, dash: [6, 3] });
+    if (live) envelope("live", liveLabel ?? t("this run"), live, { cx: "--el-bmag", cy: "--el-quad", width: 2, max: show.max });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, preview, live, liveVersion, previous, previousLabel, band, segment, show, liveLabel, t]);
+
+  const lossSets = useMemo(() => {
+    const sets: { z: number; n: number }[][] = [];
+    if (show.losses) {
+      if (show.run && run?.losses.length) sets.push(run.losses);
+      if (live?.losses?.length) sets.push(live.losses);
+      if (segment?.losses?.length) sets.push(segment.losses);
+    }
+    return sets;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show.losses, show.run, run, live, liveVersion, segment]);
+
+  // a highlighted curve that disappeared is forgotten
+  useEffect(() => {
+    if (pinned && !series.some((s) => s.key === pinned)) setPinned(null);
+    if (solo && !series.some((s) => s.key === solo)) setSolo(null);
+  }, [series, pinned, solo]);
+
   const total = Math.max(doc.totalLength ?? 0, ...items.map((i) => i.z1), 1e-6);
   const fit = () => {
     const pad = total * 0.01;
     setView([-pad, total + pad]);
     fitted.current = true;
+    follow.current = true;
   };
   useEffect(() => {
     if (Math.abs(total - lastTotal.current) > 1e-9) {
@@ -124,46 +272,60 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
   // vertical scale (mm) from what is visible
   const yMax = useMemo(() => {
     let m = 0;
-    const scan = (z: ArrayLike<number>, v: ArrayLike<number>) => {
-      for (let i = 0; i < z.length; i++) if (z[i] >= view[0] && z[i] <= view[1] && Number.isFinite(v[i])) m = Math.max(m, Math.abs(v[i]));
-    };
-    if (show.run && run) {
-      if (show.max) {
-        scan(run.z, run.maxX);
-        scan(run.z, run.maxY);
-      } else {
-        scan(run.z, run.rmsX);
-        scan(run.z, run.rmsY);
-      }
-    }
-    if (show.preview && preview) {
-      scan(preview.z, preview.rms_x);
-      scan(preview.z, preview.rms_y);
+    for (const s of series) {
+      if (s.axis !== "size" || (solo && s.key !== solo)) continue;
+      for (let i = 0; i < s.z.length; i++) if (s.z[i] >= view[0] && s.z[i] <= view[1] && Number.isFinite(s.v[i])) m = Math.max(m, Math.abs(s.v[i]));
     }
     if (show.scale === "pipe" || m === 0) for (const it of items) if (it.r && it.z1 >= view[0] && it.z0 <= view[1]) m = Math.max(m, it.r * 1000);
     return m > 0 ? m * 1.15 : 1;
-  }, [run, preview, show, items, view]);
+  }, [series, show.scale, items, view, solo]);
 
   const eRange = useMemo(() => {
     let lo = Infinity;
     let hi = -Infinity;
-    const scan = (v?: ArrayLike<number>) => {
-      if (!v) return;
-      for (let i = 0; i < v.length; i++) if (Number.isFinite(v[i]) && v[i] > -1e6) {
-        lo = Math.min(lo, v[i]);
-        hi = Math.max(hi, v[i]);
-      }
-    };
-    if (show.run && run) scan(run.energy);
-    if (show.preview && preview) scan(preview.energy);
+    for (const s of series) {
+      if (s.axis !== "energy") continue;
+      for (let i = 0; i < s.v.length; i++)
+        if (Number.isFinite(s.v[i]) && s.v[i] > -1e6) {
+          lo = Math.min(lo, s.v[i]);
+          hi = Math.max(hi, s.v[i]);
+        }
+    }
     if (!Number.isFinite(lo)) return null;
     if (hi - lo < 1e-9) return [lo - 1, hi + 1] as [number, number];
     const pad = (hi - lo) * 0.05;
     return [lo - pad, hi + pad] as [number, number];
-  }, [run, preview, show.run, show.preview]);
+  }, [series]);
 
   const cyPlot = plot.top + ph / 2;
   const yOf = (mm: number) => cyPlot - (mm / yMax) * (ph / 2);
+  const eY = (w: number) => (eRange ? plot.top + ph - ((w - eRange[0]) / (eRange[1] - eRange[0])) * ph : NaN);
+
+  const inPlot = (x: number, y: number) => x >= plot.left && x <= plot.left + pw && y >= plot.top && y <= plot.top + ph;
+  const hitSeries = (x: number, y: number): string | null => {
+    if (!inPlot(x, y)) return null;
+    const z = zOf(x);
+    let best: string | null = null;
+    let bestD = HIT_PX;
+    for (const s of series) {
+      if (solo && s.key !== solo) continue;
+      if (s.axis === "energy" && !eRange) continue;
+      const v = sampleAt(s.z, s.v, z);
+      if (!Number.isFinite(v)) continue;
+      const d = Math.abs((s.axis === "size" ? yOf(s.sign * v) : eY(v)) - y);
+      if (d < bestD) {
+        bestD = d;
+        best = s.key;
+      }
+    }
+    return best;
+  };
+  const hoverKey = hover ? hitSeries(hover.x, hover.y) : null;
+  const highlight = hoverKey ?? pinned;
+
+  // geometry for the bunch overlay, which draws between React renders
+  const geo = useRef({ xOf, yOf, plot, pw, ph, size, span: view[1] - view[0] });
+  geo.current = { xOf, yOf, plot, pw, ph, size, span: view[1] - view[0] };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -181,9 +343,6 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
       accent: cssColor("--accent"),
       danger: cssColor("--danger"),
       warning: cssColor("--warning"),
-      run: cssColor("--el-bmag"),
-      runY: cssColor("--el-quad"),
-      preview: cssColor("--el-rf"),
       pipe: cssColor("--border-strong"),
       drift: cssColor("--el-drift"),
     };
@@ -234,7 +393,7 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
       const zero = it.z1 - it.z0 <= 0 || isZeroLength(it.shape);
       const h = (GLYPH_H / 2 - 6) * (it.lane ? 0.78 : 1);
       drawGlyph(ctx, it.shape, it.pol, x0, zero ? x0 : x1, glyphCy, h, cssColor(it.color), { alpha: it.lane ? 0.55 : 0.42 });
-      if (it.issue) {
+      if (it.issue && !compact) {
         ctx.fillStyle = it.issue === "error" ? c.danger : c.warning;
         ctx.beginPath();
         ctx.arc((x0 + x1) / 2, 5, 3, 0, Math.PI * 2);
@@ -260,7 +419,6 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
     ctx.beginPath();
     ctx.rect(plot.left, plot.top, pw, ph);
     ctx.clip();
-    // pipe walls
     if (show.aperture) {
       ctx.fillStyle = c.pipe;
       ctx.globalAlpha = 0.45;
@@ -275,7 +433,16 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
       }
       ctx.globalAlpha = 1;
     }
-    // zero line
+    if (range) {
+      // outside the emphasised range the plot is dimmed
+      ctx.fillStyle = c.bg;
+      ctx.globalAlpha = 0.6;
+      const xa = xOf(range[0]);
+      const xb = xOf(range[1]);
+      if (xa > plot.left) ctx.fillRect(plot.left, plot.top, xa - plot.left, ph);
+      if (xb < plot.left + pw) ctx.fillRect(xb, plot.top, plot.left + pw - xb, ph);
+      ctx.globalAlpha = 1;
+    }
     ctx.strokeStyle = c.soft;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -283,10 +450,12 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
     ctx.lineTo(plot.left + pw, Math.round(cyPlot) + 0.5);
     ctx.stroke();
 
-    const curve = (z: ArrayLike<number>, v: ArrayLike<number>, sign: 1 | -1, color: string, width: number, dash: number[] = []) => {
+    const curve = (s: Series, color: string, width: number, alpha: number) => {
+      const map = s.axis === "size" ? (v: number) => yOf(s.sign * v) : eY;
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
-      ctx.setLineDash(dash);
+      ctx.globalAlpha = alpha;
+      ctx.setLineDash(s.dash);
       ctx.beginPath();
       let pen = false;
       // pixel-level min/max decimation keeps spikes visible when zoomed out
@@ -295,15 +464,16 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
       let hi = 0;
       const flush = (px: number) => {
         if (!pen) {
-          ctx.moveTo(px, yOf(sign * lo));
+          ctx.moveTo(px, map(lo));
           pen = true;
-        } else ctx.lineTo(px, yOf(sign * lo));
-        if (hi !== lo) ctx.lineTo(px, yOf(sign * hi));
+        } else ctx.lineTo(px, map(lo));
+        if (hi !== lo) ctx.lineTo(px, map(hi));
       };
       let started = false;
+      const { z, v } = s;
       for (let i = 0; i < z.length; i++) {
         const val = v[i];
-        if (!Number.isFinite(val)) {
+        if (!Number.isFinite(val) || (s.axis === "energy" && val < -1e6)) {
           if (started) flush(lastPx);
           started = false;
           pen = false;
@@ -328,27 +498,29 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
       if (started) flush(lastPx);
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
     };
-    if (show.run && run) {
-      if (show.max) {
-        curve(run.z, run.maxX, 1, c.run, 1, [4, 3]);
-        curve(run.z, run.maxY, -1, c.runY, 1, [4, 3]);
-      }
-      curve(run.z, run.rmsX, 1, c.run, 1.6);
-      curve(run.z, run.rmsY, -1, c.runY, 1.6);
+    const colors = new Map<string, string>();
+    const colorOf = (name: string) => {
+      if (!colors.has(name)) colors.set(name, cssColor(name));
+      return colors.get(name)!;
+    };
+    const visible = series.filter((s) => (!solo || s.key === solo) && (s.axis === "size" || (show.energy && eRange)));
+    // the highlighted curve is drawn last, on top
+    visible.sort((a, b) => Number(a.key === highlight) - Number(b.key === highlight));
+    for (const s of visible) {
+      const emph = highlight === s.key;
+      curve(s, colorOf(s.color), s.width + (emph ? 1.6 : 0), s.alpha * (highlight && !emph ? 0.25 : 1));
     }
-    if (show.preview && preview) {
-      curve(preview.z, preview.rms_x, 1, c.preview, 1.8, [6, 3]);
-      curve(preview.z, preview.rms_y, -1, c.preview, 1.8, [6, 3]);
-    }
-    if (show.losses && run && run.losses.length) {
+    if (lossSets.length) {
       ctx.fillStyle = c.danger;
       const byPx = new Map<number, number>();
-      for (const l of run.losses) {
-        if (l.z < view[0] || l.z > view[1]) continue;
-        const px = Math.round(xOf(l.z));
-        byPx.set(px, (byPx.get(px) ?? 0) + l.n);
-      }
+      for (const set of lossSets)
+        for (const l of set) {
+          if (l.z < view[0] || l.z > view[1]) continue;
+          const px = Math.round(xOf(l.z));
+          byPx.set(px, (byPx.get(px) ?? 0) + l.n);
+        }
       const maxN = Math.max(1, ...byPx.values());
       for (const [px, n] of byPx) {
         const len = 6 + 22 * Math.sqrt(n / maxN);
@@ -357,35 +529,8 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
     }
     ctx.restore();
 
-    // energy on the right axis
+    // energy scale on the right
     if (show.energy && eRange) {
-      const eY = (w: number) => plot.top + ph - ((w - eRange[0]) / (eRange[1] - eRange[0])) * ph;
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(plot.left, plot.top, pw, ph);
-      ctx.clip();
-      const ecurve = (z: ArrayLike<number>, v: ArrayLike<number>, color: string, dash: number[]) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.2;
-        ctx.setLineDash(dash);
-        ctx.beginPath();
-        let pen = false;
-        for (let i = 0; i < z.length; i++) {
-          if (!Number.isFinite(v[i]) || v[i] < -1e6) {
-            pen = false;
-            continue;
-          }
-          const x = xOf(z[i]);
-          if (!pen) ctx.moveTo(x, eY(v[i]));
-          else ctx.lineTo(x, eY(v[i]));
-          pen = true;
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
-      if (show.run && run) ecurve(run.z, run.energy, c.soft, [2, 2]);
-      if (show.preview && preview) ecurve(preview.z, preview.energy, c.preview, [2, 3]);
-      ctx.restore();
       ctx.fillStyle = c.soft;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
@@ -404,7 +549,7 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
     ctx.strokeStyle = c.soft;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    const ys = niceStep(yMax / 3);
+    const ys = niceStep(yMax / (compact ? 2 : 3));
     for (let v = 0; v <= yMax; v += ys) {
       ctx.fillText(String(Number(v.toPrecision(4))), plot.left - 6, yOf(v));
       if (v > 0) ctx.fillText(String(Number(v.toPrecision(4))), plot.left - 6, yOf(-v));
@@ -451,8 +596,109 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
       ctx.lineTo(x, size.h - AXIS_H);
       ctx.stroke();
     }
+    drawBunch(lastFrame.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, view, size, selected, theme, run, preview, show, hover, drop, yMax, eRange]);
+  }, [items, view, size, selected, theme, series, lossSets, show, hover, drop, yMax, eRange, highlight, solo, range, compact]);
+
+  // ---- the schematic bunch, on its own canvas redrawn per animation frame
+  function drawBunch(f: BunchFrame | null) {
+    const canvas = overlayRef.current;
+    if (!canvas) return;
+    const g = geo.current;
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(g.size.w * dpr);
+    const h = Math.round(g.size.h * dpr);
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext("2d")!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, g.size.w, g.size.h);
+    if (!f || !bunchKinds?.includes(f.kind) || !Number.isFinite(f.z) || (f.source === "live" && !f.running && !bunchWhenDone)) return;
+    const p = g.plot;
+    const x = g.xOf(f.z);
+    const color = cssColor("--bunch");
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(p.left, 0, g.pw, g.size.h - AXIS_H);
+    ctx.clip();
+    // losses the bunch just passed
+    const danger = cssColor("--danger");
+    for (const fl of f.flashes) {
+      const k = fl.age / FLASH_MS;
+      ctx.strokeStyle = danger;
+      ctx.globalAlpha = Math.max(0, 1 - k);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(g.xOf(fl.z), p.top + g.ph - 8, 4 + 16 * k, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.7;
+    // position line, and a pointer above the glyph lane
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x) + 0.5, 2);
+    ctx.lineTo(Math.round(x) + 0.5, g.size.h - AXIS_H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x - 6, 1);
+    ctx.lineTo(x + 6, 1);
+    ctx.lineTo(x, 9);
+    ctx.closePath();
+    ctx.fill();
+    // the bunch: ±rms x above the axis, ±rms y below, its rms length along z (at least a few pixels)
+    const cy = p.top + g.ph / 2;
+    const sx = Number.isFinite(f.rmsX) ? Math.abs(g.yOf(f.rmsX) - cy) : 6;
+    const sy = Number.isFinite(f.rmsY) ? Math.abs(g.yOf(-f.rmsY) - cy) : 6;
+    const sz = Math.max(3, Math.min(18, Number.isFinite(f.rmsZ) ? (f.rmsZ / 1000 / g.span) * g.pw : 4));
+    const frac = f.particles0 > 0 && Number.isFinite(f.alive) ? Math.max(0, Math.min(1, f.alive / f.particles0)) : 1;
+    ctx.fillStyle = color;
+    if (motion === "full") {
+      ctx.globalAlpha = 0.8;
+      for (const [gx, gy, keep] of CLOUD) {
+        if (keep > frac) continue; // the share of lost macro-particles is left out
+        ctx.beginPath();
+        ctx.arc(x + gx * sz, gy >= 0 ? cy - gy * sx : cy - gy * sy, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.ellipse(x, cy - sx / 2, sz, sx / 2 + 1, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, cy + sy / 2, sz, sy / 2 + 1, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  const kindsKey = (bunchKinds ?? []).join(",");
+  useEffect(() => {
+    if (!kindsKey) {
+      lastFrame.current = null;
+      drawBunch(null);
+      return;
+    }
+    return subscribeBunch(
+      (f) => {
+        lastFrame.current = f;
+        drawBunch(f);
+        // keep the bunch in view while zoomed in, until the user pans or zooms
+        if (f && bunchKinds?.includes(f.kind) && Number.isFinite(f.z) && follow.current && !fitted.current) {
+          const g = geo.current;
+          const x = g.xOf(f.z);
+          if (x < g.plot.left || x > g.plot.left + g.pw * 0.85) setView([f.z - g.span * 0.3, f.z + g.span * 0.7]);
+        }
+      },
+      () => !!wrapRef.current && wrapRef.current.offsetParent !== null,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kindsKey, motion]);
 
   const hitItem = (x: number, y: number): Item | null => {
     const z = zOf(x);
@@ -473,33 +719,42 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
 
-  const hoverInfo = hover ? readout(hover.z) : null;
-  function readout(z: number) {
-    const it = hitItem(xOf(z), hover!.y);
-    const rows: [string, string][] = [["z", `${fmt6(z)} m`]];
-    if (it) rows.push([t("Element"), `${it.label} · ${it.typeTitle}`]);
-    if (it?.r) rows.push([t("Aperture"), `${fmt6(it.r * 1000)} mm`]);
-    if (show.run && run) {
-      const x = sampleAt(run.z, run.rmsX, z);
-      const y = sampleAt(run.z, run.rmsY, z);
-      if (Number.isFinite(x)) rows.push([t("Run rms x / y"), `${fmt6(x)} / ${fmt6(y)} mm`]);
-      const w = sampleAt(run.z, run.energy, z);
-      if (Number.isFinite(w)) rows.push([t("Run energy"), `${fmt6(w)} MeV`]);
+  // ---- legend: one entry per key
+  const legend = useMemo(() => {
+    const seen = new Map<string, Series>();
+    for (const s of series) if (!seen.has(s.key)) seen.set(s.key, s);
+    return [...seen.values()];
+  }, [series]);
+
+  // ---- hover read-out, the highlighted curve first
+  const readout = (z: number, y: number) => {
+    const rows: { k: string; v: string; strong?: boolean }[] = [{ k: "z", v: `${fmt6(z)} m` }];
+    const it = hitItem(xOf(z), y);
+    if (it) rows.push({ k: t("Element"), v: `${it.label} · ${it.typeTitle}` });
+    if (it?.r) rows.push({ k: t("Aperture"), v: `${fmt6(it.r * 1000)} mm` });
+    const values: { k: string; v: string; strong?: boolean }[] = [];
+    for (const s of legend) {
+      if (s.key === "band" || (solo && s.key !== solo)) continue;
+      const v = sampleAt(s.z, s.v, z);
+      if (Number.isFinite(v)) values.push({ k: s.label, v: s.axis === "energy" ? `${fmt6(v)} MeV` : `${fmt6(v)} mm`, strong: s.key === highlight });
     }
-    if (show.preview && preview) {
-      const x = sampleAt(preview.z, preview.rms_x, z);
-      const y = sampleAt(preview.z, preview.rms_y, z);
-      if (Number.isFinite(x)) rows.push([t("Preview rms x / y"), `${fmt6(x)} / ${fmt6(y)} mm`]);
-      const w = sampleAt(preview.z, preview.energy, z);
-      if (Number.isFinite(w)) rows.push([t("Preview energy"), `${fmt6(w)} MeV`]);
-    }
-    return rows;
-  }
+    values.sort((a, b) => Number(!!b.strong) - Number(!!a.strong));
+    return rows.concat(values);
+  };
+  const hoverInfo = hover && hover.x >= plot.left ? readout(hover.z, hover.y) : null;
 
   return (
     <div
-      className="layout-view"
+      className={cx("layout-view", compact && "compact")}
       ref={wrapRef}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && (pinned || solo)) {
+          setPinned(null);
+          setSolo(null);
+          e.stopPropagation();
+        }
+      }}
       onDragOver={(e) => {
         if (readOnly || !onDropElement || !e.dataTransfer.types.includes(PALETTE_MIME)) return;
         e.preventDefault();
@@ -520,7 +775,7 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
     >
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block" }}
+        style={{ width: "100%", height: "100%", display: "block", cursor: hoverKey ? "pointer" : undefined }}
         onWheel={(e) => {
           const { x } = local(e);
           const zc = zOf(x);
@@ -529,9 +784,11 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
           const frac = (x - plot.left) / pw;
           setView([zc - frac * span, zc - frac * span + span]);
           fitted.current = false;
+          follow.current = false;
         }}
         onMouseDown={(e) => {
           if (e.button !== 0) return;
+          wrapRef.current?.focus({ preventScroll: true });
           drag.current = { x: e.clientX, v0: view[0], v1: view[1], moved: false };
         }}
         onMouseMove={(e) => {
@@ -543,6 +800,7 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
               const dz = (dx / pw) * (d.v1 - d.v0);
               setView([d.v0 - dz, d.v1 - dz]);
               fitted.current = false;
+              follow.current = false;
               setHover(null);
             }
             return;
@@ -555,8 +813,14 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
           drag.current = null;
           if (d && !d.moved) {
             const { x, y } = local(e);
+            const key = hitSeries(x, y);
+            if (key) {
+              setPinned((p) => (p === key ? null : key));
+              return;
+            }
+            setPinned(null);
             const it = hitItem(x, y);
-            if (it) onSelect(it.line);
+            if (it && onSelect) onSelect(it.line);
           }
         }}
         onMouseLeave={() => {
@@ -565,11 +829,12 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
         }}
         onDoubleClick={fit}
       />
-      {hover && hoverInfo && hover.x >= plot.left && (
-        <div className="layout-tip" style={{ left: Math.min(hover.x + 14, size.w - 250), top: Math.min(hover.y + 14, size.h - 20 - hoverInfo.length * 18) }}>
-          {hoverInfo.map(([k, v]) => (
-            <div key={k}>
-              <span className="soft">{k}</span> {v}
+      <canvas ref={overlayRef} className="layout-overlay" />
+      {hover && hoverInfo && (
+        <div className="layout-tip" style={{ left: Math.min(hover.x + 14, size.w - 280), top: Math.max(4, Math.min(hover.y + 14, size.h - 20 - hoverInfo.length * 18)) }}>
+          {hoverInfo.map((r, i) => (
+            <div key={i} className={r.strong ? "strong" : undefined}>
+              <span className="soft">{r.k}</span> {r.v}
             </div>
           ))}
         </div>
@@ -579,24 +844,32 @@ export function LayoutView({ doc, schema, selected, onSelect, run, preview, show
           {drop.kind === "split" ? t("split the drift here") : drop.kind === "superpose" ? t("superpose in this block") : t("insert here")}
         </div>
       )}
-      <div className="layout-legend">
-        {show.run && run && (
-          <span>
-            <i className="lg-line" style={{ background: "var(--el-bmag)" }} /> x <i className="lg-line" style={{ background: "var(--el-quad)" }} /> y {t("last run")}
-            {show.max ? ` (${t("rms solid, max dashed")})` : ""}
-          </span>
-        )}
-        {show.preview && preview && (
-          <span>
-            <i className="lg-line dashed" style={{ borderColor: "var(--el-rf)" }} /> {t("linear preview")}
-          </span>
-        )}
-        {show.losses && run && run.losses.length > 0 && (
-          <span>
-            <i className="lg-line" style={{ background: "var(--danger)", width: 3, height: 10 }} /> {t("losses")}
-          </span>
-        )}
-      </div>
+      {legend.length > 0 && (
+        <div className="layout-legend" data-tip={t("Click: highlight the curve · double-click: show only this curve · Esc: clear")}>
+          {legend.map((s) => (
+            <button
+              key={s.key}
+              className={cx("lg-item", highlight === s.key && "active", solo === s.key && "solo", !!highlight && highlight !== s.key && "dim")}
+              onClick={() => setPinned((p) => (p === s.key ? null : s.key))}
+              onDoubleClick={() => {
+                setSolo((v) => (v === s.key ? null : s.key));
+                setPinned(null);
+              }}
+            >
+              <i
+                className={cx("lg-line", s.dash.length > 0 && "dashed")}
+                style={s.dash.length ? { borderColor: `var(${s.color})`, opacity: Math.max(0.5, s.alpha) } : { background: `var(${s.color})`, opacity: Math.max(0.5, s.alpha) }}
+              />
+              {s.label}
+            </button>
+          ))}
+          {lossSets.length > 0 && (
+            <span className="lg-item static">
+              <i className="lg-line" style={{ background: "var(--danger)", width: 3, height: 10 }} /> {t("losses")}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

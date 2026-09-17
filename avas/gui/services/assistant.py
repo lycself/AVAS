@@ -36,11 +36,22 @@ log = logging.getLogger("avas.gui")
 
 DEFAULT_OPTIONS = {"autoApply": False, "maxSteps": 40}
 MAX_RESULT_CHARS = 4000
+INPUT_KINDS = ("lattice", "file", "lattice_source")          # proposals that write input files
+LOCKED_TOOL_MESSAGE = ("A simulation is running, so the project's input files are locked until it finishes or is "
+                       "stopped; the change was not made. Tell the user and offer to propose it again after the run.")
 
 _conversations = {}
 _conv_lock = threading.RLock()
 _front_pending = {}
 _front_lock = threading.Lock()
+
+
+def _refuse_if_locked(proposal):
+    """Input changes are refused at once while a run reads the inputs (see avas.gui.locks)."""
+    from avas.ai import ToolError
+    from avas.gui.locks import inputs_locked
+    if proposal.get("kind") in INPUT_KINDS and inputs_locked():
+        raise ToolError(LOCKED_TOOL_MESSAGE)
 
 
 # =========================================================================== settings
@@ -473,6 +484,7 @@ class Host:
     def propose(self, ctx, proposal):
         """Show *proposal*, wait for the user's decision (unless auto-apply) and apply it."""
         from avas.ai import ToolError
+        _refuse_if_locked(proposal)
         conv = self.conv
         pid = uuid.uuid4().hex[:12]
         public = {k: v for k, v in proposal.items() if k not in ("old_text", "new_text", "path")}
@@ -552,6 +564,7 @@ class Host:
         from avas.gui.services import projects, runner
         from avas.gui.textio import write_text
         kind = proposal["kind"]
+        _refuse_if_locked(proposal)          # the run may have started while the card was waiting
         p = self.project()
         if kind == "lattice":
             before = self._backup(pid, proposal["file"] + ".before", proposal["old_text"])
@@ -619,6 +632,9 @@ class Host:
         if not rec:
             raise ToolError("Nothing to undo.")
         kind = rec.get("kind")
+        from avas.gui.locks import LOCKED_MESSAGE, inputs_locked
+        if kind in INPUT_KINDS and inputs_locked():
+            raise ToolError(LOCKED_MESSAGE)
         p = self.project()
         if kind in ("lattice", "file"):
             old = rec.get("old_text")
