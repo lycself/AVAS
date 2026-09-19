@@ -536,7 +536,12 @@ def build_tools(host):
         name = os.path.basename(str(args.get("name") or ""))
         path = p.input_file(name)
         if not name or not os.path.isfile(path):
-            raise ToolError(f"No file '{name}' in InputFile.")
+            raw = str(args.get("name") or "")
+            if re.search(r"[\\/]|OutputFile|Segments|DataSet", raw):
+                raise ToolError("read_input_file only reads files inside InputFile (lattice, beam.txt, input.txt, ini.ini), "
+                                "never results. For results use results_summary / result_series (project OutputFile) "
+                                "or segment_results (runs in Segments/).")
+            raise ToolError(f"No file '{name}' in InputFile. Files there: {', '.join(sorted(os.listdir(p.input_dir))) or 'none'}.")
         if os.path.getsize(path) > 4_000_000:
             raise ToolError("File too large to read as text.")
         if name == p.lattice_name():
@@ -549,6 +554,68 @@ def build_tools(host):
         chunk = lines[start - 1:start - 1 + count]
         return {"file": name, "total_lines": len(lines), "start_line": start,
                 "text": "\n".join(f"{start + i:>5}| {ln}" for i, ln in enumerate(chunk))}
+
+    def _segment_run(p, source):
+        """Meta of the segment run named by *source*: folder (relative, absolute or its name), label or 'latest'."""
+        from avas.gui.services import segments
+        runs = segments.list_segments(p)
+        if not runs:
+            raise ToolError("No segment runs yet (the Segments folder is empty). Use run_segment first.")
+        s = str(source or "").strip()
+        if s.lower() in ("latest", "last", "newest"):
+            return runs[0]
+
+        def norm(x):
+            return os.path.normcase(os.path.normpath(str(x)))
+        parts = set(norm(s).split(os.sep))
+        for m in runs:
+            folder = m["folder"]
+            if norm(s) in (norm(folder), norm(os.path.relpath(folder, p.path))) or norm(os.path.basename(folder)) in parts:
+                return m
+        for m in runs:                                                  # label: the newest run with that label
+            if (m.get("label") or "").lower() == s.lower():
+                return m
+        names = ", ".join(os.path.basename(m["folder"]) for m in runs[:10])
+        raise ToolError(f"No segment run '{s}'. Available (newest first): {names}. Use segment_results without source to list them.")
+
+    def _segment_run_info(p, m):
+        seg = m.get("segment") or {}
+        return {"label": m.get("label"), "folder": os.path.relpath(m["folder"], p.path), "status": m.get("status"),
+                "created": m.get("created"), "finished": m.get("finished"), "lattice": m.get("lattice"),
+                "elements": seg.get("elements"), "first": seg.get("first"), "last": seg.get("last"),
+                "z_start": seg.get("z_start"), "z_end": seg.get("z_end"), "length": seg.get("length"),
+                "entry_beam": (m.get("entry") or {}).get("choice"), "rephased_cavities": len(m.get("rephased") or []),
+                "elapsed_s": sum(float(st.get("elapsed_s") or 0) for st in (m.get("stages") or [])) or None,
+                "error": m.get("message")}
+
+    def segment_results(args, ctx):
+        from avas.gui.services import segments
+        p = project()
+        source = args.get("source")
+        if source in (None, ""):
+            runs = [_segment_run_info(p, m) for m in segments.list_segments(p)]
+            return {"segment_runs": runs,
+                    "hint": ("Call again with source = folder (or label, or 'latest') for the figures of merit; "
+                             "add quantities for values along z.") if runs else "No segment runs yet; use run_segment."}
+        m = _segment_run(p, source)
+        info = _segment_run_info(p, m)
+        if m.get("status") != "finished":
+            return {"source": info, "status": m.get("status"), "error": m.get("message"),
+                    "note": "This run is not finished; its results cannot be read yet." if m.get("status") in ("running", "pending")
+                    else "This run did not finish, see read_log."}
+        out = os.path.join(m["folder"], "OutputFile")
+        summary = results_summary({"output_dir": out}, ctx)
+        result = {"source": info, "metrics": summary["metrics"], "metric_meanings": summary["metric_meanings"],
+                  "messages": summary["messages"]}
+        if args.get("quantities"):
+            result["series"] = result_series({"output_dir": out, "quantities": args["quantities"], "z_min": args.get("z_min"),
+                                              "z_max": args.get("z_max"), "points": args.get("points"),
+                                              "show_chart": args.get("show_chart", True)}, ctx)
+        result["note"] = (f"z in these results starts at 0 at the segment entry (z = {info['z_start']} m of the full lattice); "
+                          "the project's OutputFile is a different run.")
+        if info["entry_beam"] == "twiss":
+            result["note"] += " The entry beam was generated from Twiss parameters, so the result is approximate."
+        return result
 
     # ------------------------------------------------------------------ preview
     def _preview(text):
@@ -795,8 +862,12 @@ def build_tools(host):
         return host.propose(ctx, proposal)
 
     # ------------------------------------------------------------------ simulations
-    def _wait_for_run(ctx, job, timeout, label):
-        """Wait until the runner *job* is over; paused time does not count towards *timeout*."""
+    WAIT_CAP_S = 12 * 3600
+
+    def _wait_for_run(ctx, job, label):
+        """Wait until the runner *job* is over.  Paused time does not count.  Returns False (never an
+        error) when the job is still running after WAIT_CAP_S of active time; the caller then reports
+        where the results will be so the model can read them later."""
         from avas.gui.services import runner
         r = runner.runner()
         last = None
@@ -818,9 +889,10 @@ def build_tools(host):
                     if (state.get("stages") or 1) > 1 else ""
                 ctx.emit({"kind": "progress", "percent": key[0], "eta_s": state.get("eta_s"),
                           "label": f"{label}{stage}{' (paused)' if key[2] else ''}"})
-            if active > timeout:
-                raise ToolError("The simulation is still running (timeout); check the Run page.")
+            if active > WAIT_CAP_S:
+                return False
             time.sleep(0.5)
+        return True
 
     def run_simulation(args, ctx):
         from avas.gui.services import runner
@@ -831,7 +903,10 @@ def build_tools(host):
         decision = host.propose(ctx, proposal)
         if not decision.get("applied"):
             return decision
-        _wait_for_run(ctx, runner.runner().job, float(args.get("timeout_s") or 6 * 3600), "simulation")
+        if not _wait_for_run(ctx, runner.runner().job, "simulation"):
+            return {"status": "running", "still_running": True,
+                    "note": "The simulation is still running after a very long wait, so the assistant stopped waiting. "
+                            "It keeps running; when the user says it has finished, call results_summary."}
         run = p.last_run()
         if run.get("status") != "finished":
             return {"status": run.get("status"), "error": run.get("error"),
@@ -1119,15 +1194,20 @@ def build_tools(host):
         if not decision.get("applied"):
             return decision
         job = runner.runner().job
-        _wait_for_run(ctx, job, float(args.get("timeout_s") or 6 * 3600), f"segment {plan.label}")
+        finished = _wait_for_run(ctx, job, f"segment {plan.label}")
         root = getattr(job, "root", None) if job is not None else None
+        folder = os.path.relpath(root, p.path) if root else None
+        if not finished:
+            return {"status": "running", "still_running": True, "folder": folder, "segment": card["segment"],
+                    "note": "The segment run is still running after a very long wait, so the assistant stopped waiting. "
+                            "It keeps running; when the user says it has finished, call segment_results with source = folder."}
         meta = {}
         if root and os.path.isfile(os.path.join(root, segments.META_FILE)):
             import json
             with open(os.path.join(root, segments.META_FILE), encoding="utf-8") as fh:
                 meta = json.load(fh)
         result = {"status": meta.get("status") or ("finished" if job is not None and job.ok else "unknown"),
-                  "folder": os.path.relpath(root, p.path) if root else None, "segment": card["segment"],
+                  "folder": folder, "segment": card["segment"],
                   "entry_beam": meta.get("entry", {}).get("choice", decision.get("choice")),
                   "stages": meta.get("stages"), "rephased_cavities": len(meta.get("rephased") or [])}
         if meta.get("status") != "finished":
@@ -1139,7 +1219,8 @@ def build_tools(host):
         diag = rdiag.dataset_diagnostics(out) or {}
         result["messages"] = [m["text"][0] for m in diag.get("messages", [])]
         result["note"] = (f"z in these results starts at 0 at the segment entry (z = {card['segment']['z_start']} m of the full lattice). "
-                          "The project's OutputFile was not changed; the Results page shows this run under its source selector.")
+                          "The project's OutputFile was not changed; the Results page shows this run under its source selector. "
+                          "Values along z and this summary can be read again with segment_results(source=folder).")
         if meta.get("entry", {}).get("choice") == "twiss":
             result["note"] += " The entry beam was generated from Twiss parameters, so the result is approximate."
         return result
@@ -1182,11 +1263,15 @@ def build_tools(host):
           {"query": {"type": "string"}, "max_results": {"type": "integer"}}, search_manual, required=["query"]),
         T("get_beam", "Keywords and values of beam.txt (initial beam).", {}, get_beam),
         T("get_settings", "Keywords of input.txt (tracking options) and ini.ini (GUI/run options).", {}, get_settings),
-        T("results_summary", "Figures of merit of the last run: transmission, energy, emittances in/out and growth, largest sizes and where, loss locations, warnings.",
+        T("results_summary", "Figures of merit of the last full run (project OutputFile): transmission, energy, emittances in/out and growth, largest sizes and where, loss locations, warnings. Segment runs: use segment_results.",
           {}, results_summary),
-        T("result_series", "Beam quantities along z from the last run (downsampled table, also shown as a chart). Quantities: energy, rms_x, rms_y, rms_z, max_x, max_y, emit_x, emit_y, emit_z, alpha_x, alpha_y, beta_x, beta_y, particles, cx, cy.",
+        T("result_series", "Beam quantities along z from the last full run (project OutputFile; downsampled table, also shown as a chart). Quantities: energy, rms_x, rms_y, rms_z, max_x, max_y, emit_x, emit_y, emit_z, alpha_x, alpha_y, beta_x, beta_y, particles, cx, cy. Segment runs: use segment_results.",
           {"quantities": {"type": "array", "items": {"type": "string"}}, "z_min": {"type": "number"}, "z_max": {"type": "number"},
            "points": {"type": "integer", "description": "rows, max 200"}}, result_series),
+        T("segment_results", "Results of segment runs (folders Segments/<label>_<time>, made by run_segment). Without source: list the runs (label, folder, status, z range, entry beam). With source (the folder, its name, the label or 'latest'): figures of merit like results_summary; with quantities also the values along z like result_series (same quantity names; z starts at 0 at the segment entry).",
+          {"source": {"type": "string"}, "quantities": {"type": "array", "items": {"type": "string"}},
+           "z_min": {"type": "number"}, "z_max": {"type": "number"}, "points": {"type": "integer", "description": "rows, max 200"}},
+          segment_results),
         T("read_log", "Recent lines of the application log (engine output, errors).",
           {"lines": {"type": "integer"}, "problems_only": {"type": "boolean"}}, read_log),
         T("read_input_file", "Read part of a text file in InputFile with line numbers (the lattice as currently edited).",
@@ -1212,8 +1297,8 @@ def build_tools(host):
           set_error_study, required=["error_type"]),
         T("set_run_lattice", "Choose which lattice file in InputFile is used for the run.",
           {"name": {"type": "string"}, "reason": REASON}, set_run_lattice, required=["name"]),
-        T("run_simulation", "Run the full multi-particle simulation of the project (saves open pages first, overwrites OutputFile). Waits and returns the results summary.",
-          {"reason": REASON, "timeout_s": {"type": "number"}}, run_simulation, long_running=True),
+        T("run_simulation", "Run the full multi-particle simulation of the project (saves open pages first, overwrites OutputFile). Waits until it has finished (however long it takes) and returns the results summary.",
+          {"reason": REASON}, run_simulation, long_running=True),
         T("scan_parameter", "Scan one element parameter over values and report metrics per value. engine 'simulation' runs the engine in a sandbox copy (does not touch project files or results), 'preview' uses the fast linear preview.",
           {"target": {"type": "object", "properties": TARGET}, "param": {"type": "string"},
            "values": {"type": "array", "items": {"type": "number"}}, "start": {"type": "number"}, "stop": {"type": "number"},
@@ -1231,14 +1316,14 @@ def build_tools(host):
            "max_evaluations": {"type": "integer"}, "method": {"type": "string", "enum": ["nelder-mead", "powell", "random"]},
            "propose_best": {"type": "boolean"}, "reason": REASON},
           optimize, required=["variables", "objective"], long_running=True),
-        T("run_segment", "Simulate only one part of the lattice (e.g. the MEBT / medium-energy section) with the multi-particle engine, in its own folder Segments/<label>_<time> (project files and OutputFile are not changed). Give the part as a section/heading title, or from/to elements (first and last element), or z_min/z_max. The user approves the range and chooses the entry beam on a card: beam.txt when the part starts at the beginning; otherwise the particle file of the last full run at the entry, the exit beam of an earlier segment run that ends at the entry (e.g. CM3 after CM2 was run; fast and as accurate as that run), simulating the upstream elements first, or a beam generated from the Twiss parameters of the last run (approximate). RF phases are re-referenced automatically. Waits and returns the figures of merit.",
+        T("run_segment", "Simulate only one part of the lattice (e.g. the MEBT / medium-energy section) with the multi-particle engine, in its own folder Segments/<label>_<time> (project files and OutputFile are not changed). Give the part as a section/heading title, or from/to elements (first and last element), or z_min/z_max. The user approves the range and chooses the entry beam on a card: beam.txt when the part starts at the beginning; otherwise the particle file of the last full run at the entry, the exit beam of an earlier segment run that ends at the entry (e.g. CM3 after CM2 was run; fast and as accurate as that run), simulating the upstream elements first, or a beam generated from the Twiss parameters of the last run (approximate). RF phases are re-referenced automatically. Waits until it has finished (however long it takes) and returns the figures of merit; later, read them again with segment_results.",
           {"section": {"type": "string", "description": "title of a 'section NAME {' group or comment heading"},
            "from": {"type": "object", "properties": TARGET, "description": "first element of the part"},
            "to": {"type": "object", "properties": TARGET, "description": "last element of the part"},
            "z_min": {"type": "number"}, "z_max": {"type": "number"},
            "label": {"type": "string", "description": "short name for the run, e.g. MEBT"},
            "entry_beam": {"type": "string", "enum": ["beam", "dst", "segment", "upstream", "twiss"], "description": "preselected on the card; the user decides"},
-           "reason": REASON, "timeout_s": {"type": "number"}},
+           "reason": REASON},
           run_segment, long_running=True),
         T("show_element", "Select an element in the lattice editor so the user sees it.", TARGET, show_element),
     ]

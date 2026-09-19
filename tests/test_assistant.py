@@ -335,3 +335,38 @@ def test_sandbox_study_shows_on_the_run_page_and_can_be_paused_and_stopped(proje
     finally:
         stop.set()
         thread.join(60)
+
+
+def test_segment_run_results_can_be_read_back(project):
+    """run_segment has no timeout argument any more; segment_results lists the run and reads its figures and series."""
+    from avas.ai import ToolContext, ToolError
+    from avas.ai.avas_tools import build_tools
+    from avas.gui.services import assistant
+    conv = assistant.Conversation(project)
+    conv.auto_apply = True
+    tools = {t.name: t for t in build_tools(assistant.Host(conv))}
+    assert "timeout_s" not in json.dumps(tools["run_segment"].spec()) + json.dumps(tools["run_simulation"].spec())
+    events = []
+    ctx = ToolContext(call_id="g", emit=events.append, stop_event=threading.Event(), agent=None)
+    assert tools["segment_results"].handler({}, ctx)["segment_runs"] == []
+    res = tools["run_segment"].handler({"from": {"line": 2}, "to": {"line": 2}, "label": "cav", "entry_beam": "beam"}, ctx)
+    assert res["status"] == "finished", res
+    folder = res["folder"]
+    assert folder.replace("\\", "/").startswith("Segments/cav_") and "segment_results" in res["note"]
+    # results are not in InputFile: the error says where to look instead
+    with pytest.raises(ToolError, match="segment_results"):
+        tools["read_input_file"].handler({"name": folder + "/OutputFile/DataSet.txt"}, ctx)
+    with pytest.raises(ToolError, match="Files there: .*beam.txt"):
+        tools["read_input_file"].handler({"name": "nothing.txt"}, ctx)
+    listed = tools["segment_results"].handler({}, ctx)
+    assert [r["folder"] for r in listed["segment_runs"]] == [folder] and listed["segment_runs"][0]["status"] == "finished"
+    assert listed["segment_runs"][0]["entry_beam"] == "beam" and listed["segment_runs"][0]["elapsed_s"] > 0
+    for source in (folder, os.path.basename(folder), "cav", "latest", os.path.join(project, folder),
+                   os.path.join(project, folder, "OutputFile", "DataSet.txt")):
+        got = tools["segment_results"].handler({"source": source, "quantities": ["energy", "rms_x"]}, ctx)
+        assert got["source"]["folder"] == folder, source
+        assert got["metrics"]["transmission"] == pytest.approx(1.0)
+        assert got["series"]["columns"] == ["z_m", "energy", "rms_x"] and 0 < got["series"]["rows"][-1][0] < 0.25
+    assert any(e.get("kind") == "chart" for e in events)
+    with pytest.raises(ToolError, match="No segment run 'nope'"):
+        tools["segment_results"].handler({"source": "nope"}, ctx)
