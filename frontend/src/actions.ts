@@ -188,6 +188,40 @@ export async function resumeSimulation() {
 }
 
 /** F5 and the tool-bar button: run, pause or resume depending on the state. */
+export type RunRecord = {
+  kind: "project" | "segment";
+  label: string;
+  outputDir: string;
+  status?: string | null;
+  time?: string | null;
+  zStart?: number;
+  zEnd?: number;
+  entry?: string | null;
+  rephased?: number;
+};
+
+/** Ask, then move a run record (the project's OutputFile or a whole segment run) to the recycle bin. */
+export async function deleteRunRecord(rec: RunRecord): Promise<boolean> {
+  if (useApp.getState().run.running) {
+    await alertDialog(t("Stop the running simulation first."), { title: t("Run") });
+    return false;
+  }
+  const message =
+    rec.kind === "project"
+      ? t("Move the results of the full-lattice run (OutputFile/) to the recycle bin? The run record goes with them.")
+      : t("Move segment run {label} and all its files to the recycle bin?", { label: rec.label });
+  const ok = await confirmDialog(message, { title: t("Delete"), ok: t("Move to recycle bin"), danger: true });
+  if (!ok) return false;
+  try {
+    await call("runs.delete", { outputDir: rec.outputDir });
+    toast(t("Moved to the recycle bin"), "success");
+    return true;
+  } catch (e) {
+    reportError(e);
+    return false;
+  }
+}
+
 export function runPauseResume() {
   const { run } = useApp.getState();
   if (!run.running) runSimulation();

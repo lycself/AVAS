@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { pauseSimulation, resumeSimulation, runSimulation, stopSimulation } from "../actions";
-import { call } from "../bridge";
+import { useCallback, useEffect, useState } from "react";
+import { deleteRunRecord, pauseSimulation, resumeSimulation, runSimulation, stopSimulation, type RunRecord } from "../actions";
+import { call, on } from "../bridge";
 import { openPath } from "../host";
 import { reportError } from "../components/overlays";
-import { Badge, Button, cx, ProgressBar, Section } from "../components/ui";
+import { Badge, Button, cx, IconButton, ProgressBar, Section } from "../components/ui";
 import { fmtSeconds, runStatusLabel } from "../format";
 import { useT } from "../i18n";
 import { LiveBeamPanel } from "../lattice/LiveBeamPanel";
@@ -56,8 +56,6 @@ export default function RunPage() {
     }
   }
   const showBar = running || (last && last.ok !== undefined);
-  const info = project.lastRun ?? {};
-  const tone = info.status === "finished" ? "success" : info.status === "failed" ? "danger" : info.status === "running" ? "accent" : "neutral";
   const effMode = running ? run.mode ?? mode : mode;
   // what the progress belongs to: the running job, or the one that finished last
   const job = running ? run : last;
@@ -170,21 +168,97 @@ export default function RunPage() {
           </div>
         </Section>
 
-        <Section title={t("Last run")} icon="history">
-          {info.status ? (
-            <div className="row wrap" style={{ gap: 12 }}>
-              <Badge tone={tone}>{runStatusLabel(info.status)}</Badge>
-              <span className="selectable">
-                {[info.started, info.mode || "basic", info.elapsed_s != null ? fmtSeconds(info.elapsed_s) : null, info.error ? String(info.error) : null]
-                  .filter(Boolean)
-                  .join("   ·   ")}
-              </span>
-            </div>
-          ) : (
-            <p className="muted">{t("no run recorded for this project")}</p>
-          )}
-        </Section>
+        <RunRecords running={running} />
       </div>
     </div>
+  );
+}
+
+const ENTRY_SHORT: Record<string, string> = {
+  beam: "beam.txt",
+  dst: "particle file",
+  segment: "from previous segment",
+  upstream: "with upstream",
+  twiss: "Twiss beam",
+};
+
+function statusTone(status?: string | null) {
+  return status === "finished" ? "success" : status === "failed" ? "danger" : status === "running" ? "accent" : "neutral";
+}
+
+/** The project's full run and every segment run, each with show / open / delete. */
+function RunRecords({ running }: { running: boolean }) {
+  const t = useT();
+  const project = useApp((s) => s.project);
+  const lastFinished = useApp((s) => s.lastFinished);
+  const [records, setRecords] = useState<RunRecord[]>([]);
+  const info = project.lastRun ?? {};
+
+  const load = useCallback(() => {
+    call<RunRecord[]>("results.sources")
+      .then(setRecords)
+      .catch(() => setRecords([]));
+  }, []);
+  useEffect(() => {
+    if (!project.open) return;
+    load();
+    return on("project", load); // a deleted record or a finished run changes the summary
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.open, project.path, lastFinished, running]);
+
+  const remove = async (rec: RunRecord) => {
+    if (await deleteRunRecord(rec)) load();
+  };
+
+  const projectDetails = [info.started, info.mode || (info.status ? "basic" : null), info.elapsed_s != null ? fmtSeconds(info.elapsed_s) : null, info.error ? String(info.error) : null]
+    .filter(Boolean)
+    .join("   ·   ");
+  const outputCount = project.outputFiles ?? 0;
+
+  return (
+    <Section title={t("Run records")} icon="history" actions={<IconButton icon="refresh" tip={t("Refresh")} onClick={load} />}>
+      <div className="run-records">
+        {records.map((rec) => {
+          const isProject = rec.kind === "project";
+          const status = isProject ? info.status : rec.status;
+          const details = isProject
+            ? projectDetails
+            : [
+                `z ${rec.zStart ?? "?"}–${rec.zEnd ?? "?"} m`,
+                rec.entry ? t(ENTRY_SHORT[rec.entry] ?? rec.entry) : null,
+                rec.rephased ? t("{n} cavities re-phased", { n: rec.rephased }) : null,
+                rec.time,
+              ]
+                .filter(Boolean)
+                .join("   ·   ");
+          const empty = isProject && !status && !outputCount;
+          return (
+            <div className={cx("run-record", empty && "empty")} key={rec.outputDir}>
+              <div className="run-record-status">{status ? <Badge tone={statusTone(status)}>{runStatusLabel(status)}</Badge> : null}</div>
+              <div className="run-record-main">
+                <div className="run-record-title">{isProject ? `${t("Full lattice")} (OutputFile)` : t("Segment {label}", { label: rec.label })}</div>
+                <div className="run-record-sub selectable">{empty ? t("no run recorded for this project") : details}</div>
+              </div>
+              <div className="run-record-actions">
+                <IconButton
+                  icon="graph-line"
+                  tip={t("Show results")}
+                  disabled={status !== "finished"}
+                  onClick={() => showResults(isProject ? undefined : rec.outputDir)}
+                />
+                <IconButton icon="folder" tip={t("Open output folder")} disabled={empty} onClick={() => openPath(rec.outputDir).catch(reportError)} />
+                <IconButton
+                  icon="trash"
+                  className="run-record-delete"
+                  tip={running ? t("Cannot delete while a simulation is running") : t("Move to recycle bin")}
+                  disabled={running || empty}
+                  onClick={() => remove(rec)}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
   );
 }

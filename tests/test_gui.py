@@ -382,3 +382,47 @@ def test_pause_resume_and_segment_run(project):
             r.stop()
             _wait_for_job(r, 30)
         ok("project.open", path=os.path.join(WORK, "project"))
+
+
+def test_delete_run_records(project, monkeypatch):
+    """Run records go to the recycle bin: a segment folder as a whole, the project's OutputFile emptied."""
+    from avas.gui import context
+    from avas.gui.services import runner, segments
+    work = os.path.join(WORK, "delete_project")
+    shutil.rmtree(work, ignore_errors=True)
+    shutil.copytree(os.path.join(WORK, "project", "InputFile"), os.path.join(work, "InputFile"))
+    shutil.copytree(os.path.join(WORK, "project", "OutputFile"), os.path.join(work, "OutputFile"))
+    seg = os.path.join(work, "Segments", "cav_20260101-000000")
+    os.makedirs(os.path.join(seg, "OutputFile"))
+    with open(os.path.join(seg, "segment.json"), "w", encoding="utf-8") as fh:
+        json.dump({"label": "cav", "status": "finished", "created": "2026-01-01 00:00:00", "segment": {"z_start": 0.3, "z_end": 1.0}}, fh)
+    with open(os.path.join(seg, "OutputFile", "DataSet.txt"), "w", encoding="utf-8") as fh:
+        fh.write("x\n")
+    trashed = []
+    monkeypatch.setattr(segments, "_trash", lambda path: (trashed.append(path), shutil.rmtree(path)))
+    try:
+        ok("project.open", path=work)
+        assert [s["kind"] for s in ok("results.sources")] == ["project", "segment"]
+        seg_out = os.path.join(seg, "OutputFile")
+        r = runner.runner()
+        r.job = object()                                   # a simulation is running: nothing may be deleted
+        try:
+            reply = rpc("runs.delete", outputDir=seg_out)
+            assert reply["ok"] is False and reply["user"] and "locked" in reply["error"]
+        finally:
+            r.job = None
+        assert os.path.isdir(seg)
+        assert rpc("runs.delete", outputDir=os.path.join(work, "Segments"))["ok"] is False     # not a record
+        assert rpc("runs.delete", outputDir=ROOT)["ok"] is False
+        assert ok("runs.delete", outputDir=seg_out)["kind"] == "segment"
+        assert not os.path.exists(seg) and trashed == [os.path.normpath(seg)]
+        assert [s["kind"] for s in ok("results.sources")] == ["project"]
+        p = context.project()
+        assert p.last_run().get("status") == "finished"
+        assert ok("runs.delete", outputDir=p.output_dir)["kind"] == "project"
+        assert os.path.isdir(p.output_dir) and not os.listdir(p.output_dir)       # recreated, empty
+        assert trashed[-1] == os.path.normpath(p.output_dir)
+        assert p.last_run() == {} and ok("project.overview")["lastRun"] == {}
+        assert ok("results.sources")[0]["status"] is None
+    finally:
+        ok("project.open", path=os.path.join(WORK, "project"))
