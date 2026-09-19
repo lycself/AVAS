@@ -83,7 +83,8 @@
 
 /* ---------------------------------------------------------------- visual editor */
 .lattice-editor.visual .ve-text { border-left: 1px solid var(--border); }
-.visual-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0; outline: none; }
+.visual-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0; outline: none; overflow: auto; }
+.visual-editor > .ve-toolbar, .visual-editor > .ve-status { flex-shrink: 0; }
 .ve-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--toolbar-bg); flex-wrap: wrap; }
 .ve-palette { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .ve-mode-hint { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; }
@@ -100,9 +101,9 @@
 .ve-status-item { display: inline-flex; align-items: center; gap: 6px; }
 .ve-status-item .codicon { font-size: 13px; }
 .ve-status-item .icon-btn.ve-status-close { width: 18px; height: 18px; }
-.ve-layout { flex: none; position: relative; min-height: 120px; }
+.ve-layout { flex: 0 1 auto; position: relative; min-height: 160px; }
 .ve-layout > .b3d { position: absolute; inset: 0; }
-.ve-bottom { flex: 1 1 auto; display: flex; min-height: 0; }
+.ve-bottom { flex: 1 0 180px; display: flex; min-height: 180px; }
 .ve-outline { flex: none; display: flex; flex-direction: column; min-height: 0; padding: 0 8px; }
 .ve-inspector { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .ve-inspector-head { display: flex; align-items: center; gap: 2px; padding: 6px 10px 6px 14px; border-bottom: 1px solid var(--border); min-height: 38px; }

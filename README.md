@@ -148,6 +148,7 @@ avas gui
    * **回放**：状态栏「回放」让示意束团按上次运行的包络沿束线走一遍，可暂停、拖动、调速，可选「匀速」或「束流速度」
      （按能量和静止质量换算飞行时间，β 小的地方走得慢）。3D 视图同时显示粒子云和「示意」标记，可让镜头跟随束团。
      束团和粒子只是按 rms 包络画出的示意，不是模拟得到的粒子分布。历史记录的回放在运行页（见下）。
+   * **小窗口布局**：窗口变矮时，2D / 3D 视图区自动缩小，为下方元件列表和参数面板保留空间；高度不足时可滚动编辑器查看全部内容。恢复窗口高度后恢复原来的分区大小，也可拖动分隔条调整。
    * **线性包络预览**（`avas/sim/linear_optics.py`）：参考粒子 + 4×4 二阶矩传输，支持 drift / quad / solenoid / bend / edge
      和场图（静磁场梯度与 Bz、射频腔能量增益与散焦，叠加场相加）、线性空间电荷。与内核对比：能量误差约 0.01 %，
      rms 尺寸通常差 1–2 %（多粒子非线性效应处最大约 13 %）。只用于快速评估，最终以模拟结果为准。
@@ -318,6 +319,8 @@ The Lattice page also has a **visual editor** on the same text model (one undo h
 **Run page and input lock.** Below the progress, *Live beam* draws the lattice the run uses with the envelope written so far, the moving bunch and the losses, and shows the bunch position, macro-particles alive, transmission, energy and rms sizes (segment stages, error seeds and the assistant's sandbox evaluations included); after the run it keeps the final state and offers a replay; during a project run *Compare with the run before* (off by default) overlays the previous envelope in grey. Every finished record in the *Run records* list below (OutputFile, kept runs, segment runs) has a **Replay** button: the panel switches to that record (drawn on the lattice of its `inputs/` snapshot; a segment run at its entry z) and starts the replay, × returns to the last run, and a new run takes the panel back (`run.replay` reads the envelope from the record's DataSet.txt). While a project run, error study or segment run is running or paused, all input files are read-only (Lattice, Beam, Settings and Files pages, the run-lattice selection; the back end refuses writes too, and the assistant's change proposals are refused with an explanation), because segment runs copy InputFile at the start of every stage and the run record's input snapshot and the live display describe the inputs the run started with; editing in between would mix two configurations. The assistant's scans and the Scan page work on copies and do not lock. **View → Motion** chooses full (the default) / reduced / off / automatic (follows Windows' animation effects).
 
 In the beamline layout on the Run and Lattice pages, the mouse wheel zooms the plot without scrolling the page. Move the pointer outside the plot to scroll the page normally.
+
+In a short window, the visual editor shrinks its 2D / 3D view to keep the element list and parameter panel accessible. If there is still too little room, the editor scrolls. Enlarging the window restores the preferred view height; the divider can also be dragged to adjust it.
 
 #### Browser mode
 

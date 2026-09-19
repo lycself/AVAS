@@ -104,6 +104,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   const [fitSignal, setFitSignal] = useState(0);
   const [frequency, setFrequency] = useState<number | undefined>(undefined);
   const hostRef = useRef<HTMLDivElement>(null);
+  const layoutRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const setShow = (patch: Partial<LayoutShow>) =>
     setShowState((s) => {
@@ -249,8 +250,9 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   const startResize = (axis: "y" | "x") => (e: React.MouseEvent) => {
     e.preventDefault();
     const start = axis === "y" ? e.clientY : e.clientX;
-    const base = axis === "y" ? layoutH : outlineW;
-    const total = axis === "y" ? hostRef.current?.clientHeight ?? 800 : bottomRef.current?.clientWidth ?? 1000;
+    // Drag from the rendered size: a short window may shrink the preferred height.
+    const base = axis === "y" ? layoutRef.current?.clientHeight ?? layoutH : outlineW;
+    const total = axis === "y" ? base + (bottomRef.current?.clientHeight ?? 180) : bottomRef.current?.clientWidth ?? 1000;
     let last = base;
     document.body.classList.add("dragging");
     const move = (ev: MouseEvent) => {
@@ -261,7 +263,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
     };
     const up = () => {
       document.body.classList.remove("dragging");
-      localStorage.setItem(axis === "y" ? "avas.visual.layoutH" : "avas.visual.outlineW", String(Math.round(last)));
+      save(axis === "y" ? "avas.visual.layoutH" : "avas.visual.outlineW", Math.round(last));
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
     };
@@ -515,7 +517,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
           />
         )}
       </div>
-      <div className="ve-layout" style={{ height: layoutH }}>
+      <div className="ve-layout" ref={layoutRef} style={{ height: layoutH }}>
         {view === "2d" ? (
           <LayoutView
             doc={doc}
