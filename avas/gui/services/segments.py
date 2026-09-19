@@ -27,6 +27,7 @@ from avas.data import segment
 from avas.data.lattice_doc import LatticeDocument
 from avas.gui import context
 from avas.gui.bridge import UserError, rpc
+from avas.gui.locks import require_unlocked
 from avas.gui.textio import read_text, write_text
 
 log = logging.getLogger("avas.gui")
@@ -379,3 +380,49 @@ def sources():
                     "zEnd": seg.get("z_end"), "entry": (meta.get("entry") or {}).get("choice"),
                     "rephased": len(meta.get("rephased") or [])})
     return out
+
+
+# =========================================================================== deleting records
+def _same_path(a, b):
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def _trash(path):
+    """Move a file or folder to the recycle bin (patched in tests)."""
+    from send2trash import send2trash
+    send2trash(os.path.normpath(path))
+
+
+@rpc("runs.delete")
+def delete_run(outputDir):
+    """Move a run record to the recycle bin.
+
+    The project's own record is its OutputFile folder (results and avas_run.json
+    go together; the folder is recreated empty).  A segment record is the whole
+    ``Segments/<label>_<time>/`` folder, given by its OutputFile or its root.
+    Refused while a simulation is running, like every other change to the
+    project's files.
+    """
+    p = context.project().require()
+    require_unlocked()
+    if not outputDir:
+        raise UserError("No run record given.")
+    if _same_path(outputDir, p.output_dir):
+        if os.path.isdir(p.output_dir):
+            _trash(p.output_dir)
+        os.makedirs(p.output_dir, exist_ok=True)
+        log.info("results of the full run moved to the recycle bin: %s", p.output_dir)
+        result = {"kind": "project", "outputDir": p.output_dir}
+    else:
+        for meta in list_segments(p):
+            folder = meta["folder"]
+            if _same_path(outputDir, folder) or _same_path(outputDir, os.path.join(folder, "OutputFile")):
+                _trash(folder)
+                log.info("segment run moved to the recycle bin: %s", os.path.basename(folder))
+                result = {"kind": "segment", "folder": folder}
+                break
+        else:
+            raise UserError("This folder is not a run record of the project.")
+    from avas.gui.services import projects
+    projects.notify()
+    return result

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { deleteRunRecord } from "../actions";
 import { call, on } from "../bridge";
 import { openPath, pickFile, pickFolder } from "../host";
 import { reportError, toast } from "../components/overlays";
@@ -484,6 +485,7 @@ function samePath(a?: string, b?: string) {
 export default function ResultsPage() {
   const tt = useT();
   const project = useApp((s) => s.project);
+  const running = useApp((s) => s.run.running);
   const lastFinished = useApp((s) => s.lastFinished);
   const request = useApp((s) => s.resultsRequest);
   const [outputDir, setOutputDir] = useState<string | undefined>(request?.outputDir);
@@ -574,6 +576,19 @@ export default function ResultsPage() {
     setTabs([]);
   };
 
+  const deleteCurrent = async () => {
+    if (!current || !(await deleteRunRecord(current))) return;
+    setTabs([]);
+    if (current.kind === "segment") {
+      setOutputDir(undefined); // the effect on outputDir reloads the overview
+      loadSources();
+    } else {
+      loadOverview();
+      loadSources();
+      setRefreshKey((k) => k + 1);
+    }
+  };
+
   if (!project.open) return <NoProject />;
 
   const openItem = (key: ItemKey, label: string, forceNew: boolean) => {
@@ -636,6 +651,14 @@ export default function ResultsPage() {
         >
           {tt("Choose...")}
         </Button>
+        {current && (
+          <IconButton
+            icon="trash"
+            tip={running ? tt("Cannot delete while a simulation is running") : tt("Move this run record to the recycle bin")}
+            disabled={running}
+            onClick={deleteCurrent}
+          />
+        )}
         <div className="grow" />
         <Button
           small
