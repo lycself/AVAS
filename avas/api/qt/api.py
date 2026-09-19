@@ -1,6 +1,5 @@
 from avas.paths import lattice_source_path
 import re
-import sys
 
 
 from avas.post.analysis.percentemitt import PercentEmit

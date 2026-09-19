@@ -1,10 +1,8 @@
 #用于将density中的图像可视化
 from avas.post.plot.initialplot import PicturePlot_2D, Picturedensity
 from avas.data.densityparameter import DensityParameter
-import matplotlib.pyplot as plt
 import numpy as np
-from avas.utils.tool import get_list_interval, generate_web_picture_param
-import sys
+from avas.utils.tool import get_list_interval
 class PlotDensity(Picturedensity):
     def __init__(self, path, picture_type, sample_interval):
         super(PlotDensity, self).__init__()

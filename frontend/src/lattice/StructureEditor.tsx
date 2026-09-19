@@ -38,6 +38,8 @@ type Props = {
   frequency?: number;
   readOnly?: boolean;
   fieldmaps: Record<string, string[]>;
+  /** The last parse failed with this message; *doc* is the previous good one. */
+  parseError?: string | null;
 };
 
 /** Tree props for structural editing (context menu, drag and drop, keys) shared with the visual editor. */
@@ -610,7 +612,7 @@ function ParamGrid({ doc, kw, selected, readOnly, onSelect, onEdits }: { doc: La
 }
 
 /* ------------------------------------------------------------------ editor */
-export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getLines, frequency, readOnly, fieldmaps }: Props) {
+export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getLines, frequency, readOnly, fieldmaps, parseError }: Props) {
   const tt = useT();
   const kw = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k])), [schema]);
   const [tab, setTab] = useState<"structure" | "table">("structure");
@@ -618,7 +620,15 @@ export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRa
   const bodyRef = useRef<HTMLDivElement>(null);
   const st = doc && selected != null ? doc.statements.find((s) => s.line === selected) ?? null : null;
 
-  if (!doc) return <div className="empty-state muted">{tt("Parsing…")}</div>;
+  if (!doc) {
+    if (parseError)
+      return (
+        <div className="empty-state warning-text">
+          <Icon name="warning" /> {tt("The lattice could not be parsed: {error}", { error: parseError })}
+        </div>
+      );
+    return <div className="empty-state muted">{tt("Parsing…")}</div>;
+  }
 
   const status = [
     tt("{n} elements", { n: doc.elementCount }),
@@ -629,6 +639,11 @@ export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRa
   return (
     <div className="structure-editor">
       <Beamline doc={doc} schema={schema} selected={selected} onSelect={(l) => onSelect(l, "beamline")} />
+      {parseError && (
+        <div className="parse-warning warning-text" role="status" data-tip={parseError}>
+          <Icon name="warning" /> {tt("The lattice could not be parsed: {error}", { error: parseError })} {tt("The last good structure is shown.")}
+        </div>
+      )}
       <Tabs
         value={tab}
         onChange={setTab}

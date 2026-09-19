@@ -1,9 +1,7 @@
 import shutil
 import os
 from avas.utils.treat_directory import list_files_in_directory
-import time
 from datetime import datetime
-from send2trash import send2trash
 
 from pathlib import Path
 

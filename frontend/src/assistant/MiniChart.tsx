@@ -1,7 +1,7 @@
 // Small multiples of line charts for data the assistant produced (scans,
 // series along z, previews): one compact SVG chart per series so quantities
 // with different units never share an axis.
-import { niceStep } from "../lattice/glyphs";
+import { niceStep } from "../util";
 
 type Chart = { title: string; x: number[]; series: { name: string; y: (number | null)[] }[]; xlabel?: string };
 

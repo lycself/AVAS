@@ -1,21 +1,10 @@
-"""此文件为画相图"""
-import matplotlib
+"""TraceWin-like ``jet`` colour map (white at the low end) for density plots."""
 import numpy as np
 import matplotlib.pyplot as plt
-import math
-import random
-import struct
-from scipy.stats import gaussian_kde
-from avas.utils.readfile import read_dst_fast
-from sklearn.neighbors import KernelDensity
-import avas.constants as global_varible
-import time
-# matplotlib.use("TkAgg")
-from avas.utils.griddensity import grid_density
 from matplotlib.colors import LinearSegmentedColormap
-import time
 import matplotlib.style as mplstyle
 mplstyle.use('fast')
+
 
 def make_tracewin_like_jet(low_frac=0.1, N=256):
     """
@@ -31,8 +20,6 @@ def make_tracewin_like_jet(low_frac=0.1, N=256):
 
     # 需要替换的低端长度（索引数）
     k = max(2, int(low_frac * N))  # 至少 2，避免除零
-
-
 
     # 找到 low_frac 对应的 jet 颜色
     target_rgba = plt.cm.jet(low_frac)  # 这是个 tuple 或 array
@@ -57,8 +44,6 @@ def make_tracewin_like_jet(low_frac=0.1, N=256):
     new_colors = jet.copy()
     new_low[0, :] = [1.0, 1.0, 1.0, 1.0]
     new_colors[:k, :] = new_low
-
-    # new_colors[0, :] = [1.0, 1.0, 1.0, 1.0]
 
     # 构造新的 colormap
     return LinearSegmentedColormap.from_list("tracewin_like_jet", new_colors)

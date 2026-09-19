@@ -1,17 +1,20 @@
-from avas.paths import lattice_source_path
-import numpy as np
-import matplotlib.pyplot as plt
-import math
-from avas.post.plot.initialplot import PicturePlot_2D, CompoundShape
-from avas.utils.readfile import read_txt, read_dst
+"""Curves along z from DataSet.txt (envelopes, emittances, energy ...).
+
+The plot types are declared in :mod:`avas.post.plot.dataset_plots`; this class
+turns one of them into x / y lists and draws them with :class:`PicturePlot_2D`.
+"""
+import os
+
+import matplotlib
+
 from avas.data.datasetparameter import DatasetParameter
 from avas.data.latticeparameter import LatticeParameter
+from avas.paths import lattice_source_path
+from avas.post.plot.dataset_plots import DATASET_PLOTS, MISSING_CURVE, dataset_curves
+from avas.post.plot.initialplot import CompoundShape, PicturePlot_2D
 from avas.utils.tool import get_list_interval
-import os
-import matplotlib
-# matplotlib.use('Qt5Agg')
-# [ 'emittance_x', 'emittance_y', 'emittance_z',
-# 'longitudinal_phase', ]
+
+
 class PlotDataSet(PicturePlot_2D):
     """
     dataset文件的可视化
@@ -23,275 +26,43 @@ class PlotDataSet(PicturePlot_2D):
         self.BaseMassInMeV = 0
         self.freq = 0
 
-        if project_path:
-            self.project_path = project_path
-        else:
-            self.project_path = None
+        self.project_path = project_path or None
         self.dataset_path = dataset_path
-        # self.beam_path = self.project_path + r'\InputFile' + r'\beam.txt'
         self.input_dir = input_dir or (os.path.join(self.project_path, "InputFile") if self.project_path else None)
         if self.input_dir:
             self.lattice_mulp_path = lattice_source_path(self.input_dir)
-        # self.lattice_mulp_path = self.project_path + r'\InputFile' + r'\lattice_mulp.txt'
-        # self.input_path = self.project_path + r'\InputFile' + r'\input.txt'
-        # self.dataset_path = os.path.join(self.project_path, "OutputFile", "Dataset.txt" )
-        # if dataset_path:
-        #     self.dataset_path = dataset_path
-        # else:
-
-
 
     def get_x_y(self):
+        spec = DATASET_PLOTS.get(self.picture_name)
+        if spec is None:
+            raise ValueError(f"unknown DataSet plot type '{self.picture_name}' "
+                             f"(expected one of {', '.join(DATASET_PLOTS)})")
 
         dataset_obj = DatasetParameter(self.dataset_path, self.project_path, input_dir=self.input_dir)
         dataset_obj.get_parameter()
-        # end_index = dataset_obj.get_lattice_end_index() + 1
-        end_index = None          # every row (a slice to -1 used to drop the last output step)
-        z = dataset_obj.z[:end_index]  # 束团纵向位置
-
-        ek = dataset_obj.ek[:end_index]  # 束团平均能量
-
-
-
-        emit_x = [i * 10**6 for i in dataset_obj.emit_x][:end_index]
-        emit_y = [i * 10**6 for i in dataset_obj.emit_y][:end_index]
-        emit_z = [i * 10**6 for i in dataset_obj.emit_z][:end_index]
-
-        rms_x = [i *10**3 for i in dataset_obj.rms_x][:end_index]#单位变成mm
-        rms_xx = [i *10**3 for i in dataset_obj.rms_xx][:end_index]
-
-        rms_y = [i *10**3 for i in dataset_obj.rms_y][:end_index]
-        rms_yy = [i *10**3 for i in dataset_obj.rms_yy][:end_index]
-
-        max_x = [i *10**3 for i in dataset_obj.max_x][:end_index]
-        max_xx = [i *10**3 for i in dataset_obj.max_xx][:end_index]
-
-        max_y = [i *10**3 for i in dataset_obj.max_y][:end_index]
-        max_yy = [i *10**3 for i in dataset_obj.max_yy][:end_index]
-
-
-        alpha_x = dataset_obj.alpha_x[:end_index]
-        alpha_y = dataset_obj.alpha_y[:end_index]
-        alpha_z = dataset_obj.alpha_z[:end_index]
-
-        beta_x = dataset_obj.beta_x[:end_index]
-        beta_y = dataset_obj.beta_y[:end_index]
-        beta_z = dataset_obj.beta_z[:end_index]
-
-        center_x = [i * 10**3 for i in dataset_obj.x][:end_index]#变为mm
-        center_y = [i *10**3 for i in dataset_obj.y][:end_index]
-
-        loss = dataset_obj.loss[:end_index]
-        # phi = dataset_obj.phi[:end_index]
-        # phi_phi = dataset_obj.phi_phi[:end_index]
-        # BaseMassInMeV = dataset_obj.BaseMassInMeV
-        # freq = dataset_obj.freq
-        #
-        # # for i in range(len(dataset_obj.ek)):
-        # #     gammaaaa = dataset_obj.ek[i] / BaseMassInMeV + 1
-        # #     beta.append(math.sqrt(1 - 1.0 / gammaaaa / gammaaaa))
-        # #     v = dataset_obj.rms_z[i] / (beta[-1] * C_light) * freq * 360
-        # #     # rms_z.append(dataset_obj.rms_z[i] / (beta[-1] * C_light) * freq * 360)
-        # #     # rms_zz.append(-1 * (dataset_obj.rms_z[i] / (beta[-1] * C_light) * freq * 360))
-        # #     rms_z.append(v)
-        # #     rms_zz.append(-1 * v)
-        # #
-        # # for i in range(len(data)):
-        # #     gammaaaa = data[i][0] / BaseMassInMeV + 1
-        # #     beta.append(math.sqrt(1 - 1.0 / gammaaaa / gammaaaa))
-        # #     rms_z.append(data[i][20] / (beta[-1] * C_light) * freq * 360)
-        # #     rms_zz.append(-1 * (data[i][20] / (beta[-1] * C_light) * 162.5e6 * 360))
-
-        if self.picture_name == "c_x":
-            self.x = z
-            self.y = [center_x]
-            self.xlabel = "z(m)"
-            self.ylabel = "Center x(mm)"
-            self.ylim = [-5, 5]
-
-        if self.picture_name == "c_y":
-            self.x = z
-            self.y = [center_y]
-            self.xlabel = "z(m)"
-            self.ylabel = "Center y(mm)"
-            # self.ylim = [-max(loss)-3, max(loss) + 3]
-
-
-        elif self.picture_name == 'c_xy':
-            self.x = z
-            self.y = [center_x, center_y]
-
-            self.xlabel = "z(m)"
-            self.ylabel = "Center x and y(mm)"
-
-            self.labels = ['x', 'y']
-            self.colors = ['r', 'b',]
-            self.set_legend = 1
-            self.ylim = [-5, 5]
-
-
-
-        if self.picture_name == 'loss':
-            self.x = z
-            self.y = loss
-            self.xlabel = "z(m)"
-            self.ylabel = "loss"
-            self.ylim = [-max(loss)-100, max(loss) + 100]
-
-
-        elif self.picture_name == 'emittance_x':
-            self.x = z
-            self.y = emit_x
-
-
-            self.xlabel = "z(m)"
-            self.ylabel = "Emit_x(pi*mm*mrad)"
-
-
-        elif self.picture_name == 'emittance_y':
-            self.x = z
-            self.y = emit_y
-
-            self.xlabel = "z(m)"
-            self.ylabel = "Emit_y(pi*mm*mrad)"
-
-
-
-        elif self.picture_name == 'emittance_z':
-            self.x = z
-            self.y = emit_z
-
-            self.xlabel = "z(m)"
-            self.ylabel = "Emit_z(pi*mm*mrad)"
-
-
-        elif self.picture_name == 'rms_x':
-            self.x = z
-            # print(z)
-            # print(rms_x)
-            # print(len(rms_x))
-
-            self.y = [rms_x, rms_xx]
-
-            self.xlabel = "z(m)"
-            self.ylabel = "RMS_x Size(mm)"
-
-            self.colors = ['r', 'r']
-            self.ylim = [ -2 * np.max(np.array(rms_x)),  2 * np.max(np.array(rms_x)) ]
-
-        elif self.picture_name == 'rms_y':
-            self.x = z
-            self.y = [rms_y, rms_yy]
-
-            self.xlabel = "z(m)"
-            self.ylabel = "RMS_y Size(mm)"
-            self.colors = ['b', 'b']
-
-
-        elif self.picture_name == 'rms_xy':
-            self.x = z
-            self.y = [rms_x, rms_xx, rms_y, rms_yy]
-
-            self.xlabel = "z(m)"
-            self.ylabel = "RMS_xy Size(mm)"
-
-            self.labels = ['x', None, 'y', None]
-            self.colors = ['r', 'r', 'b', 'b']
-            self.set_legend = 1
-
-
-        elif self.picture_name == 'max_x':
-            self.x = z
-            self.y = [max_x, max_xx]
-
-            self.xlabel = "z(m)"
-            self.ylabel = "Max_x Size(mm)"
-
-            self.colors = ['r', 'r']
-
-
-        elif self.picture_name == 'max_y':
-            self.x = z
-            self.y = [max_y, max_yy]
-            self.xlabel = "z(m)"
-            self.ylabel = "Max_y Size(mm)"
-            self.colors = ['b', 'b']
-
-
-        elif self.picture_name == 'max_xy':
-            self.x = z
-            self.y = [max_x, max_xx, max_y, max_yy]
-
-            self.xlabel = "z(m)"
-            self.ylabel = "Max_xy Size(mm)"
-
-            self.labels = ['x', None, 'y', None]
-            self.colors = ['r', 'r', 'b', 'b']
-            self.set_legend = 1
-
-
-        elif self.picture_name == 'phi':
-            phi = getattr(dataset_obj, "phi", None)
-            if phi is None:
-                raise ValueError("the rms phase width needs beam.txt (mass and frequency) next to the results")
-            self.x = z
-            self.y = [list(phi[:end_index]), list(dataset_obj.phi_phi[:end_index])]
-            self.xlabel = "z(m)"
-            self.ylabel = f"RMS phase width(deg) at {dataset_obj.freq / 1e6:g} MHz"
-            self.colors = ['r', 'r']
-
-
-
-        elif self.picture_name == 'energy':
-            self.x = z
-            self.y = ek
-
-            self.xlabel = "z(m)"
-            self.ylabel = "Ek(MeV)"
-
-        elif self.picture_name == 'alpha_x':
-            self.x = z
-            self.y = alpha_x
-
-            self.xlabel = "z(m)"
-            self.ylabel = r"$\alpha_{x}$"
-
-        elif self.picture_name == 'beta_x':
-            self.x = z
-            self.y = beta_x
-
-            self.xlabel = "z(m)"
-            self.ylabel = r"$\beta_{x}$" + "(mm/" + r"$\pi$ mrad)"
-
-        elif self.picture_name == 'beta_y':
-            self.x = z
-            self.y = beta_y
-
-            self.xlabel = "z(m)"
-            self.ylabel = r"$\beta_{y}$" + "(mm/" + r"$\pi$ mrad)"
-
-        elif self.picture_name == 'beta_z':
-            self.x = z
-            self.y = beta_z
-
-            self.xlabel = "z(m)"
-            self.ylabel = r"$\beta_{z}$" + "(mm/" + r"$\pi$ mrad)"
-
-        elif self.picture_name == 'beta_xyz':
-            self.x = z
-            self.y = [beta_x, beta_y, beta_z]
-
-            self.xlabel = "z(m)"
-            self.ylabel = r"$\beta_{xyz}$" + "(mm/" + r"$\pi$ mrad)"
-
-            self.labels = [r"$\beta_{x}$", r"$\beta_{y}$", r"$\beta_{z}$"]
-            self.set_legend = 1
-
+        curves = dataset_curves(dataset_obj)
+
+        for key in spec.y:
+            if curves.get(key) is None:
+                raise ValueError(MISSING_CURVE.get(self.picture_name, f"DataSet.txt has no '{key}' data"))
+
+        self.x = curves["z"]
+        self.y = [curves[key] for key in spec.y]
+        self.xlabel = spec.xlabel
+        self.ylabel = spec.ylabel(curves) if callable(spec.ylabel) else spec.ylabel
+        if spec.labels is not None:
+            self.labels = list(spec.labels)
+        if spec.colors is not None:
+            self.colors = list(spec.colors)
+        self.set_legend = spec.set_legend
+        if spec.ylim is not None:
+            self.ylim = spec.ylim(curves) if callable(spec.ylim) else list(spec.ylim)
+
+        # 根据sample_interval
         self.x = get_list_interval(self.x, self.sample_interval)
         self.y = get_list_interval(self.y, self.sample_interval)
-        #根据sample_interval
 
-        #判断是否需要对y再嵌套一层
+        # 判断是否需要对y再嵌套一层
         if not isinstance(self.y[0], list):
             self.y = [self.y]
         if not isinstance(self.x[0], list):
@@ -307,14 +78,12 @@ class PlotDataSet(PicturePlot_2D):
         obj_compound = CompoundShape()
         patch_list = []
 
-        #获取lattice参数
+        # 获取lattice参数
         lattice_res = LatticeParameter(self.lattice_mulp_path)
         lattice_res.get_parameter()
         aperture = [i * 1000 for i in lattice_res.aperture]
 
         for i in range(len(lattice_res.v_name)):
-
-
 
             height = aperture[i] * 2
 
@@ -328,27 +97,11 @@ class PlotDataSet(PicturePlot_2D):
                 square_origin = [lattice_res.v_start[i], -0.5 * height]
                 patch_list.append(obj_compound.create_shapes(square_origin, lattice_res.v_len[i], height, element))
 
-
-        aperture_up = [i for i in aperture]
-        aperture_up += [aperture_up[-1]]
-        print(aperture_up)
-
-        aperture_down = [-i for i in aperture]
-        aperture_down += [aperture_down[-1]]
-
-        aper_x = lattice_res.v_start + [lattice_res.v_start[-1] + lattice_res.v_len[-1]]
-        print(aper_x)
-
-
         self.labels = self.labels + [None, None]
         edge = matplotlib.rcParams["axes.edgecolor"]
         self.colors += [edge, edge]
 
         self.patch_list = patch_list
-
-
-        # print(354, self.x )
-        # print(355, self.y )
 
         if aper == 0:
             self.x = self.x[:-2]
@@ -356,18 +109,3 @@ class PlotDataSet(PicturePlot_2D):
             self.y = self.y[:-2]
             self.labels = self.labels[:-2]
             self.colors = self.colors[:-2]
-
-
-
-
-if __name__ == "__main__":
-    project_path = None
-    dataset_path = r"C:\Users\wangh\Desktop\long_dis2\av_input\kongxin\DataSet.txt"
-    project_path = r"C:\Users\wangh\Desktop\long_dis2\av_input"
-    a = PlotDataSet(project_path=project_path,  picture_name = 'c_xy', dataset_path=dataset_path)
-
-    a.get_x_y()
-    # a.need_element(aper=1)
-    a.run(show_=1)
-
-

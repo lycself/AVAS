@@ -5,6 +5,7 @@
     avas run  --input DIR --output DIR [--field DIR] [--mode ...] [--device cpu|gpu]
     avas plot TYPE --output DIR [--input DIR] [--save FILE] [--no-show]
     avas plot phase --dst FILE [--plane x-x1 --plane phi-w] [--save FILE]
+    avas scan --input DIR --target Q1 --param G --values 10,12,14
     avas gui [--lang en|zh_CN]
     avas serve [--port 8765] [--host 127.0.0.1] [--open]
     avas info
@@ -20,19 +21,11 @@ import time
 
 from avas import __version__
 
+from avas.post.plot.dataset_plots import DATASET_PLOTS, DST_PLOTS, LATTICE_PLOTS   # plot type registry (no matplotlib)
+
 RUN_INFO_FILE = "avas_run.json"
 
-DATASET_PLOTS = [
-    "loss", "energy", "phi",
-    "emittance_x", "emittance_y", "emittance_z",
-    "rms_x", "rms_y", "rms_xy",
-    "max_x", "max_y", "max_xy",
-    "c_x", "c_y", "c_xy",
-    "alpha_x", "beta_x", "beta_y", "beta_z", "beta_xyz",
-]
-LATTICE_PLOTS = ["cavity_voltage", "syn_phase", "phase_advance"]
-DST_PLOTS = ["phase"]
-PLOT_TYPES = DATASET_PLOTS + LATTICE_PLOTS + DST_PLOTS
+PLOT_TYPES = list(DATASET_PLOTS) + list(LATTICE_PLOTS) + list(DST_PLOTS)
 
 DEFAULT_PLANES = ["x-x1", "y-y1", "phi-w"]
 SIM_MODES = ["auto", "basic", "stat", "dyn", "stat_dyn"]
@@ -120,9 +113,22 @@ def cmd_run(args):
     matplotlib.use("Agg")  # simulations never need a window
 
     input_dir = resolve_input_dir(args.input)
-    from avas.paths import LATTICE_ENV_VAR, lattice_source_name
+    from avas.paths import LATTICE_ENV_VAR
+    previous_override = os.environ.get(LATTICE_ENV_VAR)
     if args.lattice:
         os.environ[LATTICE_ENV_VAR] = args.lattice      # read by every module via avas.paths
+    try:
+        return _run(args, input_dir)
+    finally:                                            # do not leak the override into later in-process calls
+        if args.lattice:
+            if previous_override is None:
+                os.environ.pop(LATTICE_ENV_VAR, None)
+            else:
+                os.environ[LATTICE_ENV_VAR] = previous_override
+
+
+def _run(args, input_dir):
+    from avas.paths import lattice_source_name
     check_input_files(input_dir)
     output_dir = _abs(args.output)
     os.makedirs(output_dir, exist_ok=True)
@@ -152,6 +158,8 @@ def cmd_run(args):
         "avas_version": __version__,
         "input_dir": input_dir,
         "output_dir": output_dir,
+        # every mode simulates a staged copy of the text inputs (+ the generated lattice.txt), see api.basic
+        "inputs_dir": os.path.join(output_dir, "inputs"),
         "field_dir": field_dir,
         "mode": mode,
         "device": device,
@@ -243,7 +251,7 @@ def cmd_plot(args):
     show = not args.no_show and not args.save
     if not show:
         matplotlib.use("Agg")
-    from avas.api import basic as api
+    from avas.api import plotting as api
 
     save = _abs(args.save) if args.save else None
     kind = args.type
@@ -401,6 +409,9 @@ def build_parser():
 
     p_info = sub.add_parser("info", help="show version and install locations")
     p_info.set_defaults(func=cmd_info)
+
+    from avas.cli.scan_cmd import add_parser as add_scan_parser
+    add_scan_parser(sub)
 
     p_doctor = sub.add_parser("doctor", help="check this installation (engine, WebView2, GUI, assistant, preview)")
     p_doctor.set_defaults(func=cmd_doctor)

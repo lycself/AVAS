@@ -98,9 +98,10 @@ def test_events_over_websocket(srv):
             time.sleep(0.02)
         bridge.emit("test.ping", {"n": 1})
         bridge.emit("test.ping", {"n": 2})
-        batch = json.loads(ws.recv(timeout=5))
+        # other tests in the same process may leave the live monitor or a runner emitting: keep only ours
+        batch = [e for e in json.loads(ws.recv(timeout=5)) if e[0].startswith("test.")]
         while len(batch) < 2:
-            batch += json.loads(ws.recv(timeout=5))
+            batch += [e for e in json.loads(ws.recv(timeout=5)) if e[0].startswith("test.")]
         assert batch == [["test.ping", {"n": 1}], ["test.ping", {"n": 2}]]
     for _ in range(50):
         if not bridge.connected():
@@ -110,8 +111,11 @@ def test_events_over_websocket(srv):
     bridge.emit("test.dropped", None)           # nobody connected: dropped, not queued
     time.sleep(0.1)
     with connect(f"{ws_base}/api/events?token={srv.token}") as ws:
-        with pytest.raises(TimeoutError):
-            ws.recv(timeout=0.3)
+        try:
+            got = [e for e in json.loads(ws.recv(timeout=0.3)) if e[0].startswith("test.")]
+        except TimeoutError:
+            got = []
+        assert got == []
     with pytest.raises(Exception):
         with connect(f"{ws_base}/api/events?token=wrong") as ws:
             ws.recv(timeout=2)

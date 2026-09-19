@@ -1,7 +1,6 @@
-import sys
 # sys.path.append(r'C:\Users\anxin\Desktop\AVAS_control')
 
-from avas.utils.readfile import read_dst, read_txt, read_dst_fast
+from avas.utils.readfile import read_dst_fast
 import math
 import numpy as np
 from avas.constants import c_light
@@ -271,7 +270,6 @@ if __name__ == "__main__":
     # # obj = DstParameter(dst_path)
     # # obj.get_parameter()
     # # print(obj.x_list)
-    from avas.log import setup_logger
     dst_path = r"C:\Users\wangh\Desktop\phase_plot\1w.dst"
 
     obj = DstParameter(dst_path)

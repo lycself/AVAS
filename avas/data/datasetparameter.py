@@ -1,16 +1,13 @@
 from avas.paths import lattice_source_path
 import os.path
-import sys
-import time
 
-from avas.utils.readfile import read_dst, read_txt, read_dst_fast
+from avas.utils.readfile import read_txt
 from avas.utils.tool import to_float, to_int
 import math
 
-from avas.constants import Pi, c_light
+from avas.constants import c_light
 from avas.data.latticeparameter import LatticeParameter
 from avas.utils.getinfotools import get_mass_freq_from_dir
-import random
 import numpy as np
 
 class DatasetParameter():

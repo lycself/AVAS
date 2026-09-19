@@ -4,6 +4,7 @@ import {
   closeProject,
   isTyping,
   newProject,
+  openManual,
   openProject,
   pauseSimulation,
   projectMenuItems,
@@ -17,11 +18,12 @@ import {
   stopSimulation,
   blockedByDialog,
 } from "../actions";
-import { closeMenu, openMenu, openMenuBelow, type MenuItem } from "../components/overlays";
+import { closeMenu, DialogFrame, openMenu, openMenuBelow, showDialog, type MenuItem } from "../components/overlays";
 import { canQuit } from "../host";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { cx, Icon, IconButton, Spinner } from "../components/ui";
-import { LANGUAGES, useT, type Language } from "../i18n";
+import { Button, cx, Icon, IconButton, Spinner } from "../components/ui";
+import { LANGUAGES, t as tr, useT, type Language } from "../i18n";
+import { keyMatches, SHORTCUT, SHORTCUTS, type ShortcutId } from "./shortcuts";
 import {
   PAGES,
   persist,
@@ -54,6 +56,7 @@ const SettingsPage = lazy(() => import("../pages/SettingsPage"));
 const FilesPage = lazy(() => import("../pages/FilesPage"));
 const RunPage = lazy(() => import("../pages/RunPage"));
 const ResultsPage = lazy(() => import("../pages/ResultsPage"));
+const ScanPage = lazy(() => import("../pages/ScanPage"));
 
 const PAGE_META: Record<PageId, { label: string; icon: string; render: () => ReactNode }> = {
   project: { label: "Project", icon: "home", render: () => <ProjectPage /> },
@@ -62,6 +65,7 @@ const PAGE_META: Record<PageId, { label: string; icon: string; render: () => Rea
   settings: { label: "Settings", icon: "settings-gear", render: () => <SettingsPage /> },
   files: { label: "Files", icon: "files", render: () => <FilesPage /> },
   run: { label: "Run", icon: "play-circle", render: () => <RunPage /> },
+  scan: { label: "Scan", icon: "graph-scatter", render: () => <ScanPage /> },
   results: { label: "Results", icon: "graph-line", render: () => <ResultsPage /> },
 };
 
@@ -71,73 +75,127 @@ const MAX_WIDTH = 480;
 const SNAP_WIDTH = 110;
 
 /* ------------------------------------------------------------------ menu bar */
+/** Help ▸ Keyboard shortcuts: the table comes from the same list the menus and handlers use. */
+function showShortcuts() {
+  return showDialog<void>(
+    (close) => (
+      <DialogFrame
+        title={tr("Keyboard shortcuts")}
+        icon="keyboard"
+        onClose={() => close()}
+        footer={
+          <Button variant="primary" autoFocus onClick={() => close()}>
+            {tr("Close")}
+          </Button>
+        }
+      >
+        <table className="shortcut-table">
+          <thead>
+            <tr>
+              <th>{tr("Action")}</th>
+              <th>{tr("Shortcut")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SHORTCUTS.map((s) => (
+              <tr key={s.id}>
+                <td>
+                  {tr(s.label)}
+                  {s.scope && <span className="soft"> · {tr(s.scope)}</span>}
+                </td>
+                <td>
+                  <span className="kbd">{s.keys}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </DialogFrame>
+    ),
+    { width: 520 },
+  );
+}
+
 function MenuBar() {
   const t = useT();
-  const app = useApp();
   const lang = useLang((s) => s.lang);
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const open = app.project.open;
-  const running = app.run.running;
-  const paused = running && !!app.run.paused;
+  // narrow selectors: the menu bar must not re-render on every run.progress event
+  const open = useApp((s) => s.project.open);
+  const projectName = useApp((s) => s.project.name);
+  const projectPath = useApp((s) => s.project.path);
+  const recent = useApp((s) => s.project.recent);
+  const running = useApp((s) => s.run.running);
+  const paused = useApp((s) => s.run.running && !!s.run.paused);
+  const page = useApp((s) => s.page);
+  const sidebarCollapsed = useApp((s) => s.sidebarCollapsed);
+  const logVisible = useApp((s) => s.logVisible);
+  const theme = useApp((s) => s.theme);
+  const scale = useApp((s) => s.scale);
+  const motion = useApp((s) => s.settings["ui/motion"] ?? "full");
   const anyDirty = useDirty((s) => Object.values(s.dirty).some(Boolean));
+
+  useEffect(() => {
+    document.title = open && projectName ? `AVAS – ${projectName}` : "AVAS";
+  }, [open, projectName]);
 
   const menus: { label: string; items: () => MenuItem[] }[] = [
     {
       label: t("File"),
       items: () => [
-        { label: t("New project..."), shortcut: "Ctrl+N", icon: "new-folder", onClick: newProject },
-        { label: t("Open project..."), shortcut: "Ctrl+O", icon: "folder-opened", onClick: () => openProject() },
+        { label: t("New project..."), shortcut: SHORTCUT.newProject.keys, icon: "new-folder", onClick: newProject },
+        { label: t("Open project..."), shortcut: SHORTCUT.openProject.keys, icon: "folder-opened", onClick: () => openProject() },
         {
           label: t("Open recent"),
-          disabled: !app.project.recent.length,
-          submenu: app.project.recent.map((p) => ({ label: p, onClick: () => openProject(p) })),
+          disabled: !recent.length,
+          submenu: recent.map((p) => ({ label: p, onClick: () => openProject(p) })),
         },
         { label: t("Close project"), disabled: !open, onClick: closeProject },
         { type: "separator" },
         { label: t("Project overview"), icon: "home", disabled: !open, onClick: () => setPage("project") },
         { label: t("Show in Explorer"), icon: "folder", disabled: !open, onClick: revealProject },
         { type: "separator" },
-        { label: t("Save"), shortcut: "Ctrl+S", icon: "save", disabled: !open, onClick: () => saveAll() },
-        ...(canQuit() ? [{ type: "separator" } as const, { label: t("Exit"), shortcut: "Ctrl+Q", onClick: quit }] : []),
+        { label: t("Save"), shortcut: SHORTCUT.save.keys, icon: "save", disabled: !open, onClick: () => saveAll() },
+        ...(canQuit() ? [{ type: "separator" } as const, { label: t("Exit"), shortcut: SHORTCUT.quit.keys, onClick: quit }] : []),
       ],
     },
     {
       label: t("Run"),
       items: () => [
         !running
-          ? { label: t("Run simulation"), shortcut: "F5", icon: "play", disabled: !open, onClick: runSimulation }
+          ? { label: t("Run simulation"), shortcut: SHORTCUT.runPauseResume.keys, icon: "play", disabled: !open, onClick: runSimulation }
           : paused
-            ? { label: t("Resume"), shortcut: "F5", icon: "debug-continue", onClick: resumeSimulation }
-            : { label: t("Pause"), shortcut: "F5", icon: "debug-pause", onClick: pauseSimulation },
-        { label: t("Stop"), shortcut: "Shift+F5", icon: "debug-stop", disabled: !running, onClick: stopSimulation },
+            ? { label: t("Resume"), shortcut: SHORTCUT.runPauseResume.keys, icon: "debug-continue", onClick: resumeSimulation }
+            : { label: t("Pause"), shortcut: SHORTCUT.runPauseResume.keys, icon: "debug-pause", onClick: pauseSimulation },
+        { label: t("Stop"), shortcut: SHORTCUT.stop.keys, icon: "debug-stop", disabled: !running, onClick: stopSimulation },
       ],
     },
     {
       label: t("View"),
       items: () => [
-        ...PAGES.map((p, i) => ({ label: t(PAGE_META[p].label), shortcut: `Ctrl+${i + 1}`, checked: app.page === p, onClick: () => setPage(p) })),
+        ...PAGES.map((p, i) => ({ label: t(PAGE_META[p].label), shortcut: `Ctrl+${i + 1}`, checked: page === p, onClick: () => setPage(p) })),
         { type: "separator" as const },
-        { label: t("Collapse sidebar"), shortcut: "Ctrl+B", checked: app.sidebarCollapsed, onClick: () => setSidebarCollapsed(!app.sidebarCollapsed) },
-        { label: t("Show log panel"), shortcut: "Ctrl+J", checked: app.logVisible, onClick: () => setLogVisible(!app.logVisible) },
-        { label: t("AI assistant"), shortcut: "Ctrl+Shift+A", checked: useAssistant.getState().open, onClick: () => setAssistantOpen(!useAssistant.getState().open) },
+        { label: t("Collapse sidebar"), shortcut: SHORTCUT.sidebar.keys, checked: sidebarCollapsed, onClick: () => setSidebarCollapsed(!sidebarCollapsed) },
+        { label: t("Show log panel"), shortcut: SHORTCUT.log.keys, checked: logVisible, onClick: () => setLogVisible(!logVisible) },
+        { label: t("AI assistant"), shortcut: SHORTCUT.assistant.keys, checked: useAssistant.getState().open, onClick: () => setAssistantOpen(!useAssistant.getState().open) },
         { type: "separator" as const },
         {
           label: t("Theme"),
           submenu: (["system", "light", "dark"] as const).map((m) => ({
             label: m === "system" ? t("Follow system") : m === "light" ? t("Light") : t("Dark"),
-            checked: app.theme === m,
+            checked: theme === m,
             onClick: () => setTheme(m),
           })),
         },
         {
           label: t("UI scale"),
           submenu: [
-            ...SCALES.map((s) => ({ label: `${s} %`, checked: app.scale === s, onClick: () => setScale(s) })),
+            ...SCALES.map((s) => ({ label: `${s} %`, checked: scale === s, onClick: () => setScale(s) })),
             { type: "separator" as const },
-            { label: t("Zoom in"), shortcut: "Ctrl+=", onClick: () => stepScale(1) },
-            { label: t("Zoom out"), shortcut: "Ctrl+-", onClick: () => stepScale(-1) },
-            { label: t("Reset zoom"), shortcut: "Ctrl+0", onClick: () => setScale(100) },
+            { label: t("Zoom in"), shortcut: SHORTCUT.zoomIn.keys, onClick: () => stepScale(1) },
+            { label: t("Zoom out"), shortcut: SHORTCUT.zoomOut.keys, onClick: () => stepScale(-1) },
+            { label: t("Reset zoom"), shortcut: SHORTCUT.zoomReset.keys, onClick: () => setScale(100) },
           ],
         },
         {
@@ -149,7 +207,7 @@ function MenuBar() {
               ["off", t("Off: update once per second")],
               ["auto", t("Automatic (follow Windows animation effects)")],
             ] as const
-          ).map(([value, label]) => ({ label, checked: (app.settings["ui/motion"] ?? "full") === value, onClick: () => persist({ "ui/motion": value }) })),
+          ).map(([value, label]) => ({ label, checked: motion === value, onClick: () => persist({ "ui/motion": value }) })),
         },
       ],
     },
@@ -162,7 +220,15 @@ function MenuBar() {
         },
       ],
     },
-    { label: t("Help"), items: () => [{ label: t("About AVAS"), icon: "info", onClick: showAbout }] },
+    {
+      label: t("Help"),
+      items: () => [
+        { label: t("User manual"), icon: "book", onClick: openManual },
+        { label: t("Keyboard shortcuts"), icon: "keyboard", onClick: () => void showShortcuts() },
+        { type: "separator" },
+        { label: t("About AVAS"), icon: "info", onClick: showAbout },
+      ],
+    },
   ];
 
   const show = (i: number) => {
@@ -204,13 +270,13 @@ function MenuBar() {
       <div className="grow" />
       <div
         className={cx("menubar-title ellipsis", "clickable")}
-        data-tip={app.project.open ? app.project.path : t("Open or create a project")}
+        data-tip={open ? projectPath : t("Open or create a project")}
         onMouseDown={(e) => {
           e.preventDefault();
           openMenuBelow(e.currentTarget as HTMLElement, projectMenuItems());
         }}
       >
-        {app.project.open ? `${app.project.name} — AVAS` : "AVAS"}
+        {open ? `${projectName} — AVAS` : "AVAS"}
       </div>
       <div className="grow" />
       <div className="toolbar-actions">
@@ -227,11 +293,11 @@ function MenuBar() {
         <IconButton icon="debug-stop" className="stop-btn" tip={`${t("Stop")}  (Shift+F5)`} disabled={!running} onClick={stopSimulation} />
         <div className="divider-v" />
         <IconButton
-          icon={app.sidebarCollapsed ? "layout-sidebar-left-off" : "layout-sidebar-left"}
+          icon={sidebarCollapsed ? "layout-sidebar-left-off" : "layout-sidebar-left"}
           tip={t("Toggle sidebar (Ctrl+B)")}
-          onClick={() => setSidebarCollapsed(!app.sidebarCollapsed)}
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
-        <IconButton icon={app.logVisible ? "layout-panel" : "layout-panel-off"} tip={t("Toggle log panel (Ctrl+J)")} onClick={() => setLogVisible(!app.logVisible)} />
+        <IconButton icon={logVisible ? "layout-panel" : "layout-panel-off"} tip={t("Toggle log panel (Ctrl+J)")} onClick={() => setLogVisible(!logVisible)} />
         <div className="divider-v" />
         <AssistantToggle />
       </div>
@@ -326,6 +392,8 @@ function StatusBar() {
     const what =
       run.source === "assistant"
         ? t(run.paused ? "Assistant {task} paused" : "Assistant {task} running", { task: t(run.label ?? "") })
+        : run.source === "scan"
+          ? t(run.paused ? "Parameter scan {task} paused" : "Parameter scan {task} running", { task: run.label ?? "" })
         : run.source === "segment"
           ? t(run.paused ? "Segment {label} paused" : "Segment {label} running", { label: run.label ?? "" })
           : t(run.paused ? "Simulation paused" : "Simulation running");
@@ -375,20 +443,21 @@ function useShortcuts() {
       const ctrl = e.ctrlKey || e.metaKey;
       const app = useApp.getState();
       const key = e.key.toLowerCase();
+      const is = (id: ShortcutId) => keyMatches(e, SHORTCUT[id].keys);
       let handled = true;
-      if (e.key === "F5" && e.shiftKey) stopSimulation();
-      else if (e.key === "F5") runPauseResume();
-      else if (ctrl && !e.shiftKey && key === "s") saveAll();
-      else if (ctrl && key === "o") openProject();
-      else if (ctrl && key === "n") newProject();
-      else if (ctrl && key === "q") quit();
-      else if (ctrl && key === "b") setSidebarCollapsed(!app.sidebarCollapsed);
-      else if (ctrl && key === "j") setLogVisible(!app.logVisible);
-      else if (ctrl && e.shiftKey && key === "a") setAssistantOpen(!useAssistant.getState().open);
-      else if (ctrl && (key === "=" || key === "+")) stepScale(1);
-      else if (ctrl && key === "-") stepScale(-1);
-      else if (ctrl && key === "0") setScale(100);
-      else if (ctrl && !e.shiftKey && !e.altKey && /^[1-7]$/.test(e.key) && !isTyping(e)) setPage(PAGES[Number(e.key) - 1]);
+      if (is("stop")) stopSimulation();
+      else if (is("runPauseResume")) runPauseResume();
+      else if (is("save")) saveAll();
+      else if (is("openProject")) openProject();
+      else if (is("newProject")) newProject();
+      else if (is("quit")) quit();
+      else if (is("sidebar")) setSidebarCollapsed(!app.sidebarCollapsed);
+      else if (is("log")) setLogVisible(!app.logVisible);
+      else if (is("assistant")) setAssistantOpen(!useAssistant.getState().open);
+      else if (is("zoomIn")) stepScale(1);
+      else if (is("zoomOut")) stepScale(-1);
+      else if (is("zoomReset")) setScale(100);
+      else if (ctrl && !e.shiftKey && !e.altKey && /^[1-8]$/.test(e.key) && !isTyping(e)) setPage(PAGES[Number(e.key) - 1]); // SHORTCUT.pages
       else if (e.key === "F12" || (ctrl && e.shiftKey && key === "i")) handled = false;
       else if (ctrl && key === "r" && !isTyping(e)) handled = true; // no page reload
       else if (e.key === "F5" || (ctrl && key === "p") || (ctrl && key === "f" && !isTyping(e))) handled = true;

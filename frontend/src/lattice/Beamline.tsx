@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
-import { cssColor, drawGlyph, elementShape, isZeroLength, niceStep, polarity, type Shape } from "./glyphs";
+import { cssColor, niceStep } from "../util";
+import { drawGlyph, elementShape, isZeroLength, polarity, type Shape } from "./glyphs";
 import { elementColorVar, fmt6, worstIssue, type LatticeDoc, type Schema } from "./types";
 
 type Item = {
@@ -184,7 +185,7 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
       if (x < rect.left + rect.width - 56) ctx.fillText(String(Number(z.toPrecision(6))), x, y + 4);
     }
     ctx.textAlign = "right";
-    ctx.fillText("z (m)", rect.left + rect.width, y + 4);
+    ctx.fillText(t("z (m)"), rect.left + rect.width, y + 4);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, view, size, selected, theme]);
 

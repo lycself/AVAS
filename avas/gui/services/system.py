@@ -125,6 +125,16 @@ def shell_open(path):
     return True
 
 
+@rpc("app.openManual")
+def open_manual():
+    """Open the user manual (docs/使用说明20260427.docx) with the system viewer."""
+    from avas.paths import manual_path
+    path = manual_path()
+    if not path:
+        raise UserError("The user manual (docs/使用说明20260427.docx) is not installed with this copy of AVAS.")
+    return shell_open(path)
+
+
 @rpc("shell.reveal")
 def shell_reveal(path):
     if not os.path.exists(path):

@@ -1,7 +1,7 @@
 // Floating things: tooltips, menus, modal dialogs and toasts.
 // Menus and dialogs are driven imperatively (openMenu / confirm / prompt ...)
 // so any code path, including async ones, can use them.
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import { t } from "../i18n";
 import { Button, cx, Icon, TextInput } from "./ui";
@@ -90,10 +90,39 @@ export function closeMenu() {
   m?.onClose?.();
 }
 
-function MenuList({ items, x, y, minWidth, depth, anchorBottom }: { items: MenuItem[]; x: number; y: number; minWidth?: number; depth: number; anchorBottom?: boolean }) {
+type Enabled = { it: Extract<MenuItem, { label: string; onClick?: unknown }>; i: number };
+function enabledItems(items: MenuItem[]): Enabled[] {
+  return items.map((it, i) => ({ it, i })).filter((x): x is Enabled => (x.it.type ?? "item") === "item" && !(x.it as any).disabled);
+}
+
+/**
+ * One level of a menu.  Exactly one level owns the keyboard at a time: the root,
+ * or the deepest submenu that was opened with ArrowRight / Enter (*keyboard*);
+ * a submenu opened by hovering leaves the keys with its parent until ArrowRight.
+ */
+function MenuList({
+  items,
+  x,
+  y,
+  minWidth,
+  depth,
+  anchorBottom,
+  keyboard,
+  onCloseSub,
+}: {
+  items: MenuItem[];
+  x: number;
+  y: number;
+  minWidth?: number;
+  depth: number;
+  anchorBottom?: boolean;
+  keyboard: boolean;
+  onCloseSub?: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [pos, setPos] = useState({ x, y });
-  const [sub, setSub] = useState<{ index: number; x: number; y: number } | null>(null);
+  const [sub, setSub] = useState<{ index: number; x: number; y: number; keyboard: boolean } | null>(null);
   const [active, setActive] = useState(-1);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -105,47 +134,103 @@ function MenuList({ items, x, y, minWidth, depth, anchorBottom }: { items: MenuI
     if (ny + r.height > window.innerHeight - 4) ny = Math.max(4, window.innerHeight - r.height - 4);
     setPos({ x: Math.max(4, nx), y: ny });
   }, [x, y, depth, anchorBottom]);
+  // a submenu entered from the keyboard starts on its first item
   useEffect(() => {
-    if (depth) return;
+    if (keyboard && depth && active < 0) setActive(enabledItems(items)[0]?.i ?? -1);
+  }, [keyboard, depth, active, items]);
+  const openSub = (i: number, viaKeyboard: boolean) => {
+    const el = itemRefs.current[i];
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setSub({ index: i, x: r.right - 2, y: r.top - 5, keyboard: viaKeyboard });
+  };
+  const activate = (i: number) => {
+    const it = items[i] as any;
+    if (!it || it.disabled) return;
+    if (it.submenu) {
+      setActive(i);
+      openSub(i, true);
+      return;
+    }
+    if (it.onClick) {
+      closeMenu();
+      it.onClick();
+    }
+  };
+  const ownsKeys = keyboard && !sub?.keyboard;
+  useEffect(() => {
+    if (!ownsKeys) return;
     const key = (e: KeyboardEvent) => {
-      const enabled = items.map((it, i) => ({ it, i })).filter(({ it }) => (it.type ?? "item") === "item" && !(it as any).disabled);
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeMenu();
-      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        if (!enabled.length) return;
-        const idx = enabled.findIndex((x) => x.i === active);
-        const next = e.key === "ArrowDown" ? (idx + 1) % enabled.length : (idx - 1 + enabled.length) % enabled.length;
-        setActive(enabled[next].i);
-      } else if (e.key === "Enter" && active >= 0) {
-        e.preventDefault();
-        const it = items[active] as any;
-        if (it?.onClick) {
+      const enabled = enabledItems(items);
+      const idx = enabled.findIndex((x) => x.i === active);
+      switch (e.key) {
+        case "Escape":
           closeMenu();
-          it.onClick();
+          break;
+        case "ArrowDown":
+        case "ArrowUp": {
+          if (!enabled.length) break;
+          const next = e.key === "ArrowDown" ? (idx + 1) % enabled.length : (idx - 1 + enabled.length) % enabled.length;
+          setActive(enabled[next].i);
+          break;
         }
+        case "Home":
+          if (enabled.length) setActive(enabled[0].i);
+          break;
+        case "End":
+          if (enabled.length) setActive(enabled[enabled.length - 1].i);
+          break;
+        case "ArrowRight":
+          if (active >= 0 && (items[active] as any).submenu) activate(active);
+          break;
+        case "ArrowLeft":
+          if (depth && onCloseSub) onCloseSub();
+          break;
+        case "Enter":
+        case " ":
+          if (active >= 0) activate(active);
+          break;
+        default:
+          return;
       }
+      e.preventDefault();
+      e.stopPropagation();
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
-  }, [items, active, depth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, active, ownsKeys, depth, onCloseSub]);
+  const itemId = (i: number) => `menu-${depth}-${i}`;
   return (
     <>
-      <div ref={ref} className="menu" style={{ left: pos.x, top: pos.y, minWidth }} onContextMenu={(e) => e.preventDefault()}>
+      <div
+        ref={ref}
+        className="menu"
+        role="menu"
+        aria-activedescendant={active >= 0 ? itemId(active) : undefined}
+        style={{ left: pos.x, top: pos.y, minWidth }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
         {items.map((it, i) => {
-          if (it.type === "separator") return <div key={i} className="menu-sep" />;
-          if (it.type === "header") return <div key={i} className="menu-header">{it.label}</div>;
+          if (it.type === "separator") return <div key={i} className="menu-sep" role="separator" />;
+          if (it.type === "header") return <div key={i} className="menu-header" role="presentation">{it.label}</div>;
           return (
             <div
               key={i}
+              id={itemId(i)}
+              ref={(el) => {
+                itemRefs.current[i] = el;
+              }}
+              role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+              aria-checked={it.checked !== undefined ? it.checked : undefined}
+              aria-disabled={it.disabled || undefined}
+              aria-haspopup={it.submenu ? "menu" : undefined}
+              aria-expanded={it.submenu ? sub?.index === i : undefined}
               className={cx("menu-item", it.disabled && "disabled", it.danger && "danger", (active === i || sub?.index === i) && "active")}
-              onMouseEnter={(e) => {
+              onMouseEnter={() => {
                 setActive(i);
-                if (it.submenu) {
-                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  setSub({ index: i, x: r.right - 2, y: r.top - 5 });
-                } else setSub(null);
+                if (it.submenu) openSub(i, false);
+                else setSub(null);
               }}
               onClick={() => {
                 if (it.disabled || it.submenu) return;
@@ -162,7 +247,7 @@ function MenuList({ items, x, y, minWidth, depth, anchorBottom }: { items: MenuI
         })}
       </div>
       {sub && (items[sub.index] as any).submenu && (
-        <MenuList items={(items[sub.index] as any).submenu} x={sub.x} y={sub.y} depth={depth + 1} />
+        <MenuList items={(items[sub.index] as any).submenu} x={sub.x} y={sub.y} depth={depth + 1} keyboard={sub.keyboard} onCloseSub={() => setSub(null)} />
       )}
     </>
   );
@@ -189,7 +274,7 @@ export function MenuLayer() {
   if (!menu) return null;
   return (
     <div className="menu-layer" onContextMenu={(e) => e.preventDefault()}>
-      <MenuList items={menu.items} x={menu.x} y={menu.y} minWidth={menu.minWidth} depth={0} anchorBottom={menu.anchorBottom} />
+      <MenuList items={menu.items} x={menu.x} y={menu.y} minWidth={menu.minWidth} depth={0} anchorBottom={menu.anchorBottom} keyboard />
     </div>
   );
 }
@@ -228,12 +313,23 @@ export function anyDialogOpen(): boolean {
   return useDialogs.getState().stack.length > 0;
 }
 
+/** id the dialog's title should carry (aria-labelledby of the dialog wrapper) */
+const DialogTitleId = createContext<string | undefined>(undefined);
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+function focusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+}
+
 export function DialogFrame({ title, icon, children, footer, onClose, className }: { title: ReactNode; icon?: string; children: ReactNode; footer?: ReactNode; onClose?: () => void; className?: string }) {
+  const titleId = useContext(DialogTitleId);
   return (
     <div className={cx("dialog", className)}>
       <div className="dialog-header">
         {icon && <Icon name={icon} />}
-        <div className="dialog-title">{title}</div>
+        <div className="dialog-title" id={titleId}>
+          {title}
+        </div>
         {onClose && (
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t("Close")}>
             <Icon name="close" />
@@ -246,8 +342,49 @@ export function DialogFrame({ title, icon, children, footer, onClose, className 
   );
 }
 
+/** One modal: focus moves in on open (autoFocus'ed control, primary button or first control) and back on close. */
+function DialogHost({ spec, wrapRef }: { spec: DialogSpec; wrapRef: (el: HTMLDivElement | null) => void }) {
+  const titleId = `dialog-title-${spec.id}`;
+  const ownRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ownRef.current;
+    if (!el) return;
+    const before = document.activeElement as HTMLElement | null;
+    if (!el.contains(document.activeElement)) {
+      const list = focusables(el);
+      (list.find((f) => f.classList.contains("btn-primary")) ?? list[0] ?? el).focus();
+    }
+    return () => {
+      if (before && document.contains(before) && typeof before.focus === "function") before.focus();
+    };
+  }, []);
+  const close = (value: unknown) => {
+    useDialogs.getState().remove(spec.id);
+    spec.resolve(value);
+  };
+  return (
+    <div className="dialog-backdrop">
+      <div
+        ref={(el) => {
+          ownRef.current = el;
+          wrapRef(el);
+        }}
+        className="dialog-wrap"
+        style={{ width: spec.width }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
+        <DialogTitleId.Provider value={titleId}>{spec.render(close)}</DialogTitleId.Provider>
+      </div>
+    </div>
+  );
+}
+
 export function DialogLayer() {
   const stack = useDialogs((s) => s.stack);
+  const wraps = useRef(new Map<number, HTMLDivElement>());
   useEffect(() => {
     if (!stack.length) return;
     const top = stack[stack.length - 1];
@@ -257,6 +394,22 @@ export function DialogLayer() {
         e.stopPropagation();
         useDialogs.getState().remove(top.id);
         top.resolve(top.dismissValue);
+      } else if (e.key === "Tab") {
+        // keep Tab / Shift+Tab inside the topmost dialog
+        const el = wraps.current.get(top.id);
+        if (!el) return;
+        const list = focusables(el);
+        const cur = document.activeElement as HTMLElement | null;
+        const inside = !!cur && el.contains(cur);
+        let target: HTMLElement | undefined;
+        if (!list.length) target = el;
+        else if (!inside) target = e.shiftKey ? list[list.length - 1] : list[0];
+        else if (e.shiftKey && (cur === list[0] || cur === el)) target = list[list.length - 1];
+        else if (!e.shiftKey && cur === list[list.length - 1]) target = list[0];
+        if (target) {
+          e.preventDefault();
+          target.focus();
+        }
       }
     };
     window.addEventListener("keydown", key);
@@ -264,19 +417,16 @@ export function DialogLayer() {
   }, [stack]);
   return (
     <>
-      {stack.map((d) => {
-        const close = (value: unknown) => {
-          useDialogs.getState().remove(d.id);
-          d.resolve(value);
-        };
-        return (
-          <div key={d.id} className="dialog-backdrop">
-            <div className="dialog-wrap" style={{ width: d.width }}>
-              {d.render(close)}
-            </div>
-          </div>
-        );
-      })}
+      {stack.map((d) => (
+        <DialogHost
+          key={d.id}
+          spec={d}
+          wrapRef={(el) => {
+            if (el) wraps.current.set(d.id, el);
+            else wraps.current.delete(d.id);
+          }}
+        />
+      ))}
     </>
   );
 }

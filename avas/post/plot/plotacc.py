@@ -2,16 +2,9 @@
 from avas.paths import lattice_source_path
 import numpy as np
 import os
-import pandas as pd
-import numpy
-from avas.data.beamset import BeamsetParameter
-import math
-from avas.constants import c_light, Pi
-from avas.data.latticeparameter import LatticeParameter
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from avas.sim.calacceptance import Acceptance
-from matplotlib.colors import LinearSegmentedColormap
 class PlotAcc(Acceptance):
     def __init__(self, project_path = None):
         self.project_path = project_path

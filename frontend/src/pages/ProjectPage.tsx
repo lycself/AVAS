@@ -12,10 +12,7 @@ import { pick, useT } from "../i18n";
 import { showLog } from "../shell/LogPanel";
 import { setPage, setProject, useApp, type PageId, type ProjectSummary, type RunInfo } from "../store/app";
 import { setLatticeMode } from "../store/latticeUi";
-
-function basename(p: string) {
-  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-}
+import { basename } from "../util";
 
 function parentDir(p: string) {
   return p.split(/[\\/]/).slice(0, -1).join("\\");
@@ -363,8 +360,7 @@ function Overview() {
 }
 
 function fmtNum(v: unknown) {
-  const n = Number(v);
-  return v === "" || v == null || !Number.isFinite(n) ? "–" : fmtG(n, 7);
+  return v === "" || v == null ? "–" : fmtG(Number(v), 7);
 }
 
 function Card({ title, icon, actions, children, className }: { title: ReactNode; icon: string; actions?: ReactNode; children: ReactNode; className?: string }) {

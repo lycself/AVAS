@@ -1,7 +1,6 @@
 from avas.utils.tool import to_float
-from avas.post.plot.initialplot import PicturePlot_2D, CompoundShape, PicturePlot_2ax
+from avas.post.plot.initialplot import PicturePlot_2D, PicturePlot_2ax
 from avas.utils.readfile import read_txt
-import os
 
 
 class PlotErrout(PicturePlot_2D):

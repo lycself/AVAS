@@ -210,18 +210,6 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
   ctx.closePath();
 }
 
-export function cssColor(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
-export function niceStep(raw: number) {
-  if (raw <= 0 || !Number.isFinite(raw)) return 1;
-  const exp = Math.floor(Math.log10(raw));
-  const base = raw / 10 ** exp;
-  for (const n of [1, 2, 5, 10]) if (base <= n) return n * 10 ** exp;
-  return 10 ** (exp + 1);
-}
-
 /** Aperture radius (m) of an element, if it has one. */
 export function aperture(st: Statement): number | null {
   if (!st.isElement || st.category === "diag") return null;

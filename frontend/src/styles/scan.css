@@ -1,0 +1,11 @@
+/* Scan page */
+.scan-metrics { flex-wrap: wrap; gap: 6px 18px; }
+.scan-table th:first-child, .scan-table td:first-child { text-align: right; color: var(--fg-muted); }
+.scan-table td:last-child { text-align: left; }
+.run-record.active { border-color: var(--accent); }
+
+/* Results page: compare runs */
+.compare-layout { flex: 1; display: flex; min-height: 0; gap: 8px; }
+.compare-sources { width: 260px; flex: none; overflow: auto; padding: 4px 6px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.compare-source-label { display: inline-flex; flex-direction: column; line-height: 1.2; }
+.compare-plot { position: relative; flex: 1; }

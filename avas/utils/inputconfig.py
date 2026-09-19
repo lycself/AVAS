@@ -1,256 +1,86 @@
-from avas.utils.readfile import read_txt
-from avas.utils.exception import (TypeError, ValueRangeError, ValueChooseError, ListLengthError,
-                             UnknownkeywordError, ValueConvertError, MisskeywordError)
-from avas.utils.tool import write_to_txt, convert_dic2lis
+"""input.txt as a flat parameter dictionary.
+
+Keys, types and choices come from ``avas.data.schema.INPUT_KEYWORDS`` through
+:class:`avas.utils.keywordconfig.KeywordTable`; ``pchistogram`` and
+``longlimits`` are split into the component keys the Settings page uses.
+Every method returns ``{"code", "data": {"msg", "inputParams": {...}}}``.
+Keywords whose value is None are not written (an absent keyword keeps the
+engine's default; ``multithreading`` in particular must be 1 or absent).
+"""
 import copy
-from avas.utils.iniconfig import IniConfig
-from avas.utils.tool import format_output ,convert_to_othertype_dict
 import os
+
+from avas.data import schema
+from avas.utils.exception import ValueRangeError
+from avas.utils.keywordconfig import KeywordTable
+from avas.utils.readfile import read_txt
+from avas.utils.tool import format_output, write_to_txt
+
+SPLIT = {
+    "pchistogram": ("pchistogram_start", "pchistogram_grid"),
+    "longlimits": ("longlimits_start", "longlimits_phase", "longlimits_energy"),
+}
+TABLE = KeywordTable(schema.INPUT_KEYWORDS, SPLIT)
+# lower bounds the schema does not express
+MINIMUM = {"steppercycle": 1, "dumpperiodicity": 0}
+# the envelope model only reads these
+ENV_KEYWORDS = ("sim_type", "spacechargelong", "spacechargetype")
+
+
 class InputConfig():
     def __init__(self):
-        self.input_parameter_keys = ["sim_type", "scmethod", "spacecharge", "steppercycle", "dumpperiodicity",
-                                     "spacechargelong", "spacechargetype", "fieldSource", "device", "pchistogram_start", "pchistogram_grid",
-                                     "longlimits_start", "longlimits_phase", "longlimits_energy", "boundary", "randomseed"
-                                     ]
+        self.input_parameter_keys = list(TABLE.keys)
+        self.input_parameter = {k: None for k in TABLE.keys}
+        self._order = []                  # keywords in the order of the file last read
 
-
-        self.input_parameter = {"sim_type": None, 'spacecharge': None, 'steppercycle': None, 'dumpperiodicity':None,
-                                "spacechargelong": None, "spacechargetype": None, "pchistogram_start":None, "pchistogram_grid":None,
-                                "longlimits_start": None, "longlimits_phase": None, "longlimits_energy": None,
-                                "boundary": None, "randomseed": None
-                                }
-
-        self.int_keys = ["spacecharge", "steppercycle", "dumpperiodicity",
-                         "spacechargelong", "spacechargetype", "pchistogram_start", "pchistogram_grid", "longlimits_start", "boundary", "randomseed",
-                         "multithreading", "scanphase", "secondarybeam"]
-        self.float_keys = ["longlimits_phase", "longlimits_energy"]
-        # keywords whose value is a list of numbers (kept as lists, converted element-wise)
-        self.int_list_keys = ["numofgrid"]
-        self.float_list_keys = ["meshrms"]
-
-
-        self.mulp_keys = ["sim_type", "scmethod", "spacecharge", "steppercycle", "dumpperiodicity", ]
-        self.env_keys = ["spacechargelong", "spacechargetype"]
-
-    # def initialize_input(self):
-    #     self.input_parameter = {'scmethod': None, "scanphase": None, 'spacecharge': None, 'steppercycle': None, 'dumpperiodicity':None,
-    #                             "maxthreads": None}
-
-
-
+    @staticmethod
+    def _path(item):
+        other_path = item.get("otherPath")
+        if other_path is None:
+            return os.path.join(item.get("projectPath"), "InputFile", "input.txt")
+        return other_path
 
     def read_input_txt(self, path):
-        #读取beam文件
-        input_lis = read_txt(path, out='list', readdall=True, case_sensitive=True, )
-
+        """``{keyword: text | [text, ...]}`` in file order (the engine reads keywords case-insensitively)."""
         res = {}
-        for i in input_lis:
-            key = i[0].lower()          # the engine reads keywords case-insensitively
-            if len(i) == 2:
-                res[key] = i[1]
-            else:
-                res[key] = i[1:]
-
-
+        for tokens in read_txt(path, out='list', readdall=True, case_sensitive=True):
+            key = tokens[0].lower()
+            res[key] = tokens[1] if len(tokens) == 2 else tokens[1:]
         return res
 
     def create_from_file(self, item):
-        other_path = item.get("otherPath")
-        if other_path is None:
-            path = os.path.join(item.get("projectPath"), "InputFile", "input.txt")
-        else:
-            path = other_path
-
-        kwargs = {}
-
-        original_dict = self.read_input_txt(path)
-        if "pchistogram" in original_dict.keys():
-            original_dict["pchistogram_start"] = original_dict["pchistogram"][0]
-            original_dict["pchistogram_grid"] = original_dict["pchistogram"][1]
-        if "longlimits" in original_dict.keys():
-            original_dict["longlimits_start"] = original_dict["longlimits"][0]
-            original_dict["longlimits_phase"] = original_dict["longlimits"][1]
-            original_dict["longlimits_energy"] = original_dict["longlimits"][2]
-
-
-        # 验证是否存在未知元素
-        # for k, v in original_dict.items():
-        #     if k not in self.input_parameter_keys:
-        #         raise UnknownkeywordError(message=None, key=k)
-
-
-        # 如果不存在未知元素, 转换类型
-        for k, v in original_dict.items():
-            original_dict[k] = self.convert_v(k, v)
-
-        for k, v in original_dict.items():
-            self.input_parameter[k] = original_dict[k]
-
-
-
-        kwargs.update({'inputParams': copy.deepcopy(self.input_parameter)})
-        output = format_output(**kwargs)
-        return output
+        raw = self.read_input_txt(self._path(item))
+        self._order = list(raw)
+        self.input_parameter.update(TABLE.flatten(raw))
+        return format_output(inputParams=copy.deepcopy(self.input_parameter))
 
     def set_param(self, **kwargs):
-        for k, v in kwargs.items():
-            if v == '':
-                kwargs[k] = None
-        kwargs1 = {}
-        #验证类型
+        kwargs = {k: (None if v == '' else v) for k, v in kwargs.items()}
         self.validate_type(kwargs)
-
-        for k, v in kwargs.items():
-            self.input_parameter[k] = v
-
-
-        kwargs1.update({'inputParams': copy.deepcopy(self.input_parameter)})
-        output = format_output(**kwargs1)
-        return output
+        self.input_parameter.update(kwargs)
+        return format_output(inputParams=copy.deepcopy(self.input_parameter))
 
     def write_to_file(self, item):
-        other_path = item.get("otherPath")
-        if other_path is None:
-            path = os.path.join(item.get("projectPath"), "InputFile", "input.txt")
+        sim_type = self.input_parameter.get("sim_type")
+        if sim_type == "mulp":
+            params = dict(self.input_parameter)
+        elif sim_type == "env":
+            params = {k: self.input_parameter.get(k) for k in ENV_KEYWORDS}
         else:
-            path = other_path
-
-        kwargs = {}
-
-        v_dic = {}
-        if self.input_parameter["sim_type"] == 'mulp':
-            v_dic = copy.deepcopy(self.input_parameter)
-            v_dic["pchistogram"] = [v_dic["pchistogram_start"], v_dic["pchistogram_grid"]]
-            v_dic["longlimits"] = [v_dic["longlimits_start"], v_dic["longlimits_phase"], v_dic["longlimits_energy"]]
-
-
-            need_delete = ["spacechargelong", "spacechargetype",
-                           "pchistogram_start", "pchistogram_grid",
-                           "longlimits_start", "longlimits_phase", "longlimits_energy"]
-
-            for i in need_delete:
-                del v_dic[i]
-
-
-        elif self.input_parameter["sim_type"] == 'env':
-
-            v_dic["sim_type"] = self.input_parameter["sim_type"]
-            v_dic["spacechargelong"] = self.input_parameter["spacechargelong"]
-            v_dic["spacechargetype"] = self.input_parameter["spacechargetype"]
-
-
-        v_lis = convert_dic2lis(v_dic)
-
-        new_vlis = []
-        for index, i in enumerate(v_lis):
-            if None in i:
-                pass
-            else:
-                new_vlis.append(i)
-
-        write_to_txt(path, new_vlis)
-
-
-        kwargs.update({'inputParams': copy.deepcopy(self.input_parameter)})
-        output = format_output(**kwargs)
-        return output
-
+            params = {}
+        write_to_txt(self._path(item), TABLE.rows(params, self._order))
+        return format_output(inputParams=copy.deepcopy(self.input_parameter))
 
     def validate_type(self, param):
-        #验证关键词的类型
         for k, v in param.items():
-            if k == "scmethod" and v is not None:
-                if v not in ["FFT", "SPICNIC"]:
-                    raise ValueChooseError(k, ["FFT", "SPICNIC"], v)
-
-            elif k == "spacecharge" and v is not None:
-                if v not in [0, 1]:
-                    raise ValueChooseError(k, [0, 1], v)
-            elif k == "steppercycle" and v is not None:
-                if not isinstance(v, int):
-                    raise TypeError(k, int, type(v))
-                if v <= 0:
-                    raise ValueRangeError(k, ["1", "+inf"], v)
-
-            elif k == "dumpperiodicity" and v is not None:
-                if not isinstance(v, int):
-                    raise TypeError(k, int, type(v))
-                if v < 0:
-                    raise ValueRangeError(k, ["0", "+inf"], v)
-
-            elif k == "maxthreads" and v is not None:
-                if not isinstance(v, int):
-                    raise TypeError(k, int, type(v))
-
-            # elif k not in self.input_parameter_keys:
-            #     raise UnknownkeywordError(k)
-
+            TABLE.validate(k, v)
+            first = v[0] if isinstance(v, list) and v else v
+            if k in MINIMUM and first is not None and first < MINIMUM[k]:
+                raise ValueRangeError(k, [str(MINIMUM[k]), "+inf"], first)
         return True
 
-
-
     def convert_v(self, k, v):
-        if k in self.int_keys:
-            if isinstance(v, list):      # tolerate "key v1 v2" written for a scalar keyword
-                v = v[0] if v else None
-            v = convert_to_othertype_dict(k, v, int)
-            return v
-
-        if k in self.float_keys:
-            if isinstance(v, list):
-                v = v[0] if v else None
-            v = convert_to_othertype_dict(k, v, float)
-            return v
-
-        if k in self.int_list_keys or k in self.float_list_keys:
-            target = int if k in self.int_list_keys else float
-            if not isinstance(v, list):
-                v = [v]
-            return [convert_to_othertype_dict(k, x, target) for x in v]
-
-        else:
-            return v
+        return TABLE.coerce(k, v)
 
     def validate_run(self, item):
         pass
-        # res = self.create_from_file(item)
-        #
-        # input_params = res["data"]["inputParams"]
-        #当所有输入符合
-        # if input_params["sim_type"] == 'mulp':
-        #     for k in self.mulp_keys:
-        #         if input_params[k] is None:
-        #             raise MisskeywordError(f"{k}")
-        #
-        # elif input_params["sim_type"] == 'env':
-        #     for k in self.env_keys:
-        #         if input_params[k] is None:
-        #             raise MisskeywordError(f"{k}")
-
-if __name__ == "__main__":
-    import json
-
-    path = r"C:\Users\shliu\Desktop\test429"
-    item = {"projectPath": path}
-
-    obj = InputConfig()
-    res = obj.create_from_file(item)
-    set_param = {'boundary ': 0}
-    res = obj.set_param(**set_param)
-    obj.write_to_file(item)
-
-
-
-
-    # v = {k: v if v else " " for k, v in res["data"]["inputParams"].items()}
-    # print(1, v)
-    # # print(res)
-    # # for k, v in res["data"]["inputParams"].items():
-    # #     if v:
-    # #         print(v)
-    # v = json.dumps(v)
-    # print(2, v)
-    # set_param = {'scanphase': None}
-    # res = obj.set_param(**set_param)
-    # print(254, res)
-    # obj.write_to_file(item)

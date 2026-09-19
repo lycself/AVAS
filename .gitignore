@@ -39,6 +39,7 @@ packaging/redist/
 tests/_output_gui/
 tests/_output_assistant/
 tests/_output_server/
+tests/_output_scan/
 # build stamp written by packaging/build.py
 avas/_build.json
 # assistant work folders inside projects (sandbox runs, backups)

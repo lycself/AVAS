@@ -1,13 +1,11 @@
 from avas.paths import lattice_source_path
 import os.path
 
-import avas.constants as global_varible
 from avas.data.latticeparameter import LatticeParameter
 from avas.data.datasetparameter import DatasetParameter
 from avas.utils.readfile import read_lattice_mulp_with_name
 import copy
-from avas.utils.tool import judge_command_on_element
-from avas.utils.tool import add_element_end_index, write_to_txt, calculate_mean, calculate_rms, add_to_txt
+from avas.utils.tool import add_element_end_index, write_to_txt
 class DiagInfo():
     def __init__(self, item):
         self.project_path = item.get("project_path")

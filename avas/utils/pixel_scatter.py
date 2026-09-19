@@ -1,98 +1,18 @@
-from numba import njit, prange
+"""Pixel / block density image of a particle cloud (numba-compiled on first use).
+
+numba is imported lazily: importing this module is cheap, the first call to
+:func:`pixel_scatter` (or :func:`warmup`) compiles the kernel and caches it.
+"""
 import numpy as np
 
-# @njit(parallel=True)
-# def pixel_scatter(x, y, xmin, xmax, ymin, ymax, W, H, fill_value):
-#
-#     img = np.full((H, W), fill_value, dtype=np.float32)
-#
-#
-#     dx = xmax - xmin
-#     dy = ymax - ymin
-#
-#     for k in prange(len(x)):
-#         X = x[k]
-#         Y = y[k]
-#
-#         if X < xmin or X > xmax or Y < ymin or Y > ymax:
-#             continue
-#
-#         i = int((X - xmin) / dx * (W - 1))
-#         j = int((1 - (Y - ymin) / dy) * (H - 1))
-#         # print(i, j)
-#         if 0 <= i < W and 0 <= j < H:
-#             img[j, i] += 1
-#
-#     return img
-
-# import numpy as np
-#
-# def pixel_scatter(x, y, xmin, xmax, ymin, ymax, W, H, fill_value=0.0):
-#     img = np.full((H, W), fill_value, dtype=np.float32)
-#
-#     dx = xmax - xmin
-#     dy = ymax - ymin
-#
-#     for k in range(len(x)):
-#         X, Y = x[k], y[k]
-#         if not (xmin <= X <= xmax and ymin <= Y <= ymax):
-#             continue
-#         i = int((X - xmin) / dx * (W - 1))
-#         j = int((1 - (Y - ymin) / dy) * (H - 1))
-#         if 0 <= i < W and 0 <= j < H:
-#             img[j, i] += 1
-#
-#     return img
-#
-#
-# def block_density(n1, block_h, block_w):
-#     H, W = n1.shape
-#     # 计算块的数量
-#     h_blocks = H // block_h + (1 if H % block_h else 0)
-#     w_blocks = W // block_w + (1 if W % block_w else 0)
-#
-#     # 用于存储块统计
-#     n2_small = np.zeros((h_blocks, w_blocks), dtype=np.float32)
-#
-#     for bh in range(h_blocks):
-#         for bw in range(w_blocks):
-#             # 计算该块的实际像素范围
-#             j1 = bh * block_h
-#             j2 = min((bh + 1) * block_h, H)
-#             i1 = bw * block_w
-#             i2 = min((bw + 1) * block_w, W)
-#
-#             n2_small[bh, bw] = np.sum(n1[j1:j2, i1:i2])
-#
-#     # 将块数据 broadcast 到 n1 形状，形成对应大小的 n2
-#     n2 = np.zeros_like(n1)
-#     for bh in range(h_blocks):
-#         for bw in range(w_blocks):
-#             j1 = bh * block_h
-#             j2 = min((bh + 1) * block_h, H)
-#             i1 = bw * block_w
-#             i2 = min((bw + 1) * block_w, W)
-#             n2[j1:j2, i1:i2] = n2_small[bh, bw]
-#
-#     return n2
-#
-#
-# def replace_nonzero_with_block(n1, n2):
-#     result = n1.copy()
-#     mask = (n1 > 0)
-#     result[mask] = n2[mask]
-#     return result
-
-# import numpy as np
-# from numba import njit, prange
-#
+prange = range          # replaced by numba.prange when the kernel is compiled (numba reads globals then)
+_kernel = None
 
 
-@njit(parallel=True, cache=True)
-def pixel_scatter(x, y,
-                  xmin, xmax, ymin, ymax,
-                  W, H,  block_num,
-                  fill_value):
+def _pixel_scatter_impl(x, y,
+                        xmin, xmax, ymin, ymax,
+                        W, H, block_num,
+                        fill_value):
 
     # 1. 像素级统计
     n1 = np.full((H, W), fill_value, dtype=np.float32)
@@ -166,6 +86,21 @@ def pixel_scatter(x, y,
 
     return n1
 
+
+def _compile():
+    global _kernel, prange
+    from numba import njit
+    from numba import prange as numba_prange
+    prange = numba_prange
+    _kernel = njit(parallel=True, cache=True)(_pixel_scatter_impl)
+    return _kernel
+
+
+def pixel_scatter(x, y, xmin, xmax, ymin, ymax, W, H, block_num, fill_value):
+    """Density image ``(H, W)``: every pixel that holds particles gets the count of its ``block_num``² block."""
+    return (_kernel or _compile())(x, y, xmin, xmax, ymin, ymax, W, H, block_num, fill_value)
+
+
 def warmup():
     # 用小数据触发一次编译
     x_dummy = np.linspace(0, 1, 1000, dtype=np.float64)
@@ -176,4 +111,4 @@ def warmup():
 
     _ = pixel_scatter(x_dummy, y_dummy,
                       0.0, 1.0, 0.0, 1.0,
-                      100, 75, 4,0.0)
+                      100, 75, 4, 0.0)

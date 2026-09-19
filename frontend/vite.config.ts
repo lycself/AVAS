@@ -1,4 +1,5 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vitest/config";
+import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -60,4 +61,6 @@ export default defineConfig({
   },
   worker: { format: "es" },
   server: { port: 5173, strictPort: true },
+  // unit tests (npm test): pure modules only, no DOM
+  test: { environment: "node", include: ["src/**/*.test.ts"] },
 });

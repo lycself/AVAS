@@ -1,61 +1,155 @@
-from avas.paths import lattice_source_path
-from scipy.optimize import minimize
+"""Corrector optimisation for static error studies, plus the lattice-line helpers shared with :mod:`avas.sim.error`.
+
+An ``adjust 0 v n lo hi u`` command in front of an element marks parameter ``v`` of that element as a knob;
+``diag_position`` / ``diag_size`` / ``diag_energy`` commands give targets.  Knobs and targets with the same
+number ``N`` form one correction: :meth:`Adjust_Error.opti_one_time_different_group` optimises them in order
+of ``N`` (SLSQP on the engine, every evaluation is one run into ``<output>/error_adjust``) and returns the
+values found as ``{"<element index>_<parameter index>": value}``.
+"""
+import copy
+import logging
+import os
+import random
+from collections import namedtuple
 
 import numpy as np
-
-from avas.utils.treatlist import flatten_list
-from avas.utils.tool import judge_command_on_element, delete_element_end_index
-
-import os
-from avas.paths import resolve_io_dirs
-
-
-import random
-from avas.core.MultiParticle import MultiParticle
+from scipy.optimize import minimize
 
 import avas.constants as global_varible
-import copy
-
+from avas.core.MultiParticle import MultiParticle
+from avas.paths import lattice_source_path, resolve_io_dirs
 from avas.sim.diaginfo import DiagInfo
+from avas.utils.tool import delete_element_end_index, judge_command_on_element
+from avas.utils.treatlist import flatten_list
+
+log = logging.getLogger(__name__)
+
+GOOD_ENOUGH_LOSS = 0.05                # the optimiser stops as soon as the mean diagnostic loss is below this
+
+# static error commands / switches and their dynamic names: the engine only knows the dynamic ones, so a static
+# error study writes the drawn (fixed) values under the dynamic keyword
+STAT_TO_DYN = {
+    "err_beam_stat": "err_beam_dyn",
+    "err_quad_ncpl_stat": "err_quad_ncpl_dyn",
+    "err_cav_ncpl_stat": "err_cav_ncpl_dyn",
+    "err_quad_stat_on": "err_quad_dyn_on",
+    "err_cav_stat_on": "err_cav_dyn_on",
+}
+STAT_TO_DYN_BEAM_SWITCH = {"err_beam_stat_on": "err_beam_dyn_on"}
+
+AdjustSpec = namedtuple("AdjustSpec", "elements initial params ranges groups use_init")
+"""Knobs of one correction: per element (``elements[i]`` is the element index) the lists of the initial values,
+parameter indices, ``[lo, hi]`` ranges, link groups ``n`` (knobs with the same non-zero ``n`` share a value) and
+use-initial-value flags.  The flat order (element by element, knob by knob) is the optimiser's ``x`` order."""
+
+
+# --------------------------------------------------------------------------- lattice-line helpers
+def write_engine_lines(path, lines):
+    """Write the lines the engine understands (``err_write_command``) as ``lattice.txt``."""
+    with open(path, "w", encoding="utf-8") as fh:
+        for line in lines:
+            if line[0] in global_varible.err_write_command:
+                fh.write(" ".join(map(str, line)) + "\n")
+
+
+def stat_to_dyn_lines(lines, beam_switch=True):
+    """Static errors as fixed dynamic errors: drop the dynamic error commands, rename the static ones.
+
+    *beam_switch* also drops ``err_beam_dyn_on`` and renames ``err_beam_stat_on`` (the study runs do this;
+    the corrector optimisation runs historically left both beam switches alone, so they keep ``beam_switch=False``).
+    The lines are copied.
+    """
+    dropped = set(global_varible.error_elemment_command_dyn_ncpl + global_varible.error_beam_dyn
+                  + global_varible.error_elemment_dyn_on)
+    rename = dict(STAT_TO_DYN)
+    if beam_switch:
+        dropped.add("err_beam_dyn_on")
+        rename.update(STAT_TO_DYN_BEAM_SWITCH)
+    out = []
+    for line in lines:
+        if line[0] in dropped:
+            continue
+        line = list(line)
+        line[0] = rename.get(line[0], line[0])
+        out.append(line)
+    return out
+
+
+def apply_adjust_results(lattice, results):
+    """A copy of the indexed *lattice* with the corrector values *results* (``{"<element>_<param>": value}``) set."""
+    lattice = copy.deepcopy(lattice)
+    for key, value in results.items():
+        log.info("%s %s", key, value)
+        element, param = key.split("_")
+        for com in lattice:
+            if com[-1] == f"element_{element}":
+                com[int(param)] = value
+                break
+    return lattice
+
+
+def _set_knobs(lattice, spec, values):
+    """Set the flat knob *values* into the indexed *lattice* in place (``spec`` order)."""
+    k = 0
+    for element, params in zip(spec.elements, spec.params):
+        for param in params:
+            for com in lattice:
+                if com[-1] == f"element_{element}":
+                    com[param] = values[k]
+                    break
+            k += 1
+
+
+def _end_after_last_diag(lines):
+    """Insert ``end`` right after the last ``diag_*`` line, unless a diag is one of the last two lines."""
+    lines = copy.deepcopy(lines)
+    for back, line in enumerate(lines[::-1]):
+        index = -back - 1
+        if line[0].startswith("diag"):
+            if index not in (-1, -2):
+                lines.insert(index + 1, ["end"])
+            break
+    return lines
+
+
+# --------------------------------------------------------------------------- diagnostic losses
+def _loss_position(command, data):
+    target_x, target_y = float(command[2]), float(command[3])
+    center_x, center_y = float(data["center"][0]), float(data["center"][1])
+    return (center_x - target_x) ** 2 + (center_y - target_y) ** 2
+
+
+def _loss_size(command, data):
+    target_x, target_y = float(command[2]), float(command[3])
+    rms_x, rms_y = float(data["rms_size"][0]), float(data["rms_size"][1])
+    return (rms_x - target_x) ** 2 + (rms_y - target_y) ** 2
+
+
+def _loss_energy(command, data):
+    return (float(command[2]) - float(data["energy"][0])) ** 2
+
+
+DIAG_LOSS = {"diag_position": _loss_position, "diag_size": _loss_size, "diag_energy": _loss_energy}
+
+
+class _GoodEnough(Exception):
+    """Raised inside the goal function when the loss is already below GOOD_ENOUGH_LOSS."""
+
+
 class Adjust_Error():
-    """
-    应该接收一个列表
-    但是返回优化结果和
-    """
-    def __init__(self, project_path, field_path, input_path=None, output_path=None):
-        self.diag_res = {}
+    """Corrector optimisation on one perturbed lattice (see the module docstring)."""
+
+    def __init__(self, project_path, field_path, input_path=None, output_path=None, rng=None):
+        # rng: the error study's random.Random (shared so one seed fixes the whole study)
+        self.rng = rng if rng is not None else random.Random()
         self.project_path = project_path
         self.input_path, self.output_path = resolve_io_dirs(project_path, input_path, output_path)
         self.lattice_mulp_path = lattice_source_path(self.input_path)
         self.lattice_path = os.path.join(self.input_path, "lattice.txt")
-        self.error_elemment_command = global_varible.error_elemment_command
-
-
-        self.error_beam_command = global_varible.error_beam_command
-        self.error_beam_stat = global_varible.error_beam_stat
-        self.error_beam_dyn = global_varible.error_beam_dyn
         self.field_path = field_path
-
-        self.error_middle_path = os.path.join(self.output_path, 'error_middle')
-        self.error_middle_output0_path = os.path.join(self.output_path, 'error_middle', 'output_0')
-        self.error_output_path = os.path.join(self.output_path, 'error_output')
-        self.normal_out_path = os.path.join(self.error_output_path, 'output_0_0')
-
-        self.errors_par_tot_path = os.path.join(self.output_path, "errors_par_tot.txt")
-        self.errors_par_path = os.path.join(self.output_path, "errors_par.txt")
         self.err_adjust_path = os.path.join(self.output_path, "error_adjust")
-
-    def judge_command_on_element(self, lattice, command):
-        #返回一个命令对应的是哪个元件
-        lattice = copy.deepcopy(lattice)
-
-        command_index = lattice.index(command)
-        command_on_element = None
-        for i in range(command_index, len(lattice)):
-            if lattice[i][0] in global_varible.long_element:
-                command_on_element = int(lattice[i][-1].split("_")[1])
-                break
-        return command_on_element
+        self.ini_this = []             # knob values tried by the current optimisation
+        self.loss_this = []            # and their losses
 
     def run_multiparticle(self, output_dir):
         item = {
@@ -64,735 +158,142 @@ class Adjust_Error():
             "output_file": output_dir,
             "field_path": self.field_path,
         }
-        multiparticle_obj = MultiParticle(item)
+        return MultiParticle(item).run()
 
-        res = multiparticle_obj.run()
-        return res
-
+    # ------------------------------------------------------------------ knobs
     def generate_adjust_parameter(self, input_lines):
-        """
-        产生定位信息, adjust命令中哪些参数需要修改
-        """
-        adjust_parameter_lattice_command = []  # 原来的命令
-        adjust_element_num = []  # 第几个元件要改
-        adjust_parameter_num = []  # 第几个参数要改
-        adjust_parameter_range = []  # 参数的范围
-        adjust_parameter_n = []  # 具有一样的值
-        adjust_parameter_use_init = []  # 是否使用初值
-        adjust_parameter_initial_value = []
-
-        adjust_parameter_num_per = []
-        adjust_parameter_range_per = []
-        adjust_parameter_n_per = []
-        adjust_parameter_use_init_per = []
-        index = -1
-
-        index = 0
-        # 为adjust命令增加编号
+        """The knobs (:class:`AdjustSpec`) declared by the ``adjust`` commands of the indexed *input_lines*."""
         lattice = copy.deepcopy(input_lines)
-        for i in lattice:
-            if i[0] == "adjust":
-                add_name = f'adjust_{index}'
-                i.append(add_name)
-                index += 1
+        elements = []
+        for n, line in enumerate(line for line in lattice if line[0] == "adjust"):
+            line.append(f"adjust_{n}")            # identical adjust lines must stay distinguishable below
+        for line in lattice:
+            if line[0] == "adjust":
+                on_element = judge_command_on_element(lattice, line)
+                line.append(on_element)
+                if on_element not in elements:
+                    elements.append(on_element)
 
-        # 为每个调整命令增加作用元件数
-        for i in lattice:
-            if i[0] == "adjust":
-                adjust_on_element = judge_command_on_element(lattice, i)
-                i.append(adjust_on_element)
-                if adjust_on_element not in adjust_element_num:
-                    adjust_element_num.append(adjust_on_element)
+        params = [[] for _ in elements]
+        ranges = [[] for _ in elements]
+        groups = [[] for _ in elements]
+        use_init = [[] for _ in elements]
+        for line in lattice:
+            if line[0] == "adjust":
+                index = elements.index(line[-1])
+                params[index].append(int(line[2]))
+                ranges[index].append([float(line[4]), float(line[5])])
+                groups[index].append(int(line[3]))
+                use_init[index].append(int(line[6]))
 
-        # [['adjust', '0', '1', '0', '0', '0.3', '0', 'adjust_0', 2]]
-        all_adjust_command = []
-        for i in lattice:
-            if i[0] == "adjust":
-                all_adjust_command.append(copy.deepcopy(i))
+        initial = [[] for _ in elements]
+        log.info("adjust elements %s", elements)
+        for i, element in enumerate(elements):
+            for line in lattice:
+                if line[0] in global_varible.mulpud_element and int(line[-1].split("_")[-1]) == element:
+                    for param in params[i]:
+                        initial[i].append(float(line[param]))
+        return AdjustSpec(elements, initial, params, ranges, groups, use_init)
 
-        adjust_parameter_num = [[] for _ in range(len(adjust_element_num))]
-        adjust_parameter_range = [[] for _ in range(len(adjust_element_num))]
-        adjust_parameter_n = [[] for _ in range(len(adjust_element_num))]
-        adjust_parameter_use_init = [[] for _ in range(len(adjust_element_num))]
-        for i in lattice:
-            print(i)
-        for i in lattice:
-            if i[0] == "adjust":
-                index = adjust_element_num.index(i[-1])
-                adjust_parameter_num[index].append(int(i[2]))
-                adjust_parameter_range[index].append([float(i[4]), float(i[5])])
-                adjust_parameter_n[index].append(int(i[3]))
-                adjust_parameter_use_init[index].append(int(i[6]))
-
-        adjust_parameter_initial_value = [[] for _ in range(len(adjust_element_num))]
-        print(adjust_element_num)
-        for i in range(len(adjust_element_num)):
-            for j in lattice:
-                if j[0] in global_varible.mulpud_element and int(j[-1].split("_")[-1]) == adjust_element_num[i]:
-                    for k in adjust_parameter_num[i]:
-                        adjust_parameter_initial_value[i].append(float(j[k]))
-
-                #     for k in adjust_parameter_num[i]:
-                #
-                #         #检查参数是否超过命令的长度
-                #         if k > len(j[:-1]) -1:
-                #             v = BaseError()
-                #             command = []
-                #             for com in all_adjust_command:
-                #                 if com[-1] == adjust_element_num[i] and int(com[2]) == k:
-                #                     command = com
-                #                     break
-                #             v.adjust_param_value_error(command[:-2])
-                #
-                #         adjust_parameter_initial_value[i].append(float(j[k]))
-                # break
-        #返回 哪些元件需要修改， 优化的初始初始值， 哪些参数需要修改， ,每个参数的范围，关联值n，是否使用初值
-        return adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-            adjust_parameter_n, adjust_parameter_use_init
-
-        #[15, 16]
-        # [[-38.0], [-0.3, 0.3]]
-        # [[6], [5, 4]]  adjust_parameter_num
-        # [[[-0.5, 0.5]], [[-0.5, 0.5], [-0.5, 0.5]]]
-        # [[0], [0, 0]]
-        # [[1], [1, 0]]
-
+    # ------------------------------------------------------------------ loss
     def treat_diag(self, group, time, NN):
-
-        """
-        得到loss
-        :return:
-        """
+        """Mean loss of the diagnostics with number *NN* (all diagnostics when None) of the last correction run."""
         item = {
             "project_path": self.project_path,
             "input_file": self.input_path,
-            "output_file": os.path.join(self.output_path, "error_adjust", "output_0"),
+            "output_file": os.path.join(self.err_adjust_path, "output_0"),
             "diag_file_path": None,
         }
-        obj = DiagInfo(item)
-        res = obj.generate_all_diag_info()
+        diags = DiagInfo(item).generate_all_diag_info()
+        losses = [DIAG_LOSS[d["diag_command"][0]](d["diag_command"], d["diag_data"])
+                  for d in diags
+                  if (NN is None or int(d["diag_command"][1]) == NN) and d["diag_command"][0] in DIAG_LOSS]
+        return sum(losses) / len(losses)
 
-        if NN is not None:
-            diag_dict = [i for i in res if int(i['diag_command'][1]) == NN ]
-        elif NN is None:
-            diag_dict = [i for i in res]
-        loss_list = []
-        for i in diag_dict:
-            if i['diag_command'][0] == "diag_position":
-                target_x, target_y = float(i['diag_command'][2]), float(i['diag_command'][3])
-                center_x, center_y = float(i['diag_data']["center"][0]), float(i['diag_data']["center"][1])
-                accuracy = float(i['diag_command'][4])
-                loss = ((center_x - target_x) ** 2) + ((center_y - target_y) ** 2)
-                loss_list.append(loss)
-
-            elif i['diag_command'][0] == "diag_size":
-                target_x, target_y = float(i['diag_command'][2]), float(i['diag_command'][3])
-                rms_size_x, rms_size_y = float(i['diag_data']["rms_size"][0]), float(i['diag_data']["rms_size"][1])
-                accuracy = float(i['diag_command'][4])
-                loss = ((rms_size_x - target_x) ** 2) + ((rms_size_y - target_y) ** 2)
-                loss_list.append(loss)
-
-            elif i['diag_command'][0] == "diag_energy":
-                target_energy = float(i['diag_command'][2]),
-                energy = float(i['diag_data']["energy"][0])
-                accuracy = float(i['diag_command'][3])
-                loss = (target_energy - energy) ** 2
-                loss_list.append(loss)
-
-        all_loss = 0
-        for i in loss_list:
-            all_loss += i
-        return all_loss /len(loss_list)
-
-
-        # diag_every_location = []
-        # # 读取新的lattice信息
-        #
-        #
-        # input_lines = error_lattice
-        #
-        # # 产生每一个diag针对的位置
-        # lattice_obj = LatticeParameter()
-        # lattice_obj.get_parameter(error_lattice)
-        #
-        #
-        # lattice_copy = copy.deepcopy(input_lines)
-        # index = 0
-        # #为diag添加diag_0
-        # for i in lattice_copy:
-        #     if i[0].startswith("diag"):
-        #         add_name = f'diag_{index}'
-        #         i.append(add_name)
-        #         index += 1
-        #
-        # index = 0
-        # for i in lattice_copy:
-        #     if i[0] in global_varible.long_element:
-        #         add_name = f'element_{index}'
-        #         i.append(add_name)
-        #         index += 1
-        #
-        # all_diag_command = []
-        # for i in lattice_copy:
-        #     if i[0].startswith("diag"):
-        #         all_diag_command.append(i)
-        #
-        # diag_index = []
-        # diag_command_list = []
-        # for i in all_diag_command:
-        #     adjust_on_element = self.judge_command_on_element(lattice_copy, i)
-        #     if adjust_on_element is not None:
-        #         diag_index.append(adjust_on_element - 1)
-        #     else:
-        #         diag_index.append(-1)
-        #
-        #     diag_command_list.append(i[:5])
-        #
-        # diag = []
-        #
-        # for i in range(len(diag_index)):
-        #     dic = {}
-        #     dic['diag_command'] = diag_command_list[i]
-        #     dic['diag_order'] = i
-        #     dic['position'] = lattice_obj.v_start[diag_index[i]] + lattice_obj.v_len[diag_index[i]]
-        #     diag.append(dic)
-        #
-        # # print(diag_index)
-        # # print(diag)
-        # # sys.exit()
-        # error_adjust_output0_path = os.path.join(self.project_path, 'OutputFile', 'error_adjust', 'output_0')
-        # dataset_path = os.path.join(error_adjust_output0_path, 'dataset.txt')
-        #
-        # dataset_obj = DatasetParameter(dataset_path)
-        # dataset_obj.get_parameter()
-        #
-        # z_ = dataset_obj.z
-        #
-        #
-        # loss_type = []
-        # loss_list = []
-        #
-        # target_energy_list = []
-        # target_position_list = []
-        # target_size_list = []
-        #
-        #
-        # for i in diag:
-        #     position = i['position']
-        #     print("position", position)
-        #     index_of_position = 0
-        #     for index, i1 in enumerate(z_):
-        #         if i1 > position:
-        #             index_of_position = index - 1
-        #             break
-        #
-        #
-        #
-        #     center_x = dataset_obj.x[index_of_position] * 1000    #mm
-        #     center_y = dataset_obj.y[index_of_position] * 1000    #mm
-        #
-        #     rms_x = dataset_obj.rms_x[index_of_position] * 1000   #mm
-        #     rms_y = dataset_obj.rms_y[index_of_position] * 1000   #mm
-        #
-        #     energy = dataset_obj.ek[index_of_position]
-        #
-        #     v = [position, center_x, center_y, rms_x, rms_y, energy]
-        #     diag_every_location.append(v)
-        #     if i['diag_command'][0] == 'diag_position':
-        #
-        #         target_x, target_y = float(i['diag_command'][2]), float(i['diag_command'][3])
-        #         accuracy = float(i['diag_command'][4])
-        #         loss = ((center_x - target_x) ** 2) + ((center_y - target_y) ** 2)
-        #
-        #         target_position_list.append(target_x)
-        #         loss_list.append(loss)
-        #         loss_type.append('diag_position')
-        #
-        #     if i['diag_command'][0] == 'diag_size':
-        #
-        #
-        #         target_x, target_y = float(i['diag_command'][2]), float(i['diag_command'][3])
-        #
-        #         accuracy = float(i['diag_command'][4])
-        #
-        #         print(target_x, rms_x, ((rms_x - target_x) ** 2) )
-        #         print(target_y, rms_y, ((rms_y - target_y) ** 2) )
-        #
-        #         target_size_list.append(target_x)
-        #         loss = ((rms_x - target_x) ** 2) + ((rms_y - target_y) ** 2)
-        #         loss_list.append(loss)
-        #
-        #         loss_type.append('diag_size')
-        #
-        #     if i['diag_command'][0] == 'diag_energy':
-        #         target_energy = float(i['diag_command'][2])
-        #
-        #         print('target_energy', target_energy)
-        #         print('res_energy', energy)
-        #
-        #         accuracy = float(i['diag_command'][3])
-        #
-        #         loss = ((energy - target_energy) ** 2)
-        #
-        #         target_energy_list.append(target_energy)
-        #         loss_list.append(loss)
-        #         loss_type.append('diag_energy')
-        #
-        #
-        # diag_res = {}
-        # diag_res[f"{group}_{time}"] = diag_every_location
-        #
-        # all_loss = 0
-        # for i in loss_list:
-        #     all_loss += i
-        #
-        # return all_loss, diag_res
-
-    # def treat_diag(self, group, time, error_lattice):
-    #
-    #     """
-    #     得到loss
-    #     :return:
-    #     """
-    #     diag_every_location = []
-    #     # 读取新的lattice信息
-    #
-    #
-    #     input_lines = error_lattice
-    #
-    #     # 产生每一个diag针对的位置
-    #     lattice_obj = LatticeParameter()
-    #     lattice_obj.get_parameter(error_lattice)
-    #
-    #
-    #     lattice_copy = copy.deepcopy(input_lines)
-    #     index = 0
-    #     #为diag添加diag_0
-    #     for i in lattice_copy:
-    #         if i[0].startswith("diag"):
-    #             add_name = f'diag_{index}'
-    #             i.append(add_name)
-    #             index += 1
-    #
-    #     index = 0
-    #     for i in lattice_copy:
-    #         if i[0] in global_varible.long_element:
-    #             add_name = f'element_{index}'
-    #             i.append(add_name)
-    #             index += 1
-    #
-    #     all_diag_command = []
-    #     for i in lattice_copy:
-    #         if i[0].startswith("diag"):
-    #             all_diag_command.append(i)
-    #
-    #     diag_index = []
-    #     diag_command_list = []
-    #     for i in all_diag_command:
-    #         adjust_on_element = self.judge_command_on_element(lattice_copy, i)
-    #         if adjust_on_element is not None:
-    #             diag_index.append(adjust_on_element - 1)
-    #         else:
-    #             diag_index.append(-1)
-    #
-    #         diag_command_list.append(i[:5])
-    #
-    #     diag = []
-    #
-    #     for i in range(len(diag_index)):
-    #         dic = {}
-    #         dic['diag_command'] = diag_command_list[i]
-    #         dic['diag_order'] = i
-    #         dic['position'] = lattice_obj.v_start[diag_index[i]] + lattice_obj.v_len[diag_index[i]]
-    #         diag.append(dic)
-    #
-    #     # print(diag_index)
-    #     # print(diag)
-    #     # sys.exit()
-    #     error_adjust_output0_path = os.path.join(self.project_path, 'OutputFile', 'error_adjust', 'output_0')
-    #     dataset_path = os.path.join(error_adjust_output0_path, 'dataset.txt')
-    #
-    #     dataset_obj = DatasetParameter(dataset_path)
-    #     dataset_obj.get_parameter()
-    #
-    #     z_ = dataset_obj.z
-    #
-    #
-    #     loss_type = []
-    #     loss_list = []
-    #
-    #     target_energy_list = []
-    #     target_position_list = []
-    #     target_size_list = []
-    #
-    #
-    #     for i in diag:
-    #         position = i['position']
-    #         print("position", position)
-    #         index_of_position = 0
-    #         for index, i1 in enumerate(z_):
-    #             if i1 > position:
-    #                 index_of_position = index - 1
-    #                 break
-    #
-    #
-    #
-    #         center_x = dataset_obj.x[index_of_position] * 1000    #mm
-    #         center_y = dataset_obj.y[index_of_position] * 1000    #mm
-    #
-    #         rms_x = dataset_obj.rms_x[index_of_position] * 1000   #mm
-    #         rms_y = dataset_obj.rms_y[index_of_position] * 1000   #mm
-    #
-    #         energy = dataset_obj.ek[index_of_position]
-    #
-    #         v = [position, center_x, center_y, rms_x, rms_y, energy]
-    #         diag_every_location.append(v)
-    #         if i['diag_command'][0] == 'diag_position':
-    #
-    #             target_x, target_y = float(i['diag_command'][2]), float(i['diag_command'][3])
-    #             accuracy = float(i['diag_command'][4])
-    #             loss = ((center_x - target_x) ** 2) + ((center_y - target_y) ** 2)
-    #
-    #             target_position_list.append(target_x)
-    #             loss_list.append(loss)
-    #             loss_type.append('diag_position')
-    #
-    #         if i['diag_command'][0] == 'diag_size':
-    #
-    #
-    #             target_x, target_y = float(i['diag_command'][2]), float(i['diag_command'][3])
-    #
-    #             accuracy = float(i['diag_command'][4])
-    #
-    #             print(target_x, rms_x, ((rms_x - target_x) ** 2) )
-    #             print(target_y, rms_y, ((rms_y - target_y) ** 2) )
-    #
-    #             target_size_list.append(target_x)
-    #             loss = ((rms_x - target_x) ** 2) + ((rms_y - target_y) ** 2)
-    #             loss_list.append(loss)
-    #
-    #             loss_type.append('diag_size')
-    #
-    #         if i['diag_command'][0] == 'diag_energy':
-    #             target_energy = float(i['diag_command'][2])
-    #
-    #             print('target_energy', target_energy)
-    #             print('res_energy', energy)
-    #
-    #             accuracy = float(i['diag_command'][3])
-    #
-    #             loss = ((energy - target_energy) ** 2)
-    #
-    #             target_energy_list.append(target_energy)
-    #             loss_list.append(loss)
-    #             loss_type.append('diag_energy')
-    #
-    #
-    #     diag_res = {}
-    #     diag_res[f"{group}_{time}"] = diag_every_location
-    #
-    #     all_loss = 0
-    #     for i in loss_list:
-    #         all_loss += i
-    #
-    #     return all_loss, diag_res
-
-    def get_goal(self, error_lattice, adjust_element_num, adjust_parameter_num, group, time, NN):
+    def get_goal(self, error_lattice, spec, group, time, NN):
+        """The optimiser's objective: set the knobs, run the engine up to the last diagnostic, return the loss."""
         def goal(x):
-            print("--------------------")
-            print('x', x)
-
+            log.info("--------------------")
+            log.info("x %s", x)
             self.ini_this.append(x)
-
-            v1 = 0
-            for i_index, i_value in enumerate(adjust_element_num):
-                for j_index, j_value in enumerate(adjust_parameter_num[i_index]):
-                    for com in error_lattice:
-                        if com[-1] == f'element_{i_value}':
-                            com[j_value] = x[v1]
-                            break
-                    v1 += 1
-
-            error_lattice_no_index = delete_element_end_index(error_lattice)
-
-
-            error_lattice_write = copy.deepcopy(error_lattice_no_index)
-
-
-            for index, i in enumerate(error_lattice[::-1]):
-                index = -1 * index - 1
-                if index == -1 and i[0].startswith("diag"):
-                    break
-
-                if index == -2 and i[0].startswith("diag"):
-                    break
-
-                if i[0].startswith("diag"):
-                    error_lattice_write.insert(index + 1, ['end'])
-                    break
-
-
-            for i in error_lattice_write:
-
-                if i[0] in global_varible.error_elemment_command_dyn_ncpl or i[0] in global_varible.error_beam_dyn:
-                    i[0] = "!" + i[0]
-                # 如果是静态误差，变成动态误差
-                elif i[0] == 'err_beam_stat':
-                    i[0] = 'err_beam_dyn'
-
-                elif i[0] == 'err_quad_ncpl_stat':
-                    i[0] = 'err_quad_ncpl_dyn'
-
-                elif i[0] == 'err_cav_ncpl_stat':
-                    i[0] = 'err_cav_ncpl_dyn'
-
-
-                # 开关
-                elif i[0] in global_varible.error_elemment_dyn_on:
-                    i[0] = "!" + i[0]
-
-                elif i[0] == global_varible.error_elemment_stat_on[0]:
-                    i[0] = global_varible.error_elemment_dyn_on[0]
-
-                elif i[0] == global_varible.error_elemment_stat_on[1]:
-                    i[0] = global_varible.error_elemment_dyn_on[1]
-
-                #     print(4)
-                # print(2, i)
-            error_lattice_write = [i for i in error_lattice_write if i[0] in global_varible.err_write_command]
-
-            with open(self.lattice_path, 'w') as f:
-                for i in error_lattice_write:
-                    f.write(' '.join(map(str, i)) + '\n')
-
-
-
-            # delete_directory(self.error_middle_output0_path)
-
-            err_adjust_output0_path = os.path.join(self.output_path, "error_adjust", "output_0")
-            # if os.path.exists(err_adjust_output0_path):
-            #     delete_directory(err_adjust_output0_path)
-
+            _set_knobs(error_lattice, spec, x)
+            lines = _end_after_last_diag(delete_element_end_index(error_lattice))
+            write_engine_lines(self.lattice_path, stat_to_dyn_lines(lines, beam_switch=False))
             self.run_multiparticle(self.err_adjust_path)
             loss = self.treat_diag(group, time, NN)
-
-            # delete_directory(err_adjust_output0_path)
-
-            print("loss", loss)
+            log.info("loss %s", loss)
             self.loss_this.append(loss)
-            print("--------------------")
-
-            if loss < 0.05:
-                raise Exception('已小于0.05')
-
+            log.info("--------------------")
+            if loss < GOOD_ENOUGH_LOSS:
+                raise _GoodEnough(f"loss {loss} < {GOOD_ENOUGH_LOSS}")
             return loss
 
         return goal
-    def optimize_one_group(self, group, time, error_lattice,
-                           adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num,
-                           adjust_parameter_range, \
-                           adjust_parameter_n, adjust_parameter_use_init, NN):
 
+    # ------------------------------------------------------------------ optimisation
+    def optimize_one_group(self, group, time, error_lattice, spec, NN):
+        """SLSQP over the knobs of *spec*; returns ``(values, loss)`` (the last evaluation when it stops early)."""
         error_lattice = copy.deepcopy(error_lattice)
+        lattice_initial_value = flatten_list(spec.initial)
+        parameter_range = np.array(flatten_list(spec.ranges)).reshape(-1, 2)
 
-        # lattice中原本的初值
-        # lattice_initial_value =np.array(adjust_parameter_initial_value).reshape(-1)
-
-        lattice_initial_value = flatten_list(adjust_parameter_initial_value)
-
-        # print('lattice_initial_value', lattice_initial_value)
-
-        # 范围
-        parameter_range = np.array(flatten_list(adjust_parameter_range)).reshape(-1, 2)
-        # print('parameter_range', parameter_range)
-
-        # 随机初值
-        random_initial_value = [random.uniform(i[0], i[1]) for i in parameter_range]
-
-        # 是否使用初值
-        # use_initial_value = np.array(adjust_parameter_use_init).reshape(-1)
-        use_initial_value = np.hstack(adjust_parameter_use_init)
-
-        # 最终初值
-        initial_value = random_initial_value
+        # random start inside the range (drawn from the study's RNG), or the lattice value where asked
+        initial_value = [self.rng.uniform(lo, hi) for lo, hi in parameter_range]
+        use_initial_value = np.hstack(spec.use_init)
         for i in range(len(initial_value)):
             if use_initial_value[i] == 1:
                 initial_value[i] = lattice_initial_value[i]
+        log.info("initial_value %s", initial_value)
 
-        print('initial_value', initial_value)
-
-        # 是否使用相同的值
-        # n_ = np.array(adjust_parameter_n).reshape(-1)
-        n_ = flatten_list(adjust_parameter_n)
-        # print('n_', n_)
-
-        unique_elements, unique_indices = np.unique(n_, return_index=True)
-        print(unique_elements, unique_indices)
-
-        indiaces = []
-
-        for i in range(len(unique_elements)):
-            if unique_elements[i] != 0:
-                indiaces.append([index for index, element in enumerate(n_) if element == unique_elements[i]])
-
-
+        # knobs with the same non-zero link number keep one value
+        links = flatten_list(spec.groups)
+        unique_elements, unique_indices = np.unique(links, return_index=True)
+        log.info("%s %s", unique_elements, unique_indices)
         constraints = []
-        for i in indiaces:
-            if len(i) == 1:
+        for n in unique_elements:
+            if n == 0:
                 continue
-            for j in range(1, len(i)):
-                # print([i[j]], i[0])
-                initial_value[i[j]] = initial_value[i[0]]
-                constraints.append({'type': 'eq', 'fun': lambda x: x[i[j]] - x[i[0]]})
+            members = [index for index, element in enumerate(links) if element == n]
+            for j in members[1:]:
+                initial_value[j] = initial_value[members[0]]
+                constraints.append({"type": "eq", "fun": lambda x, a=j, b=members[0]: x[a] - x[b]})
 
-
-        # for constraint in constraints:
-        #     print('约束条件函数结果:', constraint)
-
-        goal = self.get_goal(error_lattice, adjust_element_num, adjust_parameter_num, group, time, NN)
-
-        options = {'maxiter': 100, 'eps': 10**-1, 'ftol': 10**-4}
-
-
-        # result = minimize(fun=goal, x0=initial_value, constraints=constraints, bounds=parameter_range,
-        #                       method='SLSQP', options=options)
-        #
-        # return result.x, result.fun
-
+        goal = self.get_goal(error_lattice, spec, group, time, NN)
+        options = {"maxiter": 100, "eps": 10 ** -1, "ftol": 10 ** -4}
         try:
             result = minimize(fun=goal, x0=initial_value, constraints=constraints, bounds=parameter_range,
-                              method='SLSQP', options=options)
-
+                              method="SLSQP", options=options)
             return result.x, result.fun
-
-        except Exception:
-            return self.ini_this[-1], self.loss_this[-1]
-
-
-    def opti_one_time(self, group, time, lattice_mulp_list):
-        """
-        静态误差完整跑一次, 需要矫正
-
-        :param group:
-        :param time:hg
-        :return:
-        """
-
-        # 得到lattice的定位信息
-        adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-            adjust_parameter_n, adjust_parameter_use_init = self.generate_adjust_parameter(lattice_mulp_list)
-        #[1][[0.1]][[8]][[[0.0, 1.0]]][[0]][[1]]
-        opti_res_this, loss_this = self.optimize_one_group(group, time, lattice_mulp_list,
-                                                           adjust_element_num, adjust_parameter_initial_value,
-                                                           adjust_parameter_num,
-                                                           adjust_parameter_range,\
-                                                           adjust_parameter_n, adjust_parameter_use_init)
-
-        adjust_info = [adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-            adjust_parameter_n, adjust_parameter_use_init]
-
-        #返回矫正参数信息, 这一次优化的结果， 只一次优化的损失， 束诊结果
-        return adjust_info, opti_res_this, loss_this, self.diag_res
+        except _GoodEnough as exc:
+            log.info("optimisation stopped: %s", exc)
+        except Exception:  # noqa: BLE001 - keep the best effort of a failed engine run, as before
+            log.exception("optimisation aborted, keeping the last evaluated knobs")
+        return self.ini_this[-1], self.loss_this[-1]
 
     def opti_one_time_different_group(self, group, time, lattice_mulp_list):
-        print(572)
-        #使用不同的组数进行优化
-        """
-        静态误差完整跑一次, 需要矫正
+        """Optimise every correction number N in turn on the indexed *lattice_mulp_list*.
 
-        :param group:
-        :param time:hg
-        :return:
+        Returns ``({"<element>_<param>": value}, loss)`` with the loss over all diagnostics after the last run.
         """
         lattice_mulp_list = copy.deepcopy(lattice_mulp_list)
+        adjust_numbers = {int(line[1]) for line in lattice_mulp_list if line[0].lower() == "adjust"}
+        diag_numbers = {int(line[1]) for line in lattice_mulp_list if line[0].lower().startswith("diag")}
 
-        all_adjust_N = []
-        all_diag_N = []
-        for i in lattice_mulp_list:
-            if i[0].lower() == "adjust":
-                all_adjust_N.append(int(i[1]))
-            elif i[0].lower().startswith("diag"):
-                all_diag_N.append(int(i[1]))
-
-        common_N = list(set(all_adjust_N) & set(all_diag_N))
-        # print(591, common_N)
-        # print(all_adjust_N)
-        iteration_step = 0
-        common_N = sorted(common_N)
-
-        opti_res_this_dict = {}
-        for i in common_N:
-            NN = i
-            t_lattice = copy.deepcopy(lattice_mulp_list)
-            for j in t_lattice:
-                if j[0].lower() == "adjust" and int(j[1]) != i:
-                    j.append(False)
-
-                if j[0].lower().startswith("diag") and int(j[1]) != i:
-                    j.append(False)
-
-            t_lattice = [k for k in t_lattice if k[-1] is not False]
-            # for i in t_lattice:
-            #     print(i)
-            # sys.exit()
-            # 得到lattice的定位信息
-            adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-                adjust_parameter_n, adjust_parameter_use_init = self.generate_adjust_parameter(t_lattice)
-            # 返回 哪些元件需要修改， 优化的初始初始值， 哪些参数需要修改， ,每个参数的范围，关联值n，是否使用初值
-
-            print( adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-                adjust_parameter_n, adjust_parameter_use_init)
-
+        results = {}
+        for NN in sorted(adjust_numbers & diag_numbers):
+            # only this correction's knobs and targets take part
+            t_lattice = [line for line in copy.deepcopy(lattice_mulp_list)
+                         if not ((line[0].lower() == "adjust" or line[0].lower().startswith("diag")) and int(line[1]) != NN)]
+            spec = self.generate_adjust_parameter(t_lattice)
+            log.info("%s", spec)
             self.ini_this = []
             self.loss_this = []
+            values, _loss = self.optimize_one_group(group, time, t_lattice, spec, NN)
+            _set_knobs(lattice_mulp_list, spec, values)       # later corrections start from the corrected lattice
+            k = 0
+            for element, params in zip(spec.elements, spec.params):
+                for param in params:
+                    results[f"{element}_{param}"] = values[k]
+                    k += 1
 
-            opti_res_this, loss_this = self.optimize_one_group(group, time, t_lattice,
-                                                               adjust_element_num, adjust_parameter_initial_value,
-                                                               adjust_parameter_num,
-                                                               adjust_parameter_range,
-                                                               adjust_parameter_n, adjust_parameter_use_init, NN)
-
-            # print(618, adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-            #     adjust_parameter_n, adjust_parameter_use_init)
-            # print(620, opti_res_this)
-
-            lattice_mulp_list = self.change_latticae_with_opti_res(opti_res_this, lattice_mulp_list, adjust_element_num, adjust_parameter_num)
-            # for i1 in lattice_mulp_list:
-            #     print(i1)
-
-            v1 = 0
-            for i_index, i_value in enumerate(adjust_element_num):
-                for j_index, j_value in enumerate(adjust_parameter_num[i_index]):
-                    opti_res_this_dict[f"{i_value}_{j_value}"] = opti_res_this[v1]
-                    v1 += 1
-
-        all_loss = self.treat_diag(group, time, None)
-
-    #返回矫正参数信息, 这一次优化的结果， 只一次优化的损失， 束诊结果
-        return opti_res_this_dict, all_loss
-
-    # sys.exit()
-    # self.run_use_corrected_result(opti_res_this, group, time, lattice_mulp_list,
-    #                               adjust_element_num, adjust_parameter_num)
-
-    def change_latticae_with_opti_res(self,  opti_res_this, error_lattice,
-                                 adjust_element_num, adjust_parameter_num):
-        error_lattice = copy.deepcopy(error_lattice)
-        # x = list_one_two(list(opti_res_this), adjust_parameter_num)
-        # for i in range(len(adjust_element_num)):
-        #     for j in range(len(adjust_parameter_num[i])):
-        #         for com in error_lattice:
-        #             if com[-1] == f'element_{adjust_element_num[i]}':
-        #                 com[adjust_parameter_num[i][j]] = x[i][j]
-        #                 break
-
-        v1 = 0
-        for i_index, i_value in enumerate(adjust_element_num):
-            for j_index, j_value in enumerate(adjust_parameter_num[i_index]):
-                for com in error_lattice:
-                    if com[-1] == f'element_{i_value}':
-                        com[j_value] = opti_res_this[v1]
-                        break
-                v1 += 1
-
-        return error_lattice
+        return results, self.treat_diag(group, time, None)

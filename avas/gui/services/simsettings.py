@@ -128,8 +128,9 @@ def save(form, meta):
         "spacechargetype": None,
         "device": meta.get("device") or "cpu",
         # keywords absent from input.txt keep the engine's default: only write them
-        # when the user asked for a value (or turned a previously set one off)
-        "multithreading": 1 if form.get("multithreading") else (0 if meta.get("hadThreadsKey") else None),
+        # when the user asked for a value.  "multithreading 0" is never written: the
+        # engine then loses every particle (checked 2026-09-19), so "off" removes the line.
+        "multithreading": 1 if form.get("multithreading") else None,
         "scanphase": None if scan in (None, "", "default") else safe_int(scan, 0),
         "numofgrid": _read_triple(form.get("numofgrid") or [], int),
         "meshrms": _read_triple(form.get("meshrms") or [], float),

@@ -367,11 +367,17 @@ def list_segments(project):
 
 @rpc("results.sources")
 def sources():
-    """Result folders of the project: OutputFile and every segment run."""
+    """Result folders of the project: OutputFile, archived runs (Runs/) and every segment run."""
     p = context.project().require()
     info = p.last_run() or {}
     out = [{"kind": "project", "label": "OutputFile", "outputDir": p.output_dir, "status": info.get("status"),
             "time": info.get("finished") or info.get("started")}]
+    from avas.gui.services import runs
+    for rec in runs.list_runs(p):
+        out.append({"kind": "archived", "label": rec.get("label") or os.path.basename(rec["folder"]),
+                    "outputDir": rec["folder"], "status": rec.get("status"),
+                    "time": rec.get("finished") or rec.get("started"), "mode": rec.get("mode"),
+                    "elapsed_s": rec.get("elapsed_s"), "archivedAt": rec.get("archived_at")})
     for meta in list_segments(p):
         seg = meta.get("segment") or {}
         out.append({"kind": "segment", "label": meta.get("label") or os.path.basename(meta["folder"]),
@@ -414,15 +420,26 @@ def delete_run(outputDir):
         log.info("results of the full run moved to the recycle bin: %s", p.output_dir)
         result = {"kind": "project", "outputDir": p.output_dir}
     else:
-        for meta in list_segments(p):
-            folder = meta["folder"]
-            if _same_path(outputDir, folder) or _same_path(outputDir, os.path.join(folder, "OutputFile")):
-                _trash(folder)
-                log.info("segment run moved to the recycle bin: %s", os.path.basename(folder))
-                result = {"kind": "segment", "folder": folder}
-                break
+        from avas.gui.services import runs
+        archived = next((r for r in runs.list_runs(p) if _same_path(outputDir, r["folder"])), None)
+        if archived is not None:
+            _trash(archived["folder"])
+            info = p.last_run() or {}
+            if info.get("archived") and _same_path(info["archived"], archived["folder"]):
+                info.pop("archived", None)
+                p.write_run_info(info)
+            log.info("run record moved to the recycle bin: %s", os.path.basename(archived["folder"]))
+            result = {"kind": "archived", "folder": archived["folder"]}
         else:
-            raise UserError("This folder is not a run record of the project.")
+            for meta in list_segments(p):
+                folder = meta["folder"]
+                if _same_path(outputDir, folder) or _same_path(outputDir, os.path.join(folder, "OutputFile")):
+                    _trash(folder)
+                    log.info("segment run moved to the recycle bin: %s", os.path.basename(folder))
+                    result = {"kind": "segment", "folder": folder}
+                    break
+            else:
+                raise UserError("This folder is not a run record of the project.")
     from avas.gui.services import projects
     projects.notify()
     return result

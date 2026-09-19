@@ -1,5 +1,5 @@
 import { call } from "../bridge";
-import { Button, Checkbox, Icon, Radio, Section, Spinner, TextInput } from "../components/ui";
+import { Button, Checkbox, Icon, IconButton, Radio, Section, Spinner, TextInput } from "../components/ui";
 import { fileSaved } from "../store/pages";
 import { t, useT } from "../i18n";
 import { useInputsLocked } from "../store/app";
@@ -90,6 +90,12 @@ export default function SettingsPage() {
           hint={tt("Tracking options written to input.txt, and the run mode stored in ini.ini.")}
           actions={
             <>
+              {(ed.canUndo || ed.canRedo) && (
+                <>
+                  <IconButton icon="discard" tip={`${tt("Undo")}  (Ctrl+Z)`} disabled={!ed.canUndo || locked} onClick={ed.undo} />
+                  <IconButton icon="redo" tip={`${tt("Redo")}  (Ctrl+Y)`} disabled={!ed.canRedo || locked} onClick={ed.redo} />
+                </>
+              )}
               {ed.dirty && (
                 <Button variant="ghost" icon="discard" disabled={locked} onClick={ed.revert}>
                   {tt("Revert")}

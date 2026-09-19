@@ -1,5 +1,46 @@
 # 更新记录 / Changelog
 
+## 2026-09-20  解析器与配置类统一、误差研究重构、3D 视图拆分
+
+- `read_lattice_mulp*` 改为 `LatticeDocument` 之上的适配层（逐字节金标准测试），`BeamConfig` / `InputConfig` 的键表与类型来自 `schema.py`
+  （`utils/keywordconfig.py`），`constants.py` 的关键字集合派生自 schema。类型按 schema 修正：`numofcharge`、`spacechargelong` 为浮点，
+  `randomseed`、`initpos` 等为数值，`distribution` 只接受 KV / GS / PB / WB，`scanphase`、`beamtype` 等按枚举校验。
+- 误差研究：`error.py` 1633 → 667 行、`err_adjust.py` 784 → 299 行，三个模式共用一个循环；误差研究也在 `<输出>/inputs/` 副本上运行，
+  不再改写 InputFile；删除了无法运行的 `OnlyAdjust`。`tests/test_error_study.py` 用固定种子做回归，误差参数文件逐字节一致。
+- 3D 视图拆成 `b3dViewer.ts` / `b3dHud.ts` / `b3dGeometry.ts`，`Beamline3D.tsx` 只剩 React 壳。
+- 束流页：整数值不再显示成 "1.0"；分布类型 `undefined` 明确报错。
+
+## 2026-09-19  运行记录、参数扫描页、运行对比、帮助菜单、前端整理
+
+- **运行记录**：运行页和结果页新增「保留本次结果」，把 OutputFile（含 `inputs/` 输入快照）复制到 `Runs/<时间>_<名称>/`；
+  开始新运行时若上次结果尚未保留会先询问。已保留的运行可查看、重命名、删除，并作为结果页的来源。
+- **参数扫描页**（新页面，`Ctrl+7`）和命令行 `avas scan`：对结构元件参数或 beam.txt / input.txt 关键字的每个取值各运行一次
+  （在副本上，项目文件不变），实时表格 + 曲线，结果在 `Scans/`。扫描显示在运行页，可暂停 / 停止。
+- 结果页新增「运行对比」：几个运行的同一条曲线画在一张图里，分段运行按入口 z 对齐。
+- 帮助菜单：用户手册、快捷键一览（`shell/shortcuts.ts` 是唯一的快捷键表）。束流页、设置页撤销 / 重做。浏览器模式标签页标题带项目名。
+- 修复：设置页关闭多线程时写入 `multithreading 0` 会让内核丢失全部粒子，现在关闭即删除该关键字。
+- 前端：布局图鼠标移动不再重画全部曲线；菜单栏只订阅需要的状态；3D 视图只在结构变化时重建；「扩充粒子数」不会因断线卡住；
+  lattice 解析失败会提示而不是静默；对话框和菜单有 ARIA 角色、焦点陷阱和键盘子菜单；重复的工具函数合并到 `util.ts`；
+  新增 vitest 单元测试；清理 68 条无用翻译并加测试防止再次堆积。
+- 工程：`ruff`（缺陷类规则）、GitHub Actions CI（Python + 前端）。
+- **误差研究不再改写 InputFile**：`stat / dyn / stat_dyn` 也在 `<输出目录>/inputs/` 的副本上工作（每个种子的 `lattice.txt` 写在那里，
+  场图仍读原目录），`avas_run.json` 的 `inputs_dir` 对误差研究同样有值。`avas/sim/error.py` 重构为一个共用的
+  组 / 次循环（`Error.run` + `prepare_step / run_step / collect_step`，三种模式只实现 `lattice_lines`），
+  `err_adjust.py` 的束诊损失按类型分派、优化入口合并；随机数消耗顺序、文件名和格式不变（`tests/test_error_study.py`
+  用固定种子逐值核对）。顺带修复：无误差参考运行的 `lattice.txt` 现在真的保存在 `output_0_0/`（以前误写成文件并进了回收站），
+  多个联动校正量的等式约束不再只约束最后一对。
+
+## 2026-09-19  运行输入暂存、旧代码归档
+
+- 普通运行把文本输入复制到 `<输出目录>/inputs/` 并在那里生成 `lattice.txt`，内核以该副本为输入、原目录为场图目录；
+  用户的 InputFile 不再被运行改写。`avas_run.json` 新增 `inputs_dir`。
+- 旧 Qt 界面遗留的模式调度（SimMode、hpc）、包络匹配 / 长加速器模式（Dll2.dll、LongAccelerator*.dll）等无人调用的代码
+  移到仓库外 `archive/legacy_code_20260919/`（内有 README）。`avas/api/basic.py` 只保留运行入口，画图函数移到 `avas/api/plotting.py`，
+  `import avas.api.basic` 不再加载 matplotlib / sklearn / numba。
+- DataSet 图类型统一登记在 `avas/post/plot/dataset_plots.py`（命令行和 `PlotDataSet` 共用）。
+- 误差分析：每次研究用自己的随机数发生器（同一 seed 结果不变，不再受其它随机调用影响）；`restart=1` 时不再因输出目录已存在而失败；
+  input.txt 未开启 pchistogram 时跳过密度文件而不是报错。内核封装声明了 ctypes 参数类型，ErrorLog.txt 按 UTF-8 读取。
+
 ## 2026-09-19  前后端分离的通信层、浏览器模式
 
 - 界面前后端只通过 HTTP 通信（`POST /api/rpc`、WebSocket `/api/events`、`/blob/`），桌面窗口和浏览器走同一条通路，

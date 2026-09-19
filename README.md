@@ -86,6 +86,19 @@ avas doctor
 
 `avas plot --help` 列出全部图类型。画图时输入目录默认从输出目录里的 `avas_run.json` 读取，也可以用 `--input` 指定。
 
+参数扫描：对一个参数的每个取值各运行一次，结果表打印在终端并写入 `<项目>/Scans/<名称>_<时间>/`（`scan.json`、`scan.csv`），项目输入文件不变。
+
+```bash
+avas scan --input "C:\proj\InputFile" --target Q1 --param G --values 10,12,14
+avas scan --input "C:\proj\InputFile" --target 12 --param phase --values -40:-20:5          # 第 12 行，起点:终点:个数
+avas scan --input "C:\proj\InputFile" --keyword beam.particlenumber --values 1000,5000 --metrics transmission,energy_out
+```
+
+普通运行不再改写输入目录：文本输入文件（input.txt、beam.txt、结构文件、ini.ini 以及 beam.txt 引用的粒子文件）先复制到
+`<输出目录>/inputs/`，运行所用的 `lattice.txt` 生成在那里，内核以这个副本为输入、以原输入目录为场图目录（场图不复制）。
+`avas_run.json` 的 `inputs_dir` 记录该副本，可以直接看到某次结果到底用了哪份输入。误差分析（`--mode stat | dyn | stat_dyn`）同样在这个副本里工作：
+每个误差种子的 `lattice.txt` 都写在 `<输出目录>/inputs/`，输入目录里的任何文件都不会被改写。
+
 ### 图形界面
 
 ```bash
@@ -97,7 +110,7 @@ avas gui
 `--port` / `--host` 指定地址，默认只接受本机连接，`--host 0.0.0.0` 会向局域网开放，目前没有用户管理，只在可信网络使用）。
 浏览器里没有系统文件对话框，改用页面自带的文件夹 / 文件选择器；「打开输出文件夹」显示带下载按钮的目录，「用默认程序打开」和导出图会直接下载；
 链接在新标签页打开；菜单里没有「退出」，关掉标签页即可。其他功能（实时显示、AI 助手等）完全相同。
-布局与 VS Code 相同：顶部菜单栏和工具按钮、左侧导航栏、中间页面、下方日志面板、底部状态栏。按工作流分为七页：
+布局与 VS Code 相同：顶部菜单栏和工具按钮、左侧导航栏、中间页面、下方日志面板、底部状态栏。按工作流分为八页：
 
 1. **Project** 没有打开项目时是欢迎页（新建 / 打开 / 最近项目）；打开项目后是项目概览：上次运行（状态、传输效率、
    末端能量，以及 DataSet.txt 中 NaN、全部丢束等诊断和原因提示）、束流、结构（元件统计、问题数）、模拟设置、文件，
@@ -147,12 +160,22 @@ avas gui
    移动的束团和损失位置，并显示束团位置、存活宏粒子数、传输效率、能量和 rms 尺寸；分段运行显示所在阶段，误差研究显示第 i / n 个种子，
    AI 助手的试算也在这里显示（用它自己的 lattice）。运行结束后保留最终状态，可以回放。
    **运行锁**：完整运行、误差研究和分段运行进行中（包括暂停）时，所有输入文件只读——结构、束流、设置、文件页以及运行用的 lattice
-   选择都不能修改，后端同样拒绝写入，AI 助手此时提出的修改会被直接拒绝并说明原因。原因是误差研究每组都会重新读取 lattice，
-   分段运行每个阶段开始时才复制输入文件，运行中修改会让结果混入两套输入。AI 助手自己的参数扫描 / 优化使用副本，不加锁。
-7. **Results** 左边选择分析项，右边以标签页显示**可交互的图**（拖动放大、双击复原、悬停读数）：包络、发射度、损失、能量、
+   选择都不能修改，后端同样拒绝写入，AI 助手此时提出的修改会被直接拒绝并说明原因。原因是分段运行每个阶段开始时才复制输入文件，
+   而且运行记录里的输入快照和实时显示都以运行开始时的输入为准，运行中修改会让结果混入两套输入。AI 助手的参数扫描 / 优化和扫描页使用副本，不加锁。
+   **运行记录**：每次完整运行都覆盖 `OutputFile/`，想留下的结果点「保留本次结果」（运行页、结果页）复制到 `Runs/<时间>_<名称>/`
+   （连同 `inputs/` 里的输入快照）；开始新运行时，如果上次结果还没有保留，会先询问「保留并运行 / 直接运行 / 取消」。
+   已保留的运行和分段运行一起列在运行记录里，可以查看、重命名、移到回收站。
+7. **Scan** 参数扫描：选一个结构元件的参数（或 beam.txt / input.txt 的关键字），给出取值列表或 起点:终点:个数，
+   对每个取值各运行一次模拟（在输入文件的副本上，项目文件不变），勾选要收集的结果（传输效率、出口能量、发射度增长、rms 最大值等），
+   结果实时进入表格和曲线，保存在 `Scans/<名称>_<时间>/`（`scan.json`、`scan.csv`，每个取值一个结果文件夹，可在结果页打开）。
+   扫描期间运行页显示进度，可暂停 / 继续 / 停止。命令行是 `avas scan`。
+8. **Results** 左边选择分析项，右边以标签页显示**可交互的图**（拖动放大、双击复原、悬停读数）：包络、发射度、损失、能量、
    相移、同步相位、腔压、误差分析、密度、接受度。粒子文件查看器和 plt 步查看器是 4 个相空间密度图 + rms 椭圆 +
    百分比发射度文字，放大后自动按新范围重新统计密度；改坐标、改百分比立即重画。「保存图片」用 matplotlib 输出
-   白底的论文用图（PNG / PDF / SVG）。可以切换到项目 OutputFile 以外的结果文件夹。工具：扩充粒子数、plt 步转 dst。
+   白底的论文用图（PNG / PDF / SVG）。结果来源可以在 OutputFile、已保留的运行、分段运行和任意文件夹之间切换。
+   「运行对比」把几个运行的同一条曲线（rms、发射度、能量、损失等）画在一张图里，分段运行按入口 z 对齐。工具：扩充粒子数、plt 步转 dst。
+
+帮助菜单：用户手册（打开 docs/使用说明20260427.docx）、快捷键一览、关于。束流页和设置页支持撤销 / 重做（`Ctrl+Z` / `Ctrl+Y`）。
 
 ### AI 助手
 
@@ -310,15 +333,29 @@ avas doctor                                                          # self-test
 
 `avas plot --help` lists every plot type. The input directory for plots is read from `avas_run.json` in the output directory, or given with `--input`.
 
+Parameter scan: one run per value of one parameter, results printed as a table and written to `<project>/Scans/<label>_<time>/` (`scan.json`, `scan.csv`); the project's inputs are not changed.
+
+```bash
+avas scan --input "C:\proj\InputFile" --target Q1 --param G --values 10,12,14
+avas scan --input "C:\proj\InputFile" --target 12 --param phase --values -40:-20:5          # line 12, start:stop:count
+avas scan --input "C:\proj\InputFile" --keyword beam.particlenumber --values 1000,5000 --metrics transmission,energy_out
+```
+
+A plain run no longer writes into the input directory: the text inputs (input.txt, beam.txt, the lattice, ini.ini and a particle
+file named in beam.txt) are copied to `<output>/inputs/`, the generated `lattice.txt` is written there, and the engine runs on that
+copy with the original input directory as field-map directory (field maps are not copied). `avas_run.json` records it as
+`inputs_dir`, so every result folder shows exactly which inputs produced it. Error studies (`--mode stat | dyn | stat_dyn`) work on the
+same copy: the `lattice.txt` of every error seed is written to `<output>/inputs/`, and nothing in the input directory is rewritten.
+
 ### GUI
 
-`avas gui` (or `avas-gui`) opens a desktop window (pywebview + Edge WebView2; no browser involved) with a VS Code-like layout: menu bar, side bar, pages, log panel, status bar. Seven pages follow the workflow: **Project** (a welcome page without a project; with one, an overview of the last run including DataSet diagnostics such as NaN columns or a lost beam, the beam, lattice statistics and settings; switching projects lives in the File menu and the project switcher in the title and status bars), **Beam** (saving keeps keywords the page does not manage, and comments), **Lattice** (run-lattice selection; Monaco text editor with highlighting, folding, completion, hover help and problem markers, side by side with the physical-parameter editor: beamline schematic, element tree, property form, per-keyword parameter table), **Settings**, **Files** (content-aware views of everything in `InputFile/`, table and text tabs on the same content, rename / duplicate / recycle bin / import), **Run** (child `avas run` process, live progress incl. min/h ETAs, engine output in the log) and **Results** (interactive Plotly plots; phase-space viewers with density re-binning on zoom and percent emittances; publication-quality export through matplotlib; any results folder). Theme switching (system / light / dark) takes one frame (~20 ms); UI scale 90–150 %; Chinese / English switch instantly. Unsaved pages are marked and prompted for before closing or switching projects. Settings: `%LOCALAPPDATA%\AVAS\gui.json`; logs: `%LOCALAPPDATA%\AVAS\logs`.
+`avas gui` (or `avas-gui`) opens a desktop window (pywebview + Edge WebView2; no browser involved) with a VS Code-like layout: menu bar, side bar, pages, log panel, status bar. Eight pages follow the workflow: **Project** (a welcome page without a project; with one, an overview of the last run including DataSet diagnostics such as NaN columns or a lost beam, the beam, lattice statistics and settings; switching projects lives in the File menu and the project switcher in the title and status bars), **Beam** (saving keeps keywords the page does not manage, and comments), **Lattice** (run-lattice selection; Monaco text editor with highlighting, folding, completion, hover help and problem markers, side by side with the physical-parameter editor: beamline schematic, element tree, property form, per-keyword parameter table), **Settings**, **Files** (content-aware views of everything in `InputFile/`, table and text tabs on the same content, rename / duplicate / recycle bin / import), **Run** (child `avas run` process, live progress incl. min/h ETAs, engine output in the log; run records: every full run overwrites `OutputFile/`, so "Keep this run" copies it with its `inputs/` snapshot to `Runs/<time>_<label>/`, and a new run first asks about an unkept result), **Scan** (one parameter of a lattice element or a beam.txt / input.txt keyword over a list of values, each run on a copy of the inputs, live table and curve of the collected metrics, results in `Scans/`), and **Results** (interactive Plotly plots; phase-space viewers with density re-binning on zoom and percent emittances; publication-quality export through matplotlib; OutputFile, kept runs, segment runs or any folder as source; "Compare runs" overlays one quantity of several runs). Help menu: user manual, keyboard shortcuts, about. Beam and Settings pages have undo / redo. Theme switching (system / light / dark) takes one frame (~20 ms); UI scale 90–150 %; Chinese / English switch instantly. Unsaved pages are marked and prompted for before closing or switching projects. Settings: `%LOCALAPPDATA%\AVAS\gui.json`; logs: `%LOCALAPPDATA%\AVAS\logs`.
 
 The Lattice page also has a **visual editor** on the same text model (one undo history): a component palette to drag elements onto the beamline (dropping into a drift splits it so downstream positions stay put; dropping into a superpose block adds a superpose at that z0), a large layout with element glyphs and the x/y envelope of the last run, the **linear envelope preview** (`avas/sim/linear_optics.py`: reference particle, 4×4 moment transport through matrix elements and field maps, linear space charge; energies within ~0.01 % and rms sizes typically within 1–2 % of the engine), apertures, losses and energy; a three.js 3D view with fly-through; and a component inspector (quadrupole cross-section and forces, cavity Ez(z) and phase dial, …) whose handles and sliders update the preview live while dragging. The visual editor opens in a browse state and changes the lattice only after **Edit**; **Done** asks about unsaved changes (save / discard this editing session / keep editing). Clicking a curve or its legend entry highlights it, double-clicking a legend entry shows only that curve (the Results plots behave the same). While a simulation runs, the envelope grows row by row as the engine writes DataSet.txt, a schematic bunch marks the current position, losses flash where they happen and the previous run stays as a grey reference; error studies show the finished seeds, a finished segment run is overlaid at its entry, and the status bar tells when the lattice was edited after the last run. **Replay** walks the bunch along the last run at uniform speed or with the beam's time of flight; the 3D view draws a particle cloud (labelled *schematic*: sizes from the rms envelope, particles are random samples) and can follow it with the camera.
 
 The **AI assistant** (`Ctrl+Shift+A`) works with any OpenAI-compatible endpoint, local (Ollama, LM Studio, vLLM, llama.cpp, Xinference) or hosted, with native or prompted tool calls. It reads the project, results, log and user manual; changes to the lattice, beam.txt, input.txt or ini.ini are proposals applied only after approval (backed up under `<project>/.avas_ai/backups`, undoable); it can run the simulation, scan parameters and optimise (Nelder-Mead / Powell / random) with the linear preview or with engine runs in a sandbox copy (`<project>/.avas_ai/runs`) that never touches the project's files. API keys go to the Windows Credential Manager.
 
-**Run page and input lock.** Below the progress, *Live beam* draws the lattice the run uses with the envelope written so far, the moving bunch and the losses, and shows the bunch position, macro-particles alive, transmission, energy and rms sizes (segment stages, error seeds and the assistant's sandbox evaluations included); after the run it keeps the final state and offers a replay. While a project run, error study or segment run is running or paused, all input files are read-only (Lattice, Beam, Settings and Files pages, the run-lattice selection; the back end refuses writes too, and the assistant's change proposals are refused with an explanation), because error studies re-read the lattice for every group and segment runs copy InputFile at every stage. The assistant's own scans work on copies and do not lock. **View → Motion** chooses full (the default) / reduced / off / automatic (follows Windows' animation effects).
+**Run page and input lock.** Below the progress, *Live beam* draws the lattice the run uses with the envelope written so far, the moving bunch and the losses, and shows the bunch position, macro-particles alive, transmission, energy and rms sizes (segment stages, error seeds and the assistant's sandbox evaluations included); after the run it keeps the final state and offers a replay. While a project run, error study or segment run is running or paused, all input files are read-only (Lattice, Beam, Settings and Files pages, the run-lattice selection; the back end refuses writes too, and the assistant's change proposals are refused with an explanation), because segment runs copy InputFile at the start of every stage and the run record's input snapshot and the live display describe the inputs the run started with; editing in between would mix two configurations. The assistant's scans and the Scan page work on copies and do not lock. **View → Motion** chooses full (the default) / reduced / off / automatic (follows Windows' animation effects).
 
 **Browser mode.** `avas serve` runs the back end without a window and prints a URL (with a random access token) to open in any modern browser; `--open` opens it, `--port` / `--host` choose the address (the default binds to this machine only; `--host 0.0.0.0` exposes it to the network, where the token is the only protection because there is no user management yet). In a browser the native file dialogs are replaced by the page's own folder / file chooser, "open folder" shows the folder with download buttons, "open file" and plot export download the file, and links open in a new tab; the Exit entry is absent (close the tab). Everything else, including the live run display and the assistant, is identical.
 

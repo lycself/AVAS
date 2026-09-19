@@ -1,5 +1,4 @@
 import numpy
-import math
 import struct
 import random
 import numpy as np

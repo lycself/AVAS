@@ -1,10 +1,11 @@
 // Commands shared by the menu bar, tool bar, shortcuts and pages.
 import { call, isDesktop, on } from "./bridge";
-import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, reportError, toast, type MenuItem } from "./components/overlays";
+import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, promptDialog, reportError, toast, type MenuItem } from "./components/overlays";
 import { canQuit, openPath, pickFolder, pickSaveFile } from "./host";
 import { t } from "./i18n";
 import { refreshProject, setPage, setProject, showStatus, useApp, type ProjectSummary } from "./store/app";
 import { allPages, dirtyPages, useDirty } from "./store/pages";
+import { basename } from "./util";
 
 /** Ask about unsaved pages.  Resolves true when it is fine to continue. */
 export async function resolveUnsaved(action: string): Promise<boolean> {
@@ -80,10 +81,6 @@ export function revealProject() {
   if (path) openPath(path).catch((e) => reportError(e));
 }
 
-function basename(p: string) {
-  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-}
-
 /** Project switcher: recent projects plus open / new / close (status bar, title, overview page). */
 export function projectMenuItems(): MenuItem[] {
   const { project } = useApp.getState();
@@ -148,10 +145,51 @@ export async function prepareRun(): Promise<{ ok: boolean; error?: string }> {
   return { ok: true };
 }
 
+/** Keep the finished run in OutputFile/ as a record under Runs/ (asks for a name). */
+export async function archiveRun(): Promise<string | null> {
+  const label = await promptDialog(t("Name of the record (optional). The results in OutputFile/ are copied to Runs/."), "", {
+    title: t("Keep this run"),
+    ok: t("Keep"),
+  });
+  if (label === null) return null;
+  try {
+    const rec = await call<{ folder: string; label: string; existing: boolean }>("runs.archive", { label });
+    toast(rec.existing ? t("This run is already kept as {label}", { label: rec.label }) : t("Run kept as {label}", { label: rec.label }), "success");
+    return rec.folder;
+  } catch (e) {
+    reportError(e, t("Keep this run"));
+    return null;
+  }
+}
+
+/** Before a run overwrites OutputFile/: offer to keep the finished result that is still there. */
+async function resolveUnsavedRun(): Promise<boolean> {
+  let info: { unsaved: boolean; started?: string | null } | null = null;
+  try {
+    info = await call("runs.unsaved");
+  } catch {
+    return true; // the run itself reports real problems
+  }
+  if (!info?.unsaved) return true;
+  const choice = await choiceDialog(
+    t("The results of the last run ({started}) are still in OutputFile/ and have not been kept. A new run overwrites them.", { started: info.started ?? "" }),
+    [
+      { key: "keep", label: t("Keep and run"), variant: "primary" },
+      { key: "run", label: t("Run without keeping") },
+      { key: "cancel", label: t("Cancel") },
+    ],
+    { title: t("Previous results") },
+  );
+  if (choice === null || choice === "cancel") return false;
+  if (choice === "keep") return (await archiveRun()) !== null;
+  return true;
+}
+
 export async function runSimulation() {
   const app = useApp.getState();
   if (!app.project.open || app.run.running) return;
   if (!(await prepareRun()).ok) return;
+  if (!(await resolveUnsavedRun())) return;
   try {
     const state = await call<any>("run.start");
     useApp.setState({ run: state });
@@ -189,7 +227,7 @@ export async function resumeSimulation() {
 
 /** F5 and the tool-bar button: run, pause or resume depending on the state. */
 export type RunRecord = {
-  kind: "project" | "segment";
+  kind: "project" | "segment" | "archived";
   label: string;
   outputDir: string;
   status?: string | null;
@@ -198,6 +236,9 @@ export type RunRecord = {
   zEnd?: number;
   entry?: string | null;
   rephased?: number;
+  mode?: string | null;
+  elapsed_s?: number | null;
+  archivedAt?: string | null;
 };
 
 /** Ask, then move a run record (the project's OutputFile or a whole segment run) to the recycle bin. */
@@ -209,7 +250,9 @@ export async function deleteRunRecord(rec: RunRecord): Promise<boolean> {
   const message =
     rec.kind === "project"
       ? t("Move the results of the full-lattice run (OutputFile/) to the recycle bin? The run record goes with them.")
-      : t("Move segment run {label} and all its files to the recycle bin?", { label: rec.label });
+      : rec.kind === "archived"
+        ? t("Move the kept run {label} and all its files to the recycle bin?", { label: rec.label })
+        : t("Move segment run {label} and all its files to the recycle bin?", { label: rec.label });
   const ok = await confirmDialog(message, { title: t("Delete"), ok: t("Move to recycle bin"), danger: true });
   if (!ok) return false;
   try {
@@ -227,6 +270,11 @@ export function runPauseResume() {
   if (!run.running) runSimulation();
   else if (run.paused) resumeSimulation();
   else pauseSimulation();
+}
+
+/** Open the user manual with the system viewer (the back end raises a UserError when it is missing). */
+export function openManual() {
+  call("app.openManual").catch((e) => reportError(e, t("User manual")));
 }
 
 export async function showAbout() {

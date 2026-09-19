@@ -1,20 +1,10 @@
-import sys
 
-from avas.data.beamset import BeamsetParameter
-import math
-from avas.constants import c_light, Pi
 
 import struct
-import os
-import numpy
-from avas.utils.getinfotools import get_mass_freq, get_timestep
 import numpy as np
 from avas.data.datasetparameter import DatasetParameter
 import time
-from multiprocessing import Pool, cpu_count
 from avas.data.densityparameter import DensityParameter
-import matplotlib.pyplot as plt
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from avas.data.exdataparameter import Exdata
 import pandas as pd
 

@@ -5,12 +5,12 @@ import os
 import uuid
 import numpy as np
 def write_to_txt(path, lis):
-    with open(path, 'w') as f:
+    with open(path, 'w', encoding="utf-8") as f:
         for i in lis:
             f.write(' '.join(map(str, i)) + '\n')
 
 def add_to_txt(path, lis):
-    with open(path, 'a') as f:
+    with open(path, 'a', encoding="utf-8") as f:
         for i in lis:
             f.write(' '.join(map(str, i)) + '\n')
 
@@ -129,8 +129,8 @@ def convert_to_othertype_dict(k , v, target_type) :
             elif target_type == str:
                 v = str(v)
             return v
-        except:
-            raise ValueError(f"Cannot {k} {v} to target type {target_type}")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Cannot {k} {v} to target type {target_type}") from exc
 
 
 
@@ -237,7 +237,6 @@ def trans_xp_xx1(item):
     # }
     BaseMassInMeV = item["BaseMassInMeV"]
     freq = item["freq"]
-    part_dict = item["part_dict"]
     part_list = item["part_list"]
     num = item["num"]
 

@@ -23,7 +23,12 @@ TWISS_KEYS = [f"{q}_{pl}" for pl in "xyz" for q in ("alpha", "beta", "emit")]
 
 
 def _s(v):
-    return "" if v is None else str(v)
+    """Text for the form: numbers as written by the user (1.0 from the config class shows as 1)."""
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer() and abs(v) < 1e15:
+        return str(int(v))
+    return str(v)
 
 
 @rpc("beam.load")
@@ -82,8 +87,8 @@ def _format_lines(form):
     use_dst = 1 if form.get("use_dst") else 0
     dist = [form.get("distribution_x") or "GS", form.get("distribution_y") or "GS"]
     for d in dist:
-        if d not in DISTRIBUTIONS + ["undefined"]:
-            raise UserError(f"beam.txt: unknown distribution '{d}'")
+        if d not in DISTRIBUTIONS:
+            raise UserError(f"beam.txt: unknown distribution '{d}' (choose one of KV, GS, PB, WB)")
     # the same type checks the engine-side config class applies
     BeamConfig().set_param(**{**ints, **floats, "use_dst": use_dst, "distribution_x": dist[0], "distribution_y": dist[1]})
 

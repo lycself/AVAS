@@ -2,7 +2,6 @@
 from avas.paths import lattice_source_path
 import os
 from avas.data.datasetparameter import DatasetParameter
-from avas.utils.treatfile import check_file_update
 from avas.data.latticeparameter import LatticeParameter
 from avas.utils.iniconfig import IniConfig
 from avas.utils.tool import format_output
@@ -195,7 +194,6 @@ class GetSchedule():
 
 
 if __name__ == '__main__':
-    import time
     path = r"C:\Users\anxin\Desktop\test_schedule\cafe_avas_error"
     # path = r"C:\Users\shliu\Desktop\test_schedule\cafe_avas"
 

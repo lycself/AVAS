@@ -1,7 +1,7 @@
 from avas.post.analysis.percentemitt import PercentEmit
 import os
 import copy
-from avas.config import dst_picture_title_dict, option_type_dict
+from avas.config import dst_picture_title_dict
 def treat_directory(directory_path, ratio):
     file_names = os.listdir(directory_path)
     if os.path.exists('result.txt'):

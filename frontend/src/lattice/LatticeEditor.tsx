@@ -43,6 +43,8 @@ type Props = {
 export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function LatticeEditor({ initialText, readOnly, fieldDirs, onChange, layout = "split", dirty, onSave, runResults }, ref) {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [doc, setDoc] = useState<LatticeDoc | null>(null);
+  /** Why the last parse failed (the previous good doc stays in use). */
+  const [parseError, setParseError] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [fieldmaps, setFieldmaps] = useState<Record<string, string[]>>({});
   const [split, setSplit] = useState(() => Number(localStorage.getItem("avas.latticeSplit")) || 0.4);
@@ -78,7 +80,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
         setFieldmaps(m);
         setFieldmapNames(Object.keys(m));
       })
-      .catch(() => undefined);
+      .catch((e) => setParseError(e?.message ?? String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirsKey]);
 
@@ -91,6 +93,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
           .then((d) => {
             if (my !== seq.current) return;
             setDoc(d);
+            setParseError(null);
             const want = pendingSelect.current;
             if (want != null && d.statements.some((s) => s.line === want)) {
               pendingSelect.current = null;
@@ -98,7 +101,10 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
               textRef.current?.revealLine(want);
             }
           })
-          .catch(() => undefined);
+          .catch((e) => {
+            if (my !== seq.current) return;
+            setParseError(e?.message ?? String(e));
+          });
       }, delay);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,6 +115,15 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
     parse(initialText, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirsKey]);
+
+  // a parse still pending when the editor goes away must not touch state
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      seq.current++;
+    },
+    [],
+  );
 
   const applyEdits = useCallback(
     (edits: Edit[]) => {
@@ -299,6 +314,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
             onToggleText={toggleText}
             onUndo={() => textRef.current?.undo()}
             onRedo={() => textRef.current?.redo()}
+            parseError={parseError}
           />
         ) : (
           <StructureEditor
@@ -311,6 +327,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
             onEdits={applyEdits}
             onRangeEdits={applyRangeEdits}
             getLines={getLines}
+            parseError={parseError}
           />
         )}
       </div>
@@ -333,6 +350,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
       onEdits={applyEdits}
       onRangeEdits={applyRangeEdits}
       getLines={getLines}
+      parseError={parseError}
     />
   );
 

@@ -38,12 +38,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { variant = "secondary", icon, iconSpin, small, tip, className, children, type = "button", ...rest },
   ref,
 ) {
+  const iconOnly = children == null || children === false;
   return (
     <button
       ref={ref}
       type={type}
       className={cx("btn", `btn-${variant}`, small && "btn-small", !children && "btn-icon-only", className)}
       data-tip={tip}
+      aria-label={iconOnly && tip ? tip : undefined}
       {...rest}
     >
       {icon && <Icon name={icon} spin={iconSpin} />}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { deleteRunRecord, pauseSimulation, resumeSimulation, runSimulation, stopSimulation, type RunRecord } from "../actions";
+import { archiveRun, deleteRunRecord, pauseSimulation, resumeSimulation, runSimulation, stopSimulation, type RunRecord } from "../actions";
 import { call, on } from "../bridge";
 import { openPath } from "../host";
 import { reportError } from "../components/overlays";
@@ -65,10 +65,12 @@ export default function RunPage() {
       ? t("Segment {label}", { label: job?.label ?? "" })
       : source === "assistant"
         ? t("Assistant: {task}", { task: t(job?.label ?? "") })
-        : t("Full lattice");
+        : source === "scan"
+          ? t("Parameter scan: {task}", { task: job?.label ?? "" })
+          : t("Full lattice");
   const stageText = running && run.stages && run.stages > 1 ? `${run.stage} / ${run.stages}  ${t(run.stageLabel ?? "")}` : null;
   const stepText =
-    run.step != null && run.all_step ? (source === "assistant" ? t("simulation {i} of {n}", { i: run.step, n: run.all_step }) : `${run.step} / ${run.all_step}`) : null;
+    run.step != null && run.all_step ? (source === "assistant" || source === "scan" ? t("simulation {i} of {n}", { i: run.step, n: run.all_step }) : `${run.step} / ${run.all_step}`) : null;
 
   let engineLine = "";
   if (paused) engineLine = t("Paused. The simulation continues exactly where it stopped when you resume it.");
@@ -209,6 +211,10 @@ function RunRecords({ running }: { running: boolean }) {
   const remove = async (rec: RunRecord) => {
     if (await deleteRunRecord(rec)) load();
   };
+  const keep = async () => {
+    if (await archiveRun()) load();
+  };
+  const archived = typeof info.archived === "string" && records.some((r) => r.kind === "archived" && r.outputDir.toLowerCase() === (info.archived as string).toLowerCase());
 
   const projectDetails = [info.started, info.mode || (info.status ? "basic" : null), info.elapsed_s != null ? fmtSeconds(info.elapsed_s) : null, info.error ? String(info.error) : null]
     .filter(Boolean)
@@ -220,10 +226,13 @@ function RunRecords({ running }: { running: boolean }) {
       <div className="run-records">
         {records.map((rec) => {
           const isProject = rec.kind === "project";
+          const isArchived = rec.kind === "archived";
           const status = isProject ? info.status : rec.status;
           const details = isProject
             ? projectDetails
-            : [
+            : isArchived
+              ? [rec.time, rec.mode, rec.elapsed_s != null ? fmtSeconds(rec.elapsed_s) : null, rec.archivedAt ? t("kept {time}", { time: rec.archivedAt }) : null].filter(Boolean).join("   ·   ")
+              : [
                 `z ${rec.zStart ?? "?"}–${rec.zEnd ?? "?"} m`,
                 rec.entry ? t(ENTRY_SHORT[rec.entry] ?? rec.entry) : null,
                 rec.rephased ? t("{n} cavities re-phased", { n: rec.rephased }) : null,
@@ -236,10 +245,18 @@ function RunRecords({ running }: { running: boolean }) {
             <div className={cx("run-record", empty && "empty")} key={rec.outputDir}>
               <div className="run-record-status">{status ? <Badge tone={statusTone(status)}>{runStatusLabel(status)}</Badge> : null}</div>
               <div className="run-record-main">
-                <div className="run-record-title">{isProject ? `${t("Full lattice")} (OutputFile)` : t("Segment {label}", { label: rec.label })}</div>
+                <div className="run-record-title">
+                  {isProject ? `${t("Full lattice")} (OutputFile)` : isArchived ? rec.label : t("Segment {label}", { label: rec.label })}
+                  {isProject && status === "finished" && !archived && !empty && (
+                    <span className="muted"> · {t("not kept")}</span>
+                  )}
+                </div>
                 <div className="run-record-sub selectable">{empty ? t("no run recorded for this project") : details}</div>
               </div>
               <div className="run-record-actions">
+                {isProject && status === "finished" && !archived && (
+                  <IconButton icon="archive" tip={running ? t("Cannot keep while a simulation is running") : t("Keep this run (copy to Runs/)")} disabled={running} onClick={keep} />
+                )}
                 <IconButton
                   icon="graph-line"
                   tip={t("Show results")}
