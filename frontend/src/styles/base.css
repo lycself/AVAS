@@ -229,6 +229,21 @@ fieldset.lockable:disabled .select { opacity: .55; }
 .dialog-detail summary { cursor: pointer; color: var(--fg-muted); }
 .dialog-detail pre { max-height: 260px; overflow: auto; font-size: 12px; background: var(--panel-bg); border: 1px solid var(--border); padding: 8px; border-radius: 4px; user-select: text; }
 
+/* the page's own file chooser (browser mode, components/FileDialog.tsx) */
+.fd-dialog { width: 100%; }
+.fd { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fd-bar { display: flex; align-items: center; gap: 4px; }
+.fd-list { height: min(340px, 50vh); overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg); }
+.fd-row { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; cursor: default; white-space: nowrap; user-select: none; }
+.fd-row:hover { background: var(--list-hover); }
+.fd-row.selected { background: var(--list-active); color: var(--fg-strong); }
+.fd-row .codicon { font-size: 14px; color: var(--fg-muted); }
+.fd-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.fd-size { color: var(--fg-soft); font-size: 11px; }
+.fd-empty { padding: 24px 12px; color: var(--fg-muted); text-align: center; }
+.fd-foot { display: flex; align-items: center; gap: 8px; }
+.fd-hint { color: var(--fg-muted); font-size: 12px; }
+
 /* ---------------------------------------------------------------- toasts */
 .toasts { position: fixed; right: 16px; bottom: 34px; z-index: 950; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .toast {

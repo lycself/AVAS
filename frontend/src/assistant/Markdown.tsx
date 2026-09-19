@@ -3,7 +3,7 @@
 // what models write: headings, paragraphs, lists, tables, code blocks,
 // quotes, rules, inline code, bold / italic, links and $math$ (shown as code).
 import type { ReactNode } from "react";
-import { call } from "../bridge";
+import { openUrl } from "../host";
 
 type Block =
   | { t: "code"; lang: string; text: string }
@@ -122,7 +122,7 @@ export function inline(text: string, keyPrefix = "i"): ReactNode[] {
     else if (m[9]) {
       const url = m[10];
       out.push(
-        <a key={key} onClick={() => call("shell.openUrl", { url }).catch(() => undefined)} data-tip={url}>
+        <a key={key} onClick={() => openUrl(url)} data-tip={url}>
           {m[9]}
         </a>,
       );

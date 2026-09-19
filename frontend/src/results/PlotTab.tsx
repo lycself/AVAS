@@ -1,7 +1,8 @@
 // One result plot: options bar, interactive figure, export through matplotlib.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { call } from "../bridge";
+import { call, isDesktop } from "../bridge";
 import { reportError, toast } from "../components/overlays";
+import { downloadFile, pickSaveFile } from "../host";
 import { Plot } from "../components/Plot";
 import { Button, Icon, IconButton, Spinner } from "../components/ui";
 import { fmtG } from "../format";
@@ -11,13 +12,15 @@ import { toPlotly, type Figure } from "./figures";
 
 export async function exportFigure(plot: string, params: Record<string, unknown>, outputDir: string | undefined, name: string) {
   try {
-    const path = await call<string | null>("dialog.saveFile", {
+    const path = await pickSaveFile({
+      directory: outputDir,
       filename: `${name}.png`,
       filters: ["PNG image (*.png)", "PDF document (*.pdf)", "SVG image (*.svg)"],
     });
     if (!path) return;
     await call("results.export", { plot, params, outputDir, path });
     toast(`${path}`, "success", 4000);
+    if (!isDesktop()) downloadFile(path); // the file was written on the back end; hand a copy to the browser too
   } catch (e) {
     reportError(e);
   }

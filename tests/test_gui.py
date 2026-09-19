@@ -93,12 +93,14 @@ def test_progress_line_parsing():
 def test_server_serves_page_and_blobs():
     from avas.gui import bridge, server
     import numpy as np
-    srv, base = server.start()
+    srv = server.start()
+    base = srv.base_url
     try:
         with urllib.request.urlopen(f"{base}/index.html", timeout=10) as resp:
             assert b'<div id="root">' in resp.read()
         ref = bridge.blob(np.array([1.0, 2.0, 3.0]), "float64")
-        with urllib.request.urlopen(f"{base}/blob/{ref['__blob__']}", timeout=10) as resp:
+        req = urllib.request.Request(f"{base}/blob/{ref['__blob__']}", headers={server.TOKEN_HEADER: srv.token})
+        with urllib.request.urlopen(req, timeout=10) as resp:
             assert np.frombuffer(resp.read(), dtype="<f8").tolist() == [1.0, 2.0, 3.0]
         with pytest.raises(urllib.error.HTTPError):
             urllib.request.urlopen(f"{base}/../avas/paths.py", timeout=10)

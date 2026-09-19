@@ -202,7 +202,8 @@ def list_models(provider, apiKey=None):
 
 # =========================================================================== page round trips
 def page_available():
-    return bridge.window() is not None or bool(bridge._subscribers)
+    """A page is connected to the event stream (desktop window or browser tab)."""
+    return bridge.connected() > 0
 
 
 def front_call(method, params=None, timeout=5.0):

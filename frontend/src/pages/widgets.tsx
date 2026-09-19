@@ -1,6 +1,6 @@
 // Small form widgets used by several pages.
-import { call } from "../bridge";
 import { reportError } from "../components/overlays";
+import { pickFile, pickFolder } from "../host";
 import { IconButton, TextInput } from "../components/ui";
 import { useT } from "../i18n";
 
@@ -38,10 +38,7 @@ export function PathPicker({
   const browse = async () => {
     try {
       const start = value && !readOnly ? value : directory ?? "";
-      const path =
-        mode === "folder"
-          ? await call<string | null>("dialog.openFolder", { directory: start })
-          : await call<string | null>("dialog.openFile", { directory: start, filters: filters ?? [] });
+      const path = mode === "folder" ? await pickFolder({ directory: start }) : await pickFile({ directory: start, filters: filters ?? [] });
       if (path) onChange(path);
     } catch (e) {
       reportError(e);

@@ -1,13 +1,8 @@
-// Calls into Python (pywebview js_api) and events coming back from it.
-// See avas/gui/bridge.py for the other side.
+// Transport to the Python back end (avas/gui/server.py): calls over HTTP, events over a WebSocket.
+// The same code runs inside the desktop window (pywebview) and in an ordinary browser; the page
+// URL says which: ?host=webview|browser, ?token=<access token>, and ?api=<base url> when the page
+// is served by the Vite dev server instead of the back end.
 import { t } from "./i18n";
-
-declare global {
-  interface Window {
-    pywebview?: { api: { call(method: string, params?: unknown): Promise<string> } };
-    __avasEmit?: (batch: [string, unknown][]) => void;
-  }
-}
 
 export class RpcError extends Error {
   detail?: string;
@@ -19,46 +14,32 @@ export class RpcError extends Error {
   }
 }
 
-let readyPromise: Promise<void> | null = null;
+export type HostKind = "webview" | "browser";
 
-// Development: "?devrpc" in the URL talks to avas.gui.devserver over HTTP.
-if (location.search.includes("devrpc") && !window.pywebview) {
-  window.pywebview = {
-    api: {
-      call: async (method: string, params?: unknown) => {
-        const res = await fetch("/rpc", { method: "POST", body: JSON.stringify({ method, params }) });
-        return res.text();
-      },
-    },
-  };
-  const source = new EventSource("/events");
-  source.onmessage = (e) => window.__avasEmit?.(JSON.parse(e.data));
+const query = new URLSearchParams(location.search);
+const apiBase = (query.get("api") ?? "").replace(/\/$/, "");
+const token = query.get("token") ?? "";
+const host: HostKind = query.get("host") === "webview" ? "webview" : "browser";
+
+/** "webview": the pywebview desktop window (native dialogs, quit, zoom); "browser": a plain browser tab. */
+export function hostKind(): HostKind {
+  return host;
 }
 
-export function ready(): Promise<void> {
-  if (!readyPromise) {
-    readyPromise = new Promise((resolve) => {
-      if (window.pywebview?.api) return resolve();
-      window.addEventListener("pywebviewready", () => resolve(), { once: true });
-      // pywebview may have injected the api before our listener was attached
-      const timer = setInterval(() => {
-        if (window.pywebview?.api) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 50);
-    });
-  }
-  return readyPromise;
+export function isDesktop(): boolean {
+  return host === "webview";
 }
 
-export function inHost(): boolean {
-  return !!window.pywebview;
+function authHeaders(): Record<string, string> {
+  return token ? { "X-AVAS-Token": token } : {};
 }
 
-let baseUrl = "";
-export function setBaseUrl(url: string) {
-  baseUrl = url;
+/** URL of a back-end resource with the access token attached (downloads, links). */
+export function apiUrl(path: string, params?: Record<string, string>): string {
+  const q = new URLSearchParams(params ?? {});
+  if (token) q.set("token", token);
+  const qs = q.toString();
+  return `${apiBase}${path}${qs ? `?${qs}` : ""}`;
 }
 
 type BlobRef = { __blob__: string; dtype: string; shape: number[] };
@@ -80,7 +61,7 @@ const CTORS: Record<string, { new (buf: ArrayBuffer): ArrayLike<number> }> = {
 
 async function resolveBlobs(value: unknown): Promise<unknown> {
   if (isBlob(value)) {
-    const res = await fetch(`${baseUrl}/blob/${value.__blob__}`);
+    const res = await fetch(`${apiBase}/blob/${value.__blob__}`, { headers: authHeaders() });
     if (!res.ok) throw new RpcError("Data transfer failed");
     const buf = await res.arrayBuffer();
     const Ctor = CTORS[value.dtype] ?? Float64Array;
@@ -109,14 +90,25 @@ function isBlobDeep(v: unknown): boolean {
 }
 
 export async function call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
-  await ready();
-  const raw = await window.pywebview!.api.call(method, params ?? {});
-  const reply = JSON.parse(raw) as { ok: boolean; result?: unknown; error?: string; detail?: string; user?: boolean };
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase}/api/rpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ method, params: params ?? {} }),
+    });
+  } catch {
+    throw new RpcError(t("The AVAS back end is not reachable."), undefined, true);
+  }
+  if (res.status === 401) throw new RpcError(t("This page has no valid access token; open AVAS from 'avas gui' or the link printed by 'avas serve'."), undefined, true);
+  if (!res.ok) throw new RpcError(`HTTP ${res.status}`, await res.text());
+  const reply = (await res.json()) as { ok: boolean; result?: unknown; error?: string; detail?: string; user?: boolean };
   // messages of expected problems (bridge.UserError) are translated when zh_CN.json has them
   if (!reply.ok) throw new RpcError(reply.user && reply.error ? t(reply.error) : reply.error ?? "Error", reply.detail, !!reply.user);
   return (await resolveBlobs(reply.result)) as T;
 }
 
+/* ------------------------------------------------------------------ events */
 type Listener = (payload: any) => void;
 const listeners = new Map<string, Set<Listener>>();
 
@@ -127,7 +119,7 @@ export function on(name: string, fn: Listener): () => void {
   return () => set!.delete(fn);
 }
 
-window.__avasEmit = (batch) => {
+function dispatchEvents(batch: [string, unknown][]) {
   for (const [name, payload] of batch) {
     const set = listeners.get(name);
     if (set) for (const fn of set) {
@@ -138,4 +130,41 @@ window.__avasEmit = (batch) => {
       }
     }
   }
-};
+}
+
+// The WebSocket reconnects by itself; events emitted while it was down are lost, so listeners of
+// "bridge.reconnected" fetch the state they care about again (the run state, the live envelope).
+let socket: WebSocket | null = null;
+let everConnected = false;
+let retryMs = 500;
+
+function wsUrl(): string {
+  const base = apiBase || location.origin;
+  return `${base.replace(/^http/, "ws")}/api/events${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+}
+
+function connectEvents() {
+  const ws = new WebSocket(wsUrl());
+  socket = ws;
+  ws.onopen = () => {
+    retryMs = 500;
+    if (everConnected) dispatchEvents([["bridge.reconnected", null]]);
+    everConnected = true;
+  };
+  ws.onmessage = (e) => {
+    try {
+      dispatchEvents(JSON.parse(e.data));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  ws.onclose = () => {
+    if (socket !== ws) return;
+    socket = null;
+    window.setTimeout(connectEvents, retryMs);
+    retryMs = Math.min(retryMs * 2, 5000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+connectEvents();

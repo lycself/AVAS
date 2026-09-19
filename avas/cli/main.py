@@ -6,6 +6,7 @@
     avas plot TYPE --output DIR [--input DIR] [--save FILE] [--no-show]
     avas plot phase --dst FILE [--plane x-x1 --plane phi-w] [--save FILE]
     avas gui [--lang en|zh_CN]
+    avas serve [--port 8765] [--host 127.0.0.1] [--open]
     avas info
 
 ``avas --input DIR --output DIR`` (without the word ``run``) is accepted too, so
@@ -305,6 +306,11 @@ def cmd_gui(args):
     return gui_main(argv=[], language=args.lang)
 
 
+def cmd_serve(args):
+    from avas.gui.serve import main as serve_main
+    return serve_main(args=args)
+
+
 def cmd_info(args):
     from avas.buildinfo import build_info
     from avas.paths import ENGINE_DIR, LOG_DIR, STATIC_DIR
@@ -386,6 +392,12 @@ def build_parser():
     p_gui = sub.add_parser("gui", help="start the graphical interface")
     p_gui.add_argument("--lang", choices=["en", "zh_CN"], help="UI language (default: last used)")
     p_gui.set_defaults(func=cmd_gui)
+
+    from avas.gui.serve import add_arguments as serve_arguments
+    p_serve = sub.add_parser("serve", help="serve the interface to a web browser",
+                             description="Serve the AVAS interface to a web browser and print its URL (with the access token).")
+    serve_arguments(p_serve)
+    p_serve.set_defaults(func=cmd_serve)
 
     p_info = sub.add_parser("info", help="show version and install locations")
     p_info.set_defaults(func=cmd_info)
@@ -480,7 +492,7 @@ def cmd_doctor(args):
 def _normalize_argv(argv):
     """``avas --input X --output Y``  ->  ``avas run --input X --output Y``."""
     argv = list(argv)
-    known = {"run", "plot", "gui", "info", "doctor", "-h", "--help", "-V", "--version"}
+    known = {"run", "plot", "gui", "serve", "info", "doctor", "-h", "--help", "-V", "--version"}
     if argv and argv[0] not in known and argv[0].startswith("-"):
         argv.insert(0, "run")
     return argv

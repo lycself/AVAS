@@ -8,8 +8,10 @@
 AVAS（Advanced Virtual Accelerator Software）是直线加速器束流动力学模拟程序：
 
 - C++ 计算内核：`avas/engine/AVAS.dll`（Linux 为 `libAVAS.so`），只有二进制，没有源码，不要修改。
-- Python 包 `avas/`：模拟流程、前后处理、命令行 `avas run / plot / gui / info / doctor`。
-- 桌面界面：pywebview + Edge WebView2 窗口，里面是 React 网页前端（`frontend/`），后端接口在 `avas/gui/services/`。
+- Python 包 `avas/`：模拟流程、前后处理、命令行 `avas run / plot / gui / serve / info / doctor`。
+- 界面：React 网页前端（`frontend/`）+ Python 后端（`avas/gui/services/`），二者只通过 HTTP / WebSocket 通信（`avas/gui/server.py`）。
+  `avas gui` 把页面放进 pywebview + Edge WebView2 桌面窗口；`avas serve` 不开窗口，在浏览器里用同一个页面（将来部署到服务器的基础，
+  目前没有用户管理和工作区隔离，只在本机或可信网络使用）。
 - 右侧 AI 助手：OpenAI 兼容接口（含本地模型），修改必须经用户批准。
 
 用户是加速器物理研究人员，界面有中文 / 英文，**和用户交流用中文**。
@@ -19,8 +21,9 @@ AVAS（Advanced Virtual Accelerator Software）是直线加速器束流动力学
 ```
 avas/
   cli/            命令行入口
-  gui/            界面后端：app.py 窗口，bridge.py RPC 与事件，server.py 本地服务，devserver.py 浏览器调试
-    services/     每个页面一个模块，函数用 @rpc("page.action") 注册
+  gui/            界面后端：server.py HTTP / WebSocket 服务（RPC、事件、blob、下载、令牌），bridge.py RPC 注册与事件队列，
+                  app.py 桌面窗口（avas gui），serve.py 浏览器模式（avas serve），devserver.py 旧命令的别名
+    services/     每个页面一个模块，函数用 @rpc("page.action") 注册；fs.py 给页面自带的文件选择器列目录
     web/          前端编译结果（提交到仓库，用户不需要 Node.js）
   ai/             AI 助手：client.py、agent.py、avas_tools.py（工具）、sandbox.py（副本上运行模拟）、avas_prompt.py
   data/           schema.py（全部关键字的参数、单位、中英文说明）、lattice_doc.py（lattice 解析与检查）、segment.py（分段运行物理）
@@ -28,7 +31,8 @@ avas/
   post/           后处理（analysis/、plot/）
   core/ api/ utils/ engine/ static/ gpu/ hpc/
 frontend/src/
-  components/     ui.tsx（按钮、输入框等基础组件）、overlays.tsx（菜单、对话框、toast）、Plot.tsx（Plotly 封装）
+  bridge.ts       与后端的通信（fetch + WebSocket、令牌、blob）；host.ts 桌面窗口 / 浏览器的差异（文件对话框、打开文件、退出、缩放）
+  components/     ui.tsx（按钮、输入框等基础组件）、overlays.tsx（菜单、对话框、toast）、Plot.tsx（Plotly 封装）、FileDialog.tsx（浏览器模式的文件选择器）
   pages/          七个页面
   lattice/        文本编辑器（Monaco）、结构编辑器、可视化编辑器、2D 布局、3D 视图
   results/ files/ assistant/ shell/ store/（zustand）
@@ -46,7 +50,9 @@ packaging/        PyInstaller + Inno Setup 打包
 - Python：只用仓库里的 `.venv`（Python 3.11），命令写 `.venv\Scripts\python.exe`。**不要用 Anaconda base 解释器**；不要新增创建 venv 的安装脚本（用户明确不要，README 写手动步骤）。
 - 测试：`.venv\Scripts\python.exe -m pytest`。`tests/test_gui.py`、`tests/test_segment.py` 会真正运行内核，较慢；改哪部分至少跑对应的测试文件。
 - 前端：`cd frontend && npm run build`（先 `tsc --noEmit` 再 `vite build`），输出到 `avas/gui/web/` 并写 `source-hash.json`。**改了前端就要重新构建，并把 `avas/gui/web/` 一起提交。**
-- 浏览器调试界面：`.venv\Scripts\python.exe -m avas.gui.devserver --port 8765 --settings <临时 json>`，打开 `http://127.0.0.1:8765/index.html?devrpc`。改了 Python 代码要重启它。
+- 浏览器调试界面：`.venv\Scripts\python.exe -m avas serve --port 8765 --token dev --settings <临时 json>`，打开它打印的地址
+  （`http://127.0.0.1:8765/index.html?host=browser&token=dev`；`python -m avas.gui.devserver` 是同样效果的旧命令）。改了 Python 代码要重启它。
+  脚本调用后端：`POST /api/rpc`（JSON `{"method","params"}`，头 `X-AVAS-Token`），事件用 WebSocket `/api/events?token=…`。
   加 `--fake-engine 60 [--fake-lose 0.1]` 时运行不调用内核，而是重放输出目录里已有的 DataSet.txt（`avas/gui/fake_engine.py`），用来检查实时显示。
   **不要在用户的真实项目上用假引擎**（它会改写 OutputFile），先把项目复制到临时目录。
 - 打包：`python packaging/build.py`。生成的 exe 不会随源码更新，改代码后要重新打包。
@@ -66,7 +72,10 @@ packaging/        PyInstaller + Inno Setup 打包
 
 ### 5.1 界面技术与风格
 
-- 技术栈固定：pywebview + React 19 + TypeScript + Vite + zustand；文本编辑用 Monaco，图用 Plotly，3D 用 three.js。不要引入其他 UI 框架或组件库。
+- 技术栈固定：React 19 + TypeScript + Vite + zustand 前端，Starlette + uvicorn 后端服务，桌面窗口用 pywebview；文本编辑用 Monaco，图用 Plotly，3D 用 three.js。不要引入其他 UI 框架或组件库。
+- **桌面与浏览器两种宿主**：页面地址里的 `host=webview|browser` 决定（`bridge.ts` 的 `isDesktop()`）。所有依赖宿主的操作
+  （文件对话框、打开文件 / 文件夹、外部链接、退出、缩放）只写在 `host.ts` 里，页面调用 `pickFolder` / `pickFile` / `openPath` 等，
+  **不要在页面里直接调 `dialog.*` / `shell.*` / `app.quit` / `app.zoom`**。浏览器里用 `components/FileDialog.tsx`（后端 `fs.list`）、下载链接 `/download?path=`。
 - 优先复用 `components/ui.tsx`、`components/overlays.tsx`（`openMenu`、`choiceDialog`、`toast`、`reportError` 等）、`components/Plot.tsx`。
 - **颜色**只来自 `styles/tokens.css` 的 CSS 变量；canvas 和 three.js 通过 `getComputedStyle` / `cssColor()` 读取变量。确实需要写死颜色时（Plotly 调色板、Monaco 主题）在该行注明 `design:allow-colour 原因`。主题切换必须保持一帧内完成，不要做逐元素重新计算样式的方案。
 - **文字**：界面文字写英文原文 `t("...")`，中文放 `zh_CN.json`；带参数用 `t("… {name}", { name })`。关键字、参数的物理说明来自 `avas/data/schema.py` 的中英文对照，前端用 `pick()` 选择，不要在组件里另写说明文字。
@@ -75,14 +84,18 @@ packaging/        PyInstaller + Inno Setup 打包
 
 ### 5.2 前后端通信
 
-- 前端只通过 `call(method, params)` 调用后端；后端函数放在 `avas/gui/services/<页面>.py`，用 `@rpc("页面.动作")` 注册。
+- 前端只通过 `call(method, params)` 调用后端（`POST /api/rpc`）；后端函数放在 `avas/gui/services/<页面>.py`，用 `@rpc("页面.动作")` 注册。
+  桌面窗口和浏览器走同一条 HTTP 通路，pywebview **不再**提供 js_api，也不用 `evaluate_js` 推送事件。
+- 每个请求必须带启动时生成的**访问令牌**（头 `X-AVAS-Token`，WebSocket 和下载链接用 `?token=`），页面从自己的地址里读取；
+  不要加免令牌的接口，也不要放开 CORS（RPC 能读写本机文件）。服务器默认只监听 127.0.0.1。
 - 需要显示给用户的错误抛 `bridge.UserError("…")`；其他异常会作为程序错误记录日志。
 - 大的数值数组用 `bridge.blob(array)` 以二进制传输，不要塞进 JSON。
-- 后端主动通知用 `bridge.emit(name, payload)`（批量发送），前端 `on(name, fn)` 接收。payload 要是发送时刻的快照（深拷贝），不要传之后还会被修改的对象。
+- 后端主动通知用 `bridge.emit(name, payload)`（批量经 WebSocket 发送），前端 `on(name, fn)` 接收。payload 要是发送时刻的快照（深拷贝），不要传之后还会被修改的对象。
+  没有页面连接时事件直接丢弃，不排队；页面重连后收到本地事件 `bridge.reconnected`，需要的状态自己重新取（`store/app.ts` 已取运行状态和项目摘要）。
 - `project` 事件在项目摘要任何变化时都会发出，不只是切换项目；重置"每个项目"的界面状态前先比较项目路径。
 - 后端 `UserError` 的文字是英文，前端在 `zh_CN.json` 有对应条目时自动翻译（`bridge.ts`）；给用户看的固定提示请同时加翻译。
 - 运行记录 `avas_run.json` 里的 `lattice_sha1` 是运行所用 lattice 文本的指纹（`avas/gui/textio.py` 的 `text_fingerprint`，前端 `textFingerprint` 必须算出相同结果），用于提示"上次运行后 lattice 已修改"。
-- **绝不能在 pywebview 的界面线程事件（如窗口关闭）里调用 `evaluate_js`**，会死锁；需要的状态保存在 Python 端。
+- **绝不能在 pywebview 的界面线程事件（如窗口关闭）里调用 `evaluate_js`**，会死锁；需要的状态保存在 Python 端（正常代码路径已不用 `evaluate_js`，只有自动化检查脚本用）。
 
 ### 5.3 Lattice 编辑
 
