@@ -9,6 +9,7 @@ import { Button, Icon, IconButton, Select, Spinner, TextInput } from "../compone
 import { fmtG } from "../format";
 import { useT } from "../i18n";
 import { useApp } from "../store/app";
+import { basename, cssColor } from "../util";
 import { exportFigure } from "./PlotTab";
 
 const COORDS: { value: string; label: string }[] = [
@@ -48,13 +49,9 @@ type Source =
   | { kind: "dst"; files: string[]; initial?: string }
   | { kind: "plt"; files: string[]; initial?: string };
 
-function basename(p: string) {
-  return p.split(/[\\/]/).pop() ?? p;
-}
-
 /** In dark mode empty pixels take the plot background instead of white. */
 function darkScale(scale: [number, string][]): [number, string][] {
-  const bg = getComputedStyle(document.documentElement).getPropertyValue("--editor-bg").trim() || "#1f1f1f"; // design:allow-colour fallback of --editor-bg
+  const bg = cssColor("--editor-bg", "#1f1f1f"); // design:allow-colour fallback of --editor-bg
   const hex = (c: string) => {
     let v = c.replace("#", "");
     if (v.length === 3) v = v.split("").map((x) => x + x).join("");

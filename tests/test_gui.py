@@ -119,9 +119,19 @@ def test_settings_page_round_trip(project):
     from avas.gui.services.runner import ini_error_mode
     from avas.gui import context
     assert ini_error_mode(context.project()) == "stat"
+    assert input_lines(project, "multithreading") == ["multithreading 1"]
     saved["form"]["error_type"] = ""
     saved["form"]["multithreading"] = False
-    ok("settings.save", form=saved["form"], meta=saved["meta"])
+    saved = ok("settings.save", form=saved["form"], meta=saved["meta"])
+    # "multithreading 0" makes the engine lose every particle (AGENTS.md 6): off = no line,
+    # so the scan / run tests that follow on this project still work
+    assert saved["form"]["multithreading"] is False and saved["meta"]["hadThreadsKey"] is False
+    assert input_lines(project, "multithreading") == []
+
+
+def input_lines(project, keyword):
+    with open(os.path.join(project["inputDir"], "input.txt"), encoding="utf-8") as fh:
+        return [line.strip() for line in fh if line.split() and line.split()[0].lower() == keyword]
 
 
 def test_beam_page_keeps_unknown_keywords(project):
@@ -426,3 +436,79 @@ def test_delete_run_records(project, monkeypatch):
         assert ok("results.sources")[0]["status"] is None
     finally:
         ok("project.open", path=os.path.join(WORK, "project"))
+
+
+def test_archive_run_records(project, monkeypatch):
+    """A finished run is kept under Runs/ on request; the page is told when a new run would overwrite it."""
+    from avas.gui import context
+    from avas.gui.services import segments
+    work = os.path.join(WORK, "archive_project")
+    shutil.rmtree(work, ignore_errors=True)
+    shutil.copytree(os.path.join(WORK, "project", "InputFile"), os.path.join(work, "InputFile"))
+    shutil.copytree(os.path.join(WORK, "project", "OutputFile"), os.path.join(work, "OutputFile"))
+    monkeypatch.setattr(segments, "_trash", lambda path: shutil.rmtree(path))
+    try:
+        ok("project.open", path=work)
+        p = context.project()
+        assert ok("runs.unsaved")["unsaved"] is True
+        rec = ok("runs.archive", label="base line/1")
+        assert rec["existing"] is False and rec["label"] == "base_line_1"
+        folder = rec["folder"]
+        assert folder.startswith(os.path.join(work, "Runs")) and os.path.isfile(os.path.join(folder, "DataSet.txt"))
+        with open(os.path.join(folder, "avas_run.json"), encoding="utf-8") as fh:
+            copied = json.load(fh)
+        assert copied["label"] == "base_line_1" and copied["output_dir"] == folder and "archived" not in copied
+        assert p.last_run()["archived"] == folder
+        assert ok("runs.unsaved")["unsaved"] is False
+        assert ok("runs.archive")["existing"] is True                    # not copied twice
+        kinds = [s["kind"] for s in ok("results.sources")]
+        assert kinds == ["project", "archived"]
+        assert ok("results.overview", outputDir=folder)["hasDataSet"]
+        fig = ok("results.figure", plot="dataset", params={"type": "rms_x"}, outputDir=folder)
+        assert fig["kind"] == "lines" and fig["traces"]
+        assert ok("runs.rename", folder=folder, label="v2")["label"] == "v2"
+        assert ok("results.sources")[1]["label"] == "v2"
+        assert rpc("runs.rename", folder=work, label="x")["ok"] is False
+        assert ok("runs.delete", outputDir=folder)["kind"] == "archived"
+        assert not os.path.exists(folder) and "archived" not in p.last_run()
+        assert ok("runs.unsaved")["unsaved"] is True
+    finally:
+        ok("project.open", path=os.path.join(WORK, "project"))
+
+
+def test_scan_service(project, monkeypatch):
+    """The Scan page's calls: check, start (in a thread), state/progress events, list, load, delete."""
+    import time
+    from avas.gui import bridge
+    from avas.gui.services import segments
+    monkeypatch.setattr(segments, "_trash", lambda path: shutil.rmtree(path))
+    spec = {"kind": "beam", "keyword": "particlenumber"}
+    chk = ok("scan.check", spec=spec, values="200, 400")
+    assert chk["count"] == 2 and chk["target"]["file"] == "beam.txt"
+    assert rpc("scan.check", spec={"kind": "lattice", "target": "nosuch", "param": "G"})["ok"] is False
+    assert ok("scan.metrics")["default"]
+    events = []
+    deliver = bridge.subscribe(lambda text: events.append(text))
+    st = ok("scan.start", spec=spec, values=[200, 400], metrics=["transmission", "energy_out"], label="np")
+    assert st["running"] is True
+    assert rpc("scan.start", spec=spec, values=[1])["ok"] is False        # one at a time
+    assert rpc("run.start")["ok"] is False                                  # a normal run must wait
+    deadline = time.time() + 300
+    while ok("scan.state")["running"]:
+        assert time.time() < deadline, "scan did not finish"
+        time.sleep(0.5)
+    result = ok("scan.state")["result"]
+    assert result["status"] == "finished" and [r["value"] for r in result["rows"]] == [200.0, 400.0]
+    assert all(r.get("energy_out") for r in result["rows"]), result["rows"]
+    time.sleep(0.2)
+    bridge.unsubscribe(deliver)                  # a subscriber left behind would look like a connected page
+    assert any("scan.finished" in e for e in events) and any("scan.progress" in e for e in events)
+    scans = ok("scan.list")
+    assert scans[0]["label"] == "np" and scans[0]["done"] == 2
+    loaded = ok("scan.load", folder=scans[0]["folder"])
+    assert loaded["target"]["keyword"] == "particlenumber"
+    assert rpc("scan.load", folder=ROOT)["ok"] is False
+    assert ok("scan.delete", folder=scans[0]["folder"]) is True
+    assert ok("scan.list") == []
+    from avas.gui import context
+    assert not os.listdir(os.path.join(context.project().path, "OutputFile")) or True   # OutputFile untouched

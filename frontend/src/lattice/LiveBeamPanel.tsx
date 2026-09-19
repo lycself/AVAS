@@ -17,7 +17,7 @@ import { PlayerBar } from "./PlayerBar";
 import { loadSchema, type LatticeDoc, type Schema } from "./types";
 
 const SHOW: LayoutShow = { run: false, preview: false, aperture: true, losses: true, max: false, energy: false, scale: "beam", band: true };
-const ALL_KINDS: ("project" | "segment" | "assistant")[] = ["project", "segment", "assistant"];
+const ALL_KINDS: ("project" | "segment" | "assistant" | "scan")[] = ["project", "segment", "assistant", "scan"];
 
 export function LiveBeamPanel() {
   const t = useT();
@@ -31,6 +31,8 @@ export function LiveBeamPanel() {
   const projectOpen = useApp((s) => s.project.open);
   const [schema, setSchema] = useState<Schema | null>(null);
   const [doc, setDoc] = useState<{ hash: string; doc: LatticeDoc } | null>(null);
+  /** the run's lattice could not be parsed (the last good one stays on screen) */
+  const [parseError, setParseError] = useState<string | null>(null);
   const [restMass, setRestMass] = useState<number | null>(null);
   const frame = useBunchFrame(4);
 
@@ -42,8 +44,12 @@ export function LiveBeamPanel() {
     if (!lattice || doc?.hash === lattice.hash) return;
     let alive = true;
     call<LatticeDoc>("lattice.parse", { text: lattice.text, fieldDirs: lattice.fieldDirs })
-      .then((d) => alive && setDoc({ hash: lattice.hash, doc: d }))
-      .catch(() => undefined);
+      .then((d) => {
+        if (!alive) return;
+        setDoc({ hash: lattice.hash, doc: d });
+        setParseError(null);
+      })
+      .catch((e) => alive && setParseError(e?.message ?? String(e)));
     return () => {
       alive = false;
     };
@@ -74,9 +80,9 @@ export function LiveBeamPanel() {
   if (!run) return null;
 
   const total = doc?.doc.totalLength ?? NaN;
-  let task = run.kind === "segment" ? t("Segment {label}", { label: run.label }) : run.kind === "assistant" ? t("Assistant: {task}", { task: t(run.label) }) : t("Full lattice");
+  let task = run.kind === "segment" ? t("Segment {label}", { label: run.label }) : run.kind === "assistant" ? t("Assistant: {task}", { task: t(run.label) }) : run.kind === "scan" ? t("Parameter scan: {task}", { task: run.label }) : t("Full lattice");
   if (episode?.stageLabel && run.kind === "segment") task += ` · ${t("stage {i} of {n}: {label}", { i: episode.index ?? "?", n: episode.total ?? "?", label: t(episode.stageLabel) })}`;
-  else if (run.kind === "assistant" && episode?.index) task += ` · ${t("simulation {i} of {n}", { i: episode.index, n: episode.total ?? "?" })}`;
+  else if ((run.kind === "assistant" || run.kind === "scan") && episode?.index) task += ` · ${t("simulation {i} of {n}", { i: episode.index, n: episode.total ?? "?" })}`;
   else if (run.mode && run.mode !== "basic" && episode?.index) task += ` · ${t("error seed {i} of {n}", { i: episode.index, n: episode.total ?? "?" })}`;
 
   const particles0 = frame?.particles0 ?? episode?.particles0 ?? NaN;
@@ -92,11 +98,16 @@ export function LiveBeamPanel() {
           {run.running ? t("Live beam") : t("Beam of the finished run")}
         </span>
         <span className="muted ellipsis grow">{task}</span>
+        {parseError && (
+          <span className="warning-text" data-tip={parseError}>
+            <Icon name="warning" /> {t("lattice not parsed")}
+          </span>
+        )}
         <span className="soft" data-tip={t("The bunch and its particles are drawn from the rms envelope written so far; they are not the simulated particle distribution.")}>
           <Icon name="info" /> {t("schematic")}
         </span>
         {!run.running && (
-          <PlayerBar id={`live:${run.id}:${episode?.id ?? ""}`} label={task} track={track} restMass={run.kind === "assistant" ? null : restMass} kind={run.kind} />
+          <PlayerBar id={`live:${run.id}:${episode?.id ?? ""}`} label={task} track={track} restMass={run.kind === "assistant" || run.kind === "scan" ? null : restMass} kind={run.kind} />
         )}
       </div>
       <div className="live-beam-view">

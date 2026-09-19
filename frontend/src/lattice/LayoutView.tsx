@@ -14,7 +14,8 @@ import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
 import type { LiveBandItem } from "../store/live";
 import { subscribeBunch, useMotion, type BunchFrame } from "./bunchPlayer";
-import { aperture, cssColor, drawGlyph, elementShape, isZeroLength, niceStep, polarity, type Shape } from "./glyphs";
+import { cssColor, niceStep } from "../util";
+import { aperture, drawGlyph, elementShape, isZeroLength, polarity, type Shape } from "./glyphs";
 import { dropMarker, type NewElementKind } from "./structureOps";
 import { elementColorVar, fmt6, worstIssue, type LatticeDoc, type Schema } from "./types";
 import { sampleAt, type Preview, type RunEnvelope } from "./usePreview";
@@ -130,6 +131,7 @@ export function LayoutView({
   const t = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const markerRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const theme = useApp((s) => s.resolvedTheme);
   const motion = useMotion();
@@ -540,7 +542,7 @@ export function LayoutView({
       ctx.translate(size.w - 8, plot.top + ph / 2);
       ctx.rotate(Math.PI / 2);
       ctx.textAlign = "center";
-      ctx.fillText("W (MeV)", 0, 0);
+      ctx.fillText(t("W (MeV)"), 0, 0);
       ctx.restore();
     }
 
@@ -573,32 +575,49 @@ export function LayoutView({
       if (x < plot.left + pw - 40) ctx.fillText(String(Number(z.toPrecision(6))), x, ay);
     }
     ctx.textAlign = "right";
-    ctx.fillText("z (m)", plot.left + pw, ay);
+    ctx.fillText(t("z (m)"), plot.left + pw, ay);
+    drawBunch(lastFrame.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, view, size, selected, theme, series, lossSets, show, yMax, eRange, highlight, solo, range, compact]);
 
-    // ---- hover and drop markers
-    if (hover && hover.x >= plot.left && hover.x <= plot.left + pw) {
-      ctx.strokeStyle = c.fg;
+  // ---- hover crosshair and drop marker on their own canvas: moving the mouse never redraws the curves
+  const hoverX = hover?.x ?? null;
+  const dropZ = drop?.z ?? null;
+  useEffect(() => {
+    const canvas = markerRef.current;
+    if (!canvas) return;
+    const g = geo.current;
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(g.size.w * dpr);
+    const h = Math.round(g.size.h * dpr);
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext("2d")!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, g.size.w, g.size.h);
+    if (hoverX != null && hoverX >= g.plot.left && hoverX <= g.plot.left + g.pw) {
+      ctx.strokeStyle = cssColor("--fg");
       ctx.globalAlpha = 0.35;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.moveTo(Math.round(hover.x) + 0.5, 0);
-      ctx.lineTo(Math.round(hover.x) + 0.5, size.h - AXIS_H);
+      ctx.moveTo(Math.round(hoverX) + 0.5, 0);
+      ctx.lineTo(Math.round(hoverX) + 0.5, g.size.h - AXIS_H);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
     }
-    if (drop) {
-      const x = xOf(drop.z);
-      ctx.strokeStyle = c.accent;
+    if (dropZ != null) {
+      const x = g.xOf(dropZ);
+      ctx.strokeStyle = cssColor("--accent");
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, size.h - AXIS_H);
+      ctx.lineTo(x, g.size.h - AXIS_H);
       ctx.stroke();
     }
-    drawBunch(lastFrame.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, view, size, selected, theme, series, lossSets, show, hover, drop, yMax, eRange, highlight, solo, range, compact]);
+  }, [hoverX, dropZ, size, view, theme, show.energy, compact]);
 
   // ---- the schematic bunch, on its own canvas redrawn per animation frame
   function drawBunch(f: BunchFrame | null) {
@@ -829,6 +848,7 @@ export function LayoutView({
         }}
         onDoubleClick={fit}
       />
+      <canvas ref={markerRef} className="layout-overlay" />
       <canvas ref={overlayRef} className="layout-overlay" />
       {hover && hoverInfo && (
         <div className="layout-tip" style={{ left: Math.min(hover.x + 14, size.w - 280), top: Math.max(4, Math.min(hover.y + 14, size.h - 20 - hoverInfo.length * 18)) }}>

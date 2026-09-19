@@ -34,6 +34,21 @@ def static_file(name):
     return os.path.join(STATIC_DIR, name)
 
 
+MANUAL_NAME = "使用说明20260427.docx"
+
+
+def manual_path():
+    """The user manual (docx) next to the package or in the frozen build's docs/, or None."""
+    roots = [os.path.join(os.path.dirname(PACKAGE_DIR), "docs")]
+    if getattr(sys, "frozen", False):
+        roots.insert(0, os.path.join(os.path.dirname(sys.executable), "docs"))
+    for root in roots:
+        candidate = os.path.join(root, MANUAL_NAME)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
 def resolve_io_dirs(project_path=None, input_file=None, output_file=None):
     """Return ``(input_dir, output_dir)``.
 

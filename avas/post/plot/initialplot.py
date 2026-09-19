@@ -1,15 +1,12 @@
 """改文件定义了图像的初始类"""
-import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.path import Path
-from avas.utils.treatlist import get_dimension
 import numpy as np
 from matplotlib.ticker import MultipleLocator
 from matplotlib.colors import LinearSegmentedColormap
-from avas.utils.my_jet import make_tracewin_like_jet
 class PicturelBar_2D():
     """
     二维柱状图，父类

@@ -3,7 +3,7 @@ import { call } from "../bridge";
 import { pickFile } from "../host";
 import { confirmDialog, DialogFrame, reportError, showDialog, toast } from "../components/overlays";
 import { Plot, seriesColor } from "../components/Plot";
-import { Button, Checkbox, Section, Select, Spinner, TextInput } from "../components/ui";
+import { Button, Checkbox, IconButton, Section, Select, Spinner, TextInput } from "../components/ui";
 import { fmtG } from "../format";
 import { t, useT } from "../i18n";
 import { useApp, useInputsLocked } from "../store/app";
@@ -202,6 +202,12 @@ export default function BeamPage() {
           hint={tt("Initial beam: either generated from the parameters below or read from a particle (.dst) file.")}
           actions={
             <>
+              {(ed.canUndo || ed.canRedo) && (
+                <>
+                  <IconButton icon="discard" tip={`${tt("Undo")}  (Ctrl+Z)`} disabled={!ed.canUndo || locked} onClick={ed.undo} />
+                  <IconButton icon="redo" tip={`${tt("Redo")}  (Ctrl+Y)`} disabled={!ed.canRedo || locked} onClick={ed.redo} />
+                </>
+              )}
               {ed.dirty && (
                 <Button variant="ghost" icon="discard" disabled={locked} onClick={ed.revert}>
                   {tt("Revert")}

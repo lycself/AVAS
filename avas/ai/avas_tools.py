@@ -31,17 +31,19 @@ from avas.ai.agent import Tool, ToolError
 from avas.data import schema
 from avas.data.lattice_doc import ERROR, LatticeDocument, format_statement
 
-ELEMENT_KEYS = {"drift", "field", "quad", "solenoid", "bend", "steerer", "edge", "diag_energy", "diag_size", "diag_position"}
+from avas.data import lattice_edit as _le
+
+ELEMENT_KEYS = _le.ELEMENT_KEYS
 MAX_ROWS = 80
 
 
 # =========================================================================== helpers
-def _num(v):
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return f if math.isfinite(f) else None
+# The lattice-addressing helpers live in avas.data.lattice_edit (shared with parameter
+# scans and the CLI); here their errors become ToolError for the agent loop.
+_num = _le.num
+_fmt_value = _le.fmt_value
+element_numbers = _le.element_numbers
+param_info = _le.param_info
 
 
 def _g(v, digits=6):
@@ -49,119 +51,20 @@ def _g(v, digits=6):
     return None if f is None else float(f"{f:.{digits}g}")
 
 
-def _fmt_value(v):
-    if isinstance(v, bool):
-        return "1" if v else "0"
-    if isinstance(v, (int, np.integer)):
-        return str(int(v))
-    if isinstance(v, (float, np.floating)):
-        return repr(float(f"{float(v):.10g}"))
-    return str(v).strip()
+def _tool(fn):
+    def wrapped(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except _le.LatticeEditError as exc:
+            raise ToolError(str(exc)) from exc
+    wrapped.__name__ = fn.__name__
+    wrapped.__doc__ = fn.__doc__
+    return wrapped
 
 
-def element_numbers(doc):
-    """line_no -> element number as shown by the text editor (0, 1, 2 … over element keywords)."""
-    out = {}
-    n = 0
-    for st in doc.statements:
-        if st.key in ELEMENT_KEYS:
-            out[st.line_no] = n
-            n += 1
-    return out
-
-
-def resolve(doc, spec):
-    """The statement addressed by ``{"line": 1-based}``, ``{"name": ..}`` or ``{"index": element number}``."""
-    if isinstance(spec, (int, float)):
-        spec = {"line": int(spec)}
-    elif isinstance(spec, str):
-        spec = {"line": int(spec)} if spec.strip().isdigit() else {"name": spec}
-    if not isinstance(spec, dict):
-        raise ToolError("Address an element with line (1-based), name or index.")
-    if spec.get("line") not in (None, ""):
-        line = int(spec["line"]) - 1
-        st = doc.by_line.get(line)
-        if st is None:
-            raise ToolError(f"No statement on line {line + 1} (comment or blank line?).")
-        return st
-    if spec.get("name"):
-        name = str(spec["name"]).strip().lower()
-        hits = [s for s in doc.statements if s.name.lower() == name]
-        if not hits:
-            hits = [s for s in doc.statements if s.key == "field" and s.param(8).lower() == name]
-            if len(hits) > 1:
-                raise ToolError(f"'{spec['name']}' is a field map used by {len(hits)} elements (lines "
-                                f"{', '.join(str(s.line_no + 1) for s in hits[:12])}); address one by line.")
-        if not hits:
-            raise ToolError(f"No element named '{spec['name']}'. Use list_elements to find it.")
-        return hits[0]
-    if spec.get("index") not in (None, ""):
-        idx = int(spec["index"])
-        for line, n in element_numbers(doc).items():
-            if n == idx:
-                return doc.by_line[line]
-        raise ToolError(f"No element number {idx}.")
-    raise ToolError("Address an element with line (1-based), name or index.")
-
-
-def param_index(st, key):
-    """Index of parameter *key* ("G", "Kb", "phase", "p4" or 4 for the 4th parameter, 1-based)."""
-    spec = st.spec
-    if isinstance(key, (int, float)) or (isinstance(key, str) and key.strip().isdigit()):
-        k = int(key) - 1
-    elif isinstance(key, str) and re.fullmatch(r"[pP]\d+", key.strip()):
-        k = int(key.strip()[1:]) - 1
-    else:
-        want = str(key).strip().lower()
-        k = None
-        if spec:
-            for i, p in enumerate(spec.params):
-                if p.key.lower() == want or p.label[0].lower() == want or p.label[0].lower().split(" ")[-1] == want:
-                    if p.kind == schema.RESERVED:
-                        continue
-                    k = i
-                    break
-        if k is None:
-            names = [p.key for p in spec.params if p.kind != schema.RESERVED] if spec else []
-            raise ToolError(f"'{key}' is not a parameter of {st.keyword}. Parameters: {', '.join(names)} "
-                            "(or p1, p2 … by position).")
-    if k < 0 or (spec and k >= max(len(spec.params), len(st.params))):
-        raise ToolError(f"Parameter position {k + 1} is out of range for {st.keyword}.")
-    if spec and k < len(spec.params) and spec.params[k].kind == schema.RESERVED:
-        raise ToolError(f"Parameter {k + 1} of {st.keyword} is reserved (always 0).")
-    return k
-
-
-def check_value(st, k, value):
-    spec = st.spec
-    p = spec.params[k] if spec and k < len(spec.params) else None
-    text = _fmt_value(value)
-    if not text:
-        raise ToolError("Empty value.")
-    if p is None:
-        return text
-    if p.kind == schema.FLOAT and _num(text) is None:
-        raise ToolError(f"{p.key} of {st.keyword} must be a number, got '{text}'.")
-    if p.kind in (schema.INT, schema.FLAG):
-        f = _num(text)
-        if f is None or not float(f).is_integer():
-            raise ToolError(f"{p.key} of {st.keyword} must be an integer, got '{text}'.")
-        text = str(int(f))
-    if p.kind == schema.ENUM:
-        v = p.choice_value(text)
-        if v is None:
-            raise ToolError(f"{p.key} of {st.keyword} must be one of {[c for c, _ in p.choices]}, got '{text}'.")
-        text = str(v)
-    if p.key in ("L", "R") and _num(text) is not None and _num(text) < 0:
-        raise ToolError(f"{p.key} must not be negative.")
-    return text
-
-
-def param_info(st, k):
-    spec = st.spec
-    p = spec.params[k] if spec and k < len(spec.params) else None
-    return {"param": p.key if p else f"p{k + 1}", "label": p.label[0] if p else f"parameter {k + 1}",
-            "unit": p.unit if p else ""}
+resolve = _tool(_le.resolve)
+param_index = _tool(_le.param_index)
+check_value = _tool(_le.check_value)
 
 
 def element_summary(st):
@@ -213,11 +116,7 @@ def validate_new_text(old_doc, new_text, field_dirs):
     return new_doc
 
 
-def replace_lines(text, replacements):
-    lines = text.splitlines()
-    for line_no, new in replacements.items():
-        lines[line_no] = new
-    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+replace_lines = _le.replace_lines
 
 
 def _selected_statements(doc, select):

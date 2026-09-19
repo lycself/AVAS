@@ -186,6 +186,7 @@ def main(argv=None, language=None):
                   private_mode=False, storage_path=storage, icon=_icon_path())
     services.runner.shutdown()
     services.assistant.shutdown()
+    services.scan.shutdown()
     srv.shutdown()
     return 0
 

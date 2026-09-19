@@ -23,7 +23,6 @@ import sys
 import threading
 import time
 
-from avas.data.fieldmap import EXT_MEANING
 from avas.gui import proctree
 
 log = logging.getLogger("avas.gui")
@@ -32,7 +31,6 @@ _lock = threading.RLock()
 _active = {"proc": None, "job": None, "out": None, "index": None, "lattice": None, "field_dirs": None}
 _activity = None                  # dict while a study is active, see Sandbox.begin
 KEEP_OUTPUT = ("DataSet.txt", "avas_run.json", "Phase.txt", "synData.txt")
-TEXT_SUFFIXES = (".txt", ".ini", ".dat", ".csv")
 _PROGRESS = re.compile(r"Simulate progress\s+([\d.]+)\s*%", re.IGNORECASE)
 
 
@@ -54,28 +52,10 @@ def work_root(project):
     return os.path.join(project.path, ".avas_ai")
 
 
-def _is_field_map(name):
-    return os.path.splitext(name)[1].lstrip(".").lower() in EXT_MEANING
-
-
 def copy_text_inputs(project, dest):
     """Copy the text input files of *project* (and a relative particle file) into *dest*."""
-    os.makedirs(dest, exist_ok=True)
-    src = project.input_dir
-    for name in os.listdir(src):
-        path = os.path.join(src, name)
-        if os.path.isfile(path) and not _is_field_map(name) and name.lower().endswith(TEXT_SUFFIXES):
-            shutil.copy2(path, os.path.join(dest, name))
-    beam = os.path.join(dest, "beam.txt")
-    if not os.path.isfile(beam):
-        return
-    with open(beam, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            parts = line.split("!", 1)[0].split()
-            if len(parts) >= 2 and parts[0].lower() == "readparticledistribution" and parts[1].lower() != "unknown":
-                file = os.path.join(src, parts[1])
-                if not os.path.isabs(parts[1]) and os.path.isfile(file):
-                    shutil.copy2(file, os.path.join(dest, parts[1]))
+    from avas.data.inputs import copy_text_inputs as copy_inputs   # shared with `avas run` staging
+    copy_inputs(project.input_dir, dest)
 
 
 # =========================================================================== activity
@@ -106,6 +86,7 @@ def live_source():
         if act is None and not running:
             return None
         return {"job": (act or {}).get("job") or _active.get("job"), "label": act["label"] if act else "Assistant simulation",
+                "source": (act or {}).get("source", "assistant"),
                 "total": act["total"] if act else None, "running": running,
                 "index": _active.get("index") if running else None, "out": _active.get("out") if running else None,
                 "lattice": _active.get("lattice") if running else None, "field_dirs": _active.get("field_dirs") or []}
@@ -117,7 +98,7 @@ def activity_state():
         act = _activity
         if act is None:
             return None
-        return {"running": True, "paused": act["paused_since"] is not None, "source": "assistant",
+        return {"running": True, "paused": act["paused_since"] is not None, "source": act.get("source", "assistant"),
                 "label": act["label"], "mode": "basic", "percent": act["percent"], "eta_s": None,
                 "elapsed_s": _active_seconds(act), "step": act["index"] or None, "all_step": act["total"],
                 "pos_m": None, "line": act["line"]}
@@ -169,10 +150,10 @@ def stop_active():
 class Sandbox:
     """A work folder with a private copy of the project's text input files."""
 
-    def __init__(self, project, job_id):
+    def __init__(self, project, job_id, root=None):
         self.project = project
         self.job_id = job_id
-        self.root = os.path.join(work_root(project), "runs", job_id)
+        self.root = root or os.path.join(work_root(project), "runs", job_id)
         self.input_dir = os.path.join(self.root, "input")
         self.count = 0
         self._own_activity = False
@@ -182,18 +163,20 @@ class Sandbox:
         self.lattice_name = project.lattice_name()
 
     # ------------------------------------------------------------------ activity
-    def begin(self, label, total=None, stop_event=None):
-        """Report the following runs as one study on the Run page."""
+    def begin(self, label, total=None, stop_event=None, source="assistant"):
+        """Report the following runs as one study on the Run page (*source*: assistant | scan)."""
         global _activity
         from avas.gui.services import runner
         with _lock:
             if runner.is_running():
                 raise SandboxError("Another simulation is running; wait for it to finish.")
             if _activity is not None and _activity["job"] != self.job_id:
-                raise SandboxError("The assistant is already running a simulation study.")
+                raise SandboxError("The assistant is already running a simulation study."
+                                   if _activity.get("source", "assistant") == "assistant"
+                                   else "A parameter scan is already running; wait for it to finish.")
             _activity = {"job": self.job_id, "label": label, "total": total, "index": 0, "percent": None,
                          "line": "", "t0": time.time(), "paused_since": None, "paused_total": 0.0,
-                         "stop_event": stop_event, "stopped": False}
+                         "stop_event": stop_event, "stopped": False, "source": source}
             self._own_activity = True
         _publish()
 

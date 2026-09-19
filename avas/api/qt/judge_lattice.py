@@ -1,8 +1,6 @@
 #此函数用来在模拟前对lattice进行检验，
-from avas.utils.readfile import read_txt, read_lattice_mulp, read_lattice_mulp_with_name
-from avas.utils.exception import MissingcommandError
-import avas.constants as global_varible
-from avas.utils.tool import delete_element_end_index, add_element_end_index
+from avas.utils.readfile import read_lattice_mulp_with_name
+from avas.utils.tool import add_element_end_index
 from avas.utils.exception import BaseError
 from avas.utils.tool import can_convert_to_othertype, convert_to_othertype
 

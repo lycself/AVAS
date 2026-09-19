@@ -183,6 +183,10 @@ fieldset.lockable:disabled .select { opacity: .55; }
 .divider-h { height: 1px; background: var(--border); margin: 8px 0; }
 
 .kbd { font-family: inherit; font-size: 11px; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border-strong); background: var(--badge-bg); color: var(--fg-muted); }
+.shortcut-table { border-collapse: collapse; width: 100%; }
+.shortcut-table th { text-align: left; font-weight: 600; color: var(--fg-muted); padding: 2px 8px 6px 0; border-bottom: 1px solid var(--border); }
+.shortcut-table td { padding: 4px 8px 4px 0; vertical-align: top; }
+.shortcut-table td:last-child { white-space: nowrap; }
 
 /* ---------------------------------------------------------------- tooltip / menu */
 .tooltip {
@@ -213,6 +217,7 @@ fieldset.lockable:disabled .select { opacity: .55; }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 800; background: rgba(0,0,0,.28); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; animation: fade-in .08s ease-out; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .dialog-wrap { max-width: calc(100vw - 48px); max-height: 80vh; display: flex; }
+.dialog-wrap:focus { outline: none; }
 .dialog {
   display: flex; flex-direction: column; min-width: 380px; max-width: 100%; max-height: 80vh; width: 100%;
   background: var(--editor-bg); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,.3);

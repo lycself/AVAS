@@ -44,6 +44,8 @@ type Props = {
   onToggleText: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  /** The last parse failed with this message; *doc* is the previous good one. */
+  parseError?: string | null;
 };
 
 // keys that change the lattice in the edit state; in the browse state they show a hint
@@ -83,7 +85,7 @@ function samePath(a: string | null | undefined, b: string | null | undefined) {
   return !!a && !!b && a.replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
 }
 
-export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, runResults, showText, onToggleText, onUndo, onRedo }: Props) {
+export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, runResults, showText, onToggleText, onUndo, onRedo, parseError }: Props) {
   const t = useT();
   const hintAt = useRef(0);
   const browseHint = () => {
@@ -436,6 +438,12 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
         <IconButton icon={showText ? "layout-sidebar-right" : "layout-sidebar-right-off"} tip={showText ? t("Hide the text") : t("Show the text next to the visual editor")} active={showText} onClick={onToggleText} />
       </div>
       <div className="ve-status soft">
+        {parseError && (
+          <span className="ve-status-item warning-text" data-tip={parseError}>
+            <Icon name="warning" />
+            {t("parse failed: the last good structure is shown")}
+          </span>
+        )}
         {show.preview && (
           <span className={cx("ve-status-item", preview.error && "danger-text")} data-tip={preview.error ?? warnings.map((w) => pick(w)).join("\n") ?? undefined}>
             {preview.busy ? <Spinner size={12} /> : <i className="lg-line dashed" style={{ borderColor: "var(--el-rf)" }} />}

@@ -1,8 +1,7 @@
 import copy
-import sys
 # sys.path.append(r'C:\Users\anxin\Desktop\AVAS_control')
 
-from avas.utils.readfile import read_txt, read_lattice_mulp_with_name
+from avas.utils.readfile import read_lattice_mulp_with_name
 import avas.constants as global_varible
 from avas.utils.tool import add_element_end_index, judge_command_on_element
 

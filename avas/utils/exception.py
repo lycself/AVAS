@@ -157,19 +157,3 @@ class NormalError():
     #处理各种常见的Error，主要是指程序
     def __init__(self):
         pass
-
-
-
-
-if __name__ == "__main__":
-    def process_data(data):
-        if not data:
-            raise CustomError("No data provided", error_code=100)
-        elif 'error' in data:
-            raise DataError("Error in data", error_code=200)
-        else:
-            print("Processing data...")
-            # 处理数据的逻辑
-
-
-    process_data("error  dsaffadsfasdf asdfg ")

@@ -53,6 +53,8 @@
 .issue-list .codicon { font-size: 14px; }
 .position { font-size: 12px; line-height: 1.6; }
 .structure-status { flex: none; padding: 4px 10px; font-size: 12px; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.parse-warning { flex: none; padding: 3px 10px; font-size: 12px; border-bottom: 1px solid var(--border); background: var(--warning-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.parse-warning .codicon { font-size: 13px; vertical-align: -1px; }
 .param-grid { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
 .grid-scroll { flex: 1 1 auto; overflow: auto; min-height: 0; border: 1px solid var(--border); border-radius: 4px; }
 .data-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; width: max-content; min-width: 100%; }

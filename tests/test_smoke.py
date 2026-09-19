@@ -56,10 +56,22 @@ def test_run_with_other_lattice_file(run_dirs, monkeypatch):
     assert main(["run", "--input", inp, "--output", out, "--lattice", "lattice_long.txt"]) == 0
     monkeypatch.delenv(paths.LATTICE_ENV_VAR, raising=False)
     with open(os.path.join(out, "avas_run.json"), encoding="utf-8") as fh:
-        assert json.load(fh)["lattice"] == "lattice_long.txt"
-    with open(os.path.join(inp, "lattice.txt"), encoding="utf-8") as fh:
+        info = json.load(fh)
+    assert info["lattice"] == "lattice_long.txt"
+    staged = os.path.join(out, "inputs")
+    assert os.path.normcase(info["inputs_dir"]) == os.path.normcase(staged)
+    with open(os.path.join(staged, "lattice.txt"), encoding="utf-8") as fh:
         generated = fh.read()
-    assert "drift 0.1 0.02 0" in generated              # the engine got the chosen file
+    assert "drift 0.1 0.02 0" in generated              # the engine got the chosen file (staged copy)
+    for name in ("input.txt", "beam.txt", "lattice_long.txt"):
+        assert os.path.isfile(os.path.join(staged, name))
+    assert not any(f.endswith((".edx", ".bsz")) for f in os.listdir(staged))   # field maps are not copied
+    # the user's input folder is left alone: its lattice.txt is the one shipped with the example
+    with open(os.path.join(inp, "lattice.txt"), encoding="utf-8") as fh:
+        untouched = fh.read()
+    with open(os.path.join(EXAMPLE_INPUT, "lattice.txt"), encoding="utf-8") as fh:
+        assert untouched == fh.read()
+    assert "drift 0.1 0.02 0" not in untouched
     last = [line.split() for line in open(os.path.join(out, "DataSet.txt"), encoding="utf-8") if line.strip()][-1]
     assert last  # simulation produced data
 

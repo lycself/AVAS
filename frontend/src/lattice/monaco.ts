@@ -3,6 +3,7 @@
 import * as monaco from "./monacoCore";
 import EditorWorker from "monaco-esm/editor/editor.worker.js?worker";
 import { isZh, pick } from "../i18n";
+import { cssColor } from "../util";
 import { choiceLabel, type Keyword, type LatticeDoc, type Schema } from "./types";
 
 export { monaco };
@@ -27,7 +28,7 @@ function kwMap(): Map<string, Keyword> {
 
 /** A colour token as 6-digit hex without "#" (the CSS minifier shortens #cccccc to #ccc). */
 function css(name: string) {
-  let v = getComputedStyle(document.documentElement).getPropertyValue(name).trim().replace("#", "");
+  let v = cssColor(name).replace("#", "");
   if (/^[0-9a-f]{3}$/i.test(v)) v = v.split("").map((c) => c + c).join("");
   return /^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v) ? v : "808080";
 }

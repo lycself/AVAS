@@ -18,6 +18,10 @@ Rules come from ``docs/使用说明20260427.docx``:
 Names come from a ``name : keyword ...`` prefix or from a ``!name NAME``
 comment line right before the statement (TraceWin exports).  Comments made of
 a word decorated with ``;;;`` / ``...`` / ``---`` become group headings.
+
+This is the only lattice tokeniser: the positional readers used by the run
+path (``avas.utils.readfile.read_lattice_mulp*``) are adapters over
+:meth:`LatticeDocument.all_lines` and :attr:`Statement.tokens`.
 """
 import math
 import os
@@ -71,12 +75,12 @@ class Statement:
         self.raw = raw
         code, self.comment = split_comment(raw)
         self.indent = re.match(r"\s*", raw).group(0)
-        tokens = code.split()
+        # ":" is always its own token, so "name : kw", "name: kw" and "name:kw" are the same
+        tokens = code.replace(":", " : ").split()
+        self.tokens = list(tokens)      # the whole code part, name prefix included (legacy readers use this)
         self.prefix_name = ""
         if len(tokens) >= 3 and tokens[1] == ":":
             self.prefix_name, tokens = tokens[0], tokens[2:]
-        elif len(tokens) >= 2 and tokens[0].endswith(":") and len(tokens[0]) > 1:
-            self.prefix_name, tokens = tokens[0][:-1], tokens[1:]
         self.keyword = tokens[0] if tokens else ""
         self.key = self.keyword.lower()
         self.params = tokens[1:]
@@ -143,6 +147,7 @@ class LatticeDocument:
         self.field_dirs = [d for d in field_dirs if d]
         self.lines = []
         self.statements = []
+        self.layout = []                 # "section NAME {", "{" and "}" lines (folding only, not simulated)
         self.by_line = {}
         self.root = Group("", "root")
         self.issues = []                 # document-level
@@ -153,6 +158,7 @@ class LatticeDocument:
     def parse(self, text):
         self.lines = text.splitlines()
         self.statements, self.by_line = [], {}
+        self.layout = []
         self.root = Group("", "root")
         self.issues = []
         pending_name = None
@@ -187,12 +193,15 @@ class LatticeDocument:
                 grp = Group(title, "section", container(), no)
                 container().children.append(grp)
                 group_stack.append(grp)
+                self.layout.append(Statement(no, raw))
                 continue
             if stripped == "{":
+                self.layout.append(Statement(no, raw))
                 continue
             if stripped == "}":
                 if len(group_stack) > 1 and group_stack[-1].kind == "section":
                     group_stack.pop()
+                self.layout.append(Statement(no, raw))
                 continue
 
             st = Statement(no, raw)
@@ -408,6 +417,13 @@ class LatticeDocument:
 
     def statement_at(self, line_no):
         return self.by_line.get(line_no)
+
+    def all_lines(self):
+        """Every non-blank, non-comment line in file order: statements plus the folding lines.
+
+        This is what the positional readers of ``avas.utils.readfile`` are built on.
+        """
+        return sorted(self.statements + self.layout, key=lambda s: s.line_no)
 
 
 # --------------------------------------------------------------------------- editing helpers

@@ -75,6 +75,7 @@ def main(argv=None, args=None, parser=None):
     finally:
         services.runner.shutdown()
         services.assistant.shutdown()
+        services.scan.shutdown()
         srv.shutdown()
     return 0
 

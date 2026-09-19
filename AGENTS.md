@@ -20,25 +20,29 @@ AVAS（Advanced Virtual Accelerator Software）是直线加速器束流动力学
 
 ```
 avas/
-  cli/            命令行入口
+  cli/            命令行入口（main.py；scan_cmd.py 是 avas scan）
   gui/            界面后端：server.py HTTP / WebSocket 服务（RPC、事件、blob、下载、令牌），bridge.py RPC 注册与事件队列，
                   app.py 桌面窗口（avas gui），serve.py 浏览器模式（avas serve），devserver.py 旧命令的别名
-    services/     每个页面一个模块，函数用 @rpc("page.action") 注册；fs.py 给页面自带的文件选择器列目录
+    services/     每个页面一个模块，函数用 @rpc("page.action") 注册；fs.py 给页面自带的文件选择器列目录；runs.py 运行记录归档；scan.py 参数扫描
     web/          前端编译结果（提交到仓库，用户不需要 Node.js）
   ai/             AI 助手：client.py、agent.py、avas_tools.py（工具）、sandbox.py（副本上运行模拟）、avas_prompt.py
-  data/           schema.py（全部关键字的参数、单位、中英文说明）、lattice_doc.py（lattice 解析与检查）、segment.py（分段运行物理）
-  sim/            模拟流程；linear_optics.py 线性包络预览；error.py 误差研究
+  data/           schema.py（全部关键字的参数、单位、中英文说明）、lattice_doc.py（lattice 解析与检查）、segment.py（分段运行物理）、
+                  lattice_edit.py（按名称 / 行号定位元件并改一个参数，beam/input 关键字改值；AI 工具、扫描、命令行共用）、inputs.py（复制文本输入）
+  sim/            模拟流程；linear_optics.py 线性包络预览；error.py 误差研究；scan.py 参数扫描（GUI 与命令行共用）
   post/           后处理（analysis/、plot/）
-  core/ api/ utils/ engine/ static/ gpu/ hpc/
+  core/ api/ utils/ engine/ static/ gpu/    api/basic.py 只有运行入口（惰性导入），api/plotting.py 是命令行画图；无人调用的旧代码在仓库外 archive/
+                  utils/readfile.py 的 read_lattice_mulp* 只是 LatticeDocument 之上的适配层（tests/test_lattice_parsers.py 有逐字节金标准）；
+                  utils/keywordconfig.py 让 BeamConfig / InputConfig 的键表和类型来自 schema.py，不要再手写键列表；constants.py 的关键字集合同样派生自 schema
 frontend/src/
   bridge.ts       与后端的通信（fetch + WebSocket、令牌、blob）；host.ts 桌面窗口 / 浏览器的差异（文件对话框、打开文件、退出、缩放）
   components/     ui.tsx（按钮、输入框等基础组件）、overlays.tsx（菜单、对话框、toast）、Plot.tsx（Plotly 封装）、FileDialog.tsx（浏览器模式的文件选择器）
-  pages/          七个页面
-  lattice/        文本编辑器（Monaco）、结构编辑器、可视化编辑器、2D 布局、3D 视图
-  results/ files/ assistant/ shell/ store/（zustand）
+  pages/          八个页面（ScanPage 是参数扫描）
+  lattice/        文本编辑器（Monaco）、结构编辑器、可视化编辑器、2D 布局、3D 视图（Beamline3D.tsx 只是 React 壳，b3dViewer.ts / b3dHud.ts / b3dGeometry.ts 单向依赖）
+  results/ files/ assistant/ shell/ store/（zustand）；util.ts（basename、cssColor、niceStep、debounce）；shell/shortcuts.ts（全部快捷键的唯一表）；results/CompareTab.tsx 运行对比
   i18n/zh_CN.json 中文翻译（英文原文 → 中文）
   styles/tokens.css 全部颜色变量（浅色 + 深色）
-tests/            pytest；test_gui.py 覆盖页面调用的每个接口
+tests/            pytest；test_gui.py 覆盖页面调用的每个接口；前端 vitest（frontend/src/**/*.test.ts）
+.github/workflows/ci.yml  CI：ruff + 快速 pytest（Windows，含 smoke）、npm test + build
 examples/hwr010/  示例项目（跑一次约 10–30 秒）
 docs/             使用说明（以 使用说明20260427.docx 为准，121 版已过时）、CHANGELOG
 scripts/          用户个人分析脚本，不属于软件本体，不要重构
@@ -48,7 +52,8 @@ packaging/        PyInstaller + Inno Setup 打包
 ## 3. 环境与常用命令（Windows）
 
 - Python：只用仓库里的 `.venv`（Python 3.11），命令写 `.venv\Scripts\python.exe`。**不要用 Anaconda base 解释器**；不要新增创建 venv 的安装脚本（用户明确不要，README 写手动步骤）。
-- 测试：`.venv\Scripts\python.exe -m pytest`。`tests/test_gui.py`、`tests/test_segment.py` 会真正运行内核，较慢；改哪部分至少跑对应的测试文件。
+- 测试：`.venv\Scripts\python.exe -m pytest`。`tests/test_gui.py`、`tests/test_segment.py`、`tests/test_scan.py` 会真正运行内核，较慢；改哪部分至少跑对应的测试文件。
+- 静态检查：`.venv\Scripts\python.exe -m ruff check avas tests packaging`（只开缺陷类规则，见 pyproject.toml；旧代码不重排风格）。前端 `cd frontend && npm test`（vitest，纯函数测试）。
 - 前端：`cd frontend && npm run build`（先 `tsc --noEmit` 再 `vite build`），输出到 `avas/gui/web/` 并写 `source-hash.json`。**改了前端就要重新构建，并把 `avas/gui/web/` 一起提交。**
 - 浏览器调试界面：`.venv\Scripts\python.exe -m avas serve --port 8765 --token dev --settings <临时 json>`，打开它打印的地址
   （`http://127.0.0.1:8765/index.html?host=browser&token=dev`；`python -m avas.gui.devserver` 是同样效果的旧命令）。改了 Python 代码要重启它。
@@ -102,7 +107,7 @@ packaging/        PyInstaller + Inno Setup 打包
 - 一个 lattice 文件在界面里只有**一个 Monaco 文本模型**，它是唯一的数据源。结构编辑器、可视化编辑器、AI 助手的修改都以"一次修改 = 一步撤销"写回这个文本模型，再重新解析（`lattice.parse`）。不要另存一份可以单独修改的元件数据。
 - `LatticeEditor` 用带 key 的子元素切换"文本 + 结构"和"可视化编辑器"两种模式，保证文本面板不被重新挂载（未保存的文字和撤销历史不丢）。
 - 修改只改写对应的行，保留注释和页面不认识的关键字；beam.txt、input.txt 保存时同样只改页面管理的关键字。
-- 参数含义、单位、取值、检查规则以 `docs/使用说明20260427.docx` 为准，集中写在 `avas/data/schema.py` 和 `avas/data/lattice_doc.py`。
+- 参数含义、单位、取值、检查规则以 `docs/使用说明20260427.docx` 为准，集中写在 `avas/data/schema.py` 和 `avas/data/lattice_doc.py`。schema 是唯一的关键字表：改类型 / 取值时只改 schema，配置类、常量表、界面都会跟着变。
 - 运行使用的 lattice 是 `ini.ini` 里 `[lattice] source` 指定的文件，用 `avas.paths.lattice_source_path()` 获取；**不要写死 `lattice_mulp.txt`**。路径一律用 `avas.paths` 里的函数，不要用 `__file__` 层层向上找。
 - TraceWin `.dat` lattice 目前只读。
 - **可视化编辑器的浏览 / 编辑状态**：打开、切换项目、重新载入、运行开始时都回到浏览状态（`store/latticeUi.ts` 的 `visualEditing`，不持久化）。
@@ -115,9 +120,17 @@ packaging/        PyInstaller + Inno Setup 打包
 - 同一时间只运行一个任务：`avas/gui/services/runner.py` 的 `Job`（可含多个 `Stage`）。暂停是挂起整个子进程树（`avas/gui/proctree.py`），不是停止。
 - 开始运行前前端会先检查并保存所有有修改的页面（`actions.ts` 的 `prepareRun`）。
 - 分段运行（`avas/data/segment.py`、`services/segments.py`）结果写在 `<项目>/Segments/<名称>_<时间>/`，不改项目的 OutputFile。
+- **运行记录**（`services/runs.py`）：完整运行总是写 OutputFile 并覆盖上一次；`runs.archive` 把 OutputFile（含 `inputs/` 快照）复制到
+  `<项目>/Runs/<时间>_<名称>/`，并在 OutputFile/avas_run.json 记 `archived`。前端开始运行前先调 `runs.unsaved`，上次结果完成且未保留时
+  询问「保留并运行 / 直接运行 / 取消」（`actions.ts` 的 `resolveUnsavedRun`）。`results.sources` 列出 OutputFile、已保留运行（kind `archived`）和分段运行；
+  `runs.delete` 三种都能移到回收站。
+- **参数扫描**（`avas/sim/scan.py`、`services/scan.py`、`avas scan`）：在 `<项目>/Scans/<名称>_<时间>/` 下用 `Sandbox(root=...)` 跑副本，
+  每个取值一个 `run_NNN/`，结果 `scan.json` / `scan.csv`。扫描是一个 activity（source `scan`），运行页 / 状态栏 / 实时显示按 assistant 同样处理，
+  期间不能开始普通运行；`scan.start` 在返回前就占住 runner（`prepare_scan`），不要改成线程里再占。改 lattice 参数用 `avas/data/lattice_edit.py`。
 - AI 助手的参数扫描 / 优化在 `<项目>/.avas_ai/runs/` 的副本里运行（`avas/ai/sandbox.py`），开始时复制输入文件，**不能改动项目的 InputFile 和 OutputFile**。
-- **运行锁**：完整运行、误差研究、分段运行进行中（包括暂停）时，所有输入文件只读。原因：误差研究每组重新读取项目 lattice，
-  分段运行每个阶段开始时才复制 InputFile。实现分三层，新增写输入文件的入口时三层都要照顾到：
+- **运行锁**：完整运行、误差研究、分段运行进行中（包括暂停）时，所有输入文件只读。原因：分段运行每个阶段开始时才复制 InputFile，
+  而且 `<输出>/inputs/` 快照与实时显示都对应运行开始时的输入（完整运行和误差研究自 2026-09-20 起都在该快照上运行，不再读 InputFile）。
+  实现分三层，新增写输入文件的入口时三层都要照顾到：
   后端写入接口先调用 `avas/gui/locks.py` 的 `require_unlocked()`；前端用 `useInputsLocked()` 让页面只读并显示 `RunLockBanner`；
   AI 修改提案在提出和应用时都检查（`assistant.py` 的 `_refuse_if_locked`），直接拒绝而不是挂起等待。AI 自己的沙盒试算不加锁。
   结构页的文件下拉框只是"打开"（查看 / 编辑），任何时候都可用，运行中只读；把文件设为运行使用（`lattice.setSource`，写 ini.ini）
@@ -148,10 +161,12 @@ packaging/        PyInstaller + Inno Setup 打包
 - **误差研究**每组都会重新读取项目里的 lattice 文件（`avas/sim/error.py`），当前一次的输出在 `OutputFile/error_middle/output_0/`，完成的结果复制到 `OutputFile/error_output/output_<组>_<次>/`。
 - **线性包络预览**（`avas/sim/linear_optics.py`）只作快速评估：能量误差约 0.01 %，rms 通常差 1–2 %，多粒子效应强时可到 13 %；最终以内核结果为准。
 - **GPU**：`avas/gpu/` 只封装了 Linux 预编译的 `libPIC.so`，没有源码；不要提议做 Windows GPU 版本。多线程（input.txt `multithreading 1`）是 CPU 上的加速手段。
+- **`multithreading` 只能写 1 或不写**：手册写 0 = 关闭，但内核遇到 `multithreading 0`（2、3 也一样）会在起点丢失全部粒子，报 `End of simulation, all particles lost`（2026-09-19 用示例项目核实，与 particlenumber 无关）。关闭多线程就删掉这一行；设置页（`services/simsettings.py`）已按此处理，`avas/utils/inputconfig.py` 对值为 None 的关键字不写行。
+- **运行不写 InputFile**：`basic_mulp` 和误差研究（`api/basic._error_study`）都把文本输入复制到 `<输出>/inputs/`，`lattice.txt`（误差研究还有每个种子的 lattice）生成在那里，内核以副本为输入、原目录为场图目录。`tests/test_error_study.py` 用固定 randomseed 的示例做回归（误差参数文件必须逐字节相同）。
 
 ## 7. 协作习惯
 
 - 用户希望先看诊断和方案、讨论确定后再一次性完整实施；方案里的决策点要明确列出。
-- 命令行保持简短好用：`avas run --input DIR --output DIR`、`avas plot 类型 --output DIR`。
+- 命令行保持简短好用：`avas run --input DIR --output DIR`、`avas plot 类型 --output DIR`、`avas scan --input DIR --target 元件 --param 参数 --values 1,2,3`。
 - 旧代码、历史 DLL 和日志已移到仓库外的 `AVAS_NEW/archive/`，不要搬回仓库。
 - 示例项目的输出（`examples/*/OutputFile/`）不提交。

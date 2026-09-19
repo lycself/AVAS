@@ -1,35 +1,32 @@
-
+"""One multi-particle simulation: point the engine at the folders, run it, report its errors."""
+import logging
+import os
 
 from avas.core.MultiParticleEngine import MultiParticleEngine
-
-import platform
-
-
 from avas.utils.readfile import read_txt
 from avas.utils.tool import write_to_txt
-from avas.post.analysis.new_dataset import trans_dataset2new
-import os
+
+log = logging.getLogger(__name__)
+
 
 class MultiParticle():
     """
     多粒子模拟
     """
-    def __init__(self, item):  # *arg **kwargs #dllpath写死
-        #{
+    def __init__(self, item):
+        # {
         # "project_path": path,
-        # "input_file": path,
+        # "input_file": path,        folder with input.txt, beam.txt, lattice.txt (a staged copy for `avas run`)
         # "output_file": path,
-        # "field_path": path,
-        # "errorlog_path": errorlog_path,
+        # "field_path": path,        folder with the field maps (default: input_file)
         # "mulp_engine": ,
         # "device": ,
         # "if_error": 0/1,
-        #}
+        # }
         self.project_path = item["project_path"]
         self.input_file = item.get("input_file")
         self.output_file = item.get("output_file")
         self.field_path = item.get("field_path")
-        # self.errorlog_path = item.get("errorlog_path")
         self.multiparticle_engine = item.get("mulp_engine")
         self.device = item.get("device")
         self.if_error = item.get("if_error", 0)
@@ -42,106 +39,87 @@ class MultiParticle():
         if self.output_file is None:
             self.output_file = os.path.join(self.project_path, "OutputFile")
 
-        if self.field_path == None:
+        if self.field_path is None:
             self.field_path = self.input_file
-        #
-        # if self.errorlog_path is None:
-        #     self.errorlog_path = os.path.join(self.output_file, "ErrorLog.txt")
 
-        if self.device  == "cpu":
-            if self.multiparticle_engine is None:
-                self.multiparticle_engine = MultiParticleEngine()
-                # self.multiparticle_engine = engine
+        if self.device == "cpu" and self.multiparticle_engine is None:
+            self.multiparticle_engine = MultiParticleEngine()
 
         if self.if_error == 0:
             self.errorlog_path = os.path.join(self.output_file, "ErrorLog.txt")
-
         elif self.if_error == 1:
             self.errorlog_path = os.path.join(self.output_file, "output_0", "ErrorLog.txt")
 
-
-
-
     def after_treat(self):
-        #误差模拟的情况
+        from avas.post.analysis.new_dataset import trans_dataset2new
+
+        # 误差模拟的情况
         if self.if_error == 1:
             ori_dataset_path = os.path.join(self.output_file, "output_0", "DataSet.txt")
             new_dataset_path = os.path.join(self.output_file, "output_0", "Dataset_New.txt")
-
-        if self.if_error == 0:
+        else:
             ori_dataset_path = os.path.join(self.output_file, "DataSet.txt")
             new_dataset_path = os.path.join(self.output_file, "Dataset_New.txt")
 
         res = trans_dataset2new(ori_dataset_path, new_dataset_path)
         return res
 
-
-
     def run(self):
         if self.device == "cpu":
             if os.path.exists(self.errorlog_path):
                 os.remove(self.errorlog_path)
 
-            res_tmp = self.multiparticle_engine.get_path(self.input_file, self.output_file, self.field_path)
-
+            self.multiparticle_engine.get_path(self.input_file, self.output_file, self.field_path)
             res = self.multiparticle_engine.main_agent(1)
 
-            #检查报错
-            if res == 1:
-                # raise Exception(f'模拟错误，请查询OutputFile中的ErrorLog.txt')
-
+            # 检查报错
+            if res in (1, 2):
                 error = self.check_error_file(self.errorlog_path)
                 raise Exception(f'{error}')
-            elif res == 2:
-                # raise Exception(f'模拟错误，请查询OutputFile中的ErrorLog.txt')
-                error = self.check_error_file(self.errorlog_path)
-                raise Exception(f'{error}')
-
 
         elif self.device == "gpu":
             from avas.gpu.pic import SimulationRunner
 
-            #重写beam和input
-            generate_input_gpu(self.input_file,  self.output_file, self.field_path)
+            # 重写beam和input (written next to the inputs the engine reads, i.e. the staged copy)
+            generate_input_gpu(self.input_file, self.output_file, self.field_path)
             generate_beam_gpu(self.input_file, self.output_file, self.field_path)
 
             input_txt_gpu_path = os.path.join(self.input_file, "input_gpu.txt")
             beam_txt_gpu_path = os.path.join(self.input_file, "beam_gpu.txt")
             lattice_txt_gpu_path = os.path.join(self.input_file, "lattice.txt")
 
-            item  = {"project_path": self.project_path,
-                     "input_file": self.input_file,
-
-                     "input_path":input_txt_gpu_path,
-                     "beam_path": beam_txt_gpu_path,
-                     "lattice_path": lattice_txt_gpu_path,
-                     }
+            item = {"project_path": self.project_path,
+                    "input_file": self.input_file,
+                    "input_path": input_txt_gpu_path,
+                    "beam_path": beam_txt_gpu_path,
+                    "lattice_path": lattice_txt_gpu_path,
+                    }
 
             simulator = SimulationRunner(item)
             simulator.run()
 
-            res= 0
+            res = 0
 
-        # self.after_treat()
         return res
 
     def stop(self):
         res = self.multiparticle_engine.main_agent(2)
-        print("simulation stopped", res)
-
+        log.info("simulation stopped %s", res)
 
     def check_error_file(self, ErrorLog):
-        with open(ErrorLog, 'r') as file:
-            text = file.read()
-
-        # error_parts = re.findall(r'[A-Za-z\s:,.]+', text)[3]
-        error_parts = text.split('     ')[1]
-        return error_parts
+        """The engine's error message from ErrorLog.txt (the text after the 5-space separator, else all of it)."""
+        try:
+            with open(ErrorLog, 'r', encoding="utf-8", errors="replace") as file:
+                text = file.read()
+        except OSError:
+            return f"simulation failed, and {ErrorLog} could not be read"
+        parts = text.split('     ')
+        return parts[1].strip() if len(parts) > 1 and parts[1].strip() else text.strip()
 
 
 def generate_input_gpu(input_file, output_file, field_path):
     input_txt = os.path.join(input_file, "input.txt")
-    ori_input_res = read_txt(input_txt, out="list", case_sensitive= True)
+    ori_input_res = read_txt(input_txt, out="list", case_sensitive=True)
     ori_input_res.append(["outputpath", output_file])
     ori_input_res.append(["fieldpath", field_path])
 
@@ -156,7 +134,7 @@ def generate_input_gpu(input_file, output_file, field_path):
 
 def generate_beam_gpu(input_file, output_file, field_path):
     beam_txt = os.path.join(input_file, "beam.txt")
-    ori_beam_res = read_txt(beam_txt, out="list", case_sensitive= True)
+    ori_beam_res = read_txt(beam_txt, out="list", case_sensitive=True)
 
     for i in ori_beam_res:
         if i[0] == "kneticenergy":
@@ -164,34 +142,3 @@ def generate_beam_gpu(input_file, output_file, field_path):
 
     beam_txt_gpu = os.path.join(input_file, "beam_gpu.txt")
     write_to_txt(beam_txt_gpu, ori_beam_res)
-
-def basic_mulp(project_path):
-    obj = MultiParticle(project_path)
-
-    res = obj.run()
-
-
-if __name__ == "__main__":
-    import sys, os
-
-
-
-    item = {'project_path': r"C:\Users\shliu\Desktop\yanshou\error_b",
-            "device":"cpu"
-            }
-
-    obj = MultiParticle(item)
-    # print(">" * 30)
-    # print("exe =", sys.executable)
-    # print("cwd =", os.getcwd())
-    # print("__file__ =", __file__)
-    # print("platform =", platform.platform())
-    # print("PATH(head) =", os.environ.get("PATH", "")[:300])
-    # print("PATH(has dllfile) =", "dllfile" in os.environ.get("PATH", ""))
-    # print("sys.path(head) =", sys.path[:5])
-    # print(">" * 30)
-
-    obj.run()
-
-
-

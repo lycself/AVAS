@@ -1,11 +1,8 @@
 import numpy as np
-import sys
 
-import math
 from avas.data.beamparameter import DstParameter
 from avas.utils.tool import cal_twiss
 import time
-import copy
 class PercentEmit():
     """
     本类为计算发射度及百分比发射度

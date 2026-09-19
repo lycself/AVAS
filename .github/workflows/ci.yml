@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    # The engine ships as AVAS.dll, so the smoke test (one short simulation) runs on Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .[dev]
+      - name: Lint (ruff, defect rules only)
+        run: python -m ruff check avas tests packaging
+      - name: Fast tests
+        run: >
+          python -m pytest -q
+          tests/test_design_rules.py tests/test_lattice_doc.py tests/test_run_diagnostics.py
+          tests/test_live.py tests/test_ai.py tests/test_server.py tests/test_linear_optics.py
+          tests/test_scan.py tests/test_smoke.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Type check and build
+        run: npm run build

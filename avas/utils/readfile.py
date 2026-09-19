@@ -5,14 +5,13 @@ import numpy as np
 import os
 from avas.utils.exception import CustomFileNotFoundError
 import re
-import avas.constants as global_varible
-import time
+from avas.data import schema
+from avas.data.lattice_doc import LatticeDocument
+from avas.gui.textio import read_text
 
 import logging
 logger = logging.getLogger(__name__)
 
-def write_to_txt():
-    pass
 def read_txt(input, out='dict', readdall=None, case_sensitive=None):
     #目前这个函数无法处理包含重复的情况
     """
@@ -59,7 +58,6 @@ def read_txt(input, out='dict', readdall=None, case_sensitive=None):
     res = {}
     for i in input_lines:
 
-        tmp_dict = {}
         if len(i) == 1:
             res[i[0]] = None
         elif len(i) == 2:
@@ -68,55 +66,59 @@ def read_txt(input, out='dict', readdall=None, case_sensitive=None):
             res[i[0]] = i[1:]
     return res
 
-    # return input_lines
-def read_lattice_mulp(lattice_mulp_path):
-    res = read_txt(lattice_mulp_path, out='list', readdall=None, case_sensitive=True)
 
-    new_lattice_list = []
-    for i in res:
-        i[0] = i[0].lower()
-        if i[0] == 'bend':
-            i[1] =np.abs(float(i[4])/180 * np.pi * float(i[5]))
+# --------------------------------------------------------------------------- lattice files
+# Positional readers used by the run path, the error study and the post-processing.
+# They are adapters over avas.data.lattice_doc.LatticeDocument (the only lattice
+# tokeniser) and keep the historical list shapes, pinned by tests/test_lattice_parsers.py:
+#   * every non-blank, non-comment line is one list of tokens (":" is its own token;
+#     "section X {", "{" and "}" lines pass through);
+#   * the first token is lower-cased, the rest keep their case;
+#   * a bend's first parameter is replaced by the computed |alpha·rho| (numpy float);
+#   * the list stops after the first line whose keyword is "end".
 
-        new_lattice_list.append(i)
-        if i[0] == "end":
+def _lattice_rows(lattice_path):
+    """Token lists of every non-blank, non-comment line, in file order."""
+    if not os.path.exists(lattice_path):
+        raise CustomFileNotFoundError(lattice_path)
+    doc = LatticeDocument(read_text(lattice_path))
+    return [list(st.tokens) for st in doc.all_lines()]
+
+
+def _finish_rows(rows):
+    out = []
+    for row in rows:
+        row[0] = row[0].lower()
+        if row[0] == "bend":
+            row[1] = np.abs(float(row[4]) / 180 * np.pi * float(row[5]))
+        out.append(row)
+        if row[0] == "end":
             break
-    return new_lattice_list
+    return out
+
+
+def read_lattice_mulp(lattice_mulp_path):
+    """Rows as written (a ``name : keyword`` prefix stays in the row)."""
+    return _finish_rows(_lattice_rows(lattice_mulp_path))
+
 
 def read_lattice_mulp_with_name(lattice_mulp_path):
-    ini_lattice = read_txt(lattice_mulp_path, out='list', readdall=None, case_sensitive=True)
+    """``(rows, names)``: the ``name :`` prefix is moved to *names*.
 
-    #为原件添加名字，如没有名字，则添加自定义名字
-    for i in ini_lattice:
-        if i[0].lower() in global_varible.all_element:
-            if ":" not in i:
-                i.insert(0, "no_name")
-                i.insert(1, ":")
-
-
-    #构建命令列表和名字列表
-    lattice_list = []
-    name_list = []
-    for i in ini_lattice:
-        if ":" in i:
-            lattice_list.append(i[2:])
-            name_list.append(i[0])
-        elif ":" not in i:
-            lattice_list.append(i)
-            name_list.append(None)
-
-    #将大写变为小写
-    new_lattice_list = []
-    for i in lattice_list:
-        i[0] = i[0].lower()
-        if i[0] == 'bend':
-            i[1] = np.abs(float(i[4])/180 * np.pi * float(i[5]))
-
-        new_lattice_list.append(i)
-        if i[0] == "end":
-            break
-    new_name_list = name_list[:len(new_lattice_list)]
-    return new_lattice_list, new_name_list
+    Elements without a name get ``"no_name"``, commands ``None``.
+    """
+    rows, names = [], []
+    for tokens in _lattice_rows(lattice_mulp_path):
+        if tokens[0].lower() in schema.ELEMENT_KEYWORDS and ":" not in tokens:
+            tokens = ["no_name", ":"] + tokens
+        if ":" in tokens:
+            rows.append(tokens[2:])
+            names.append(tokens[0])
+        else:
+            rows.append(tokens)
+            names.append(None)
+    rows = _finish_rows(rows)
+    return rows, names[:len(rows)]
 
 
 def read_dst(input):
@@ -168,7 +170,6 @@ def read_dst(input):
     f.close()
     return res
 def read_dst_fast(input):
-    t0 = time.time()
     with open(input, 'rb') as f:
         f.read(2)  # 跳过前2个字节
 
@@ -192,12 +193,7 @@ def read_dst_fast(input):
     res['freq'] = freq*10**6
     res['partran_dist'] = partran_dist
     res['basemassinmev'] = BaseMassInMeV
-    t1 = time.time()
-    # print("读文件时间", t1 - t0)
     res['kneticenergy'] = float(partran_dist[:, 5].mean())
-    t2 = time.time()
-
-    # print("计算能量时间", t2 - t1)
 
     return res
 

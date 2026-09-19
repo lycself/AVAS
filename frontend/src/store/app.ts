@@ -6,8 +6,8 @@ import { useLang, type Language } from "../i18n";
 import { initLive } from "./live";
 
 export type ThemeMode = "system" | "light" | "dark";
-export type PageId = "project" | "beam" | "lattice" | "settings" | "files" | "run" | "results";
-export const PAGES: PageId[] = ["project", "beam", "lattice", "settings", "files", "run", "results"];
+export type PageId = "project" | "beam" | "lattice" | "settings" | "files" | "run" | "scan" | "results";
+export const PAGES: PageId[] = ["project", "beam", "lattice", "settings", "files", "run", "scan", "results"];
 export const SCALES = [90, 100, 110, 125, 150];
 
 export type RunInfo = {
@@ -41,7 +41,7 @@ export type RunState = {
   running: boolean;
   paused?: boolean;
   /** project: normal run; segment: part of the lattice; assistant: the assistant's sandbox study */
-  source?: "project" | "segment" | "assistant";
+  source?: "project" | "segment" | "assistant" | "scan";
   label?: string;
   outputDir?: string;
   stage?: number;

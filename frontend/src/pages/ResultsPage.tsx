@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { deleteRunRecord } from "../actions";
+import { archiveRun, deleteRunRecord } from "../actions";
 import { call, on } from "../bridge";
 import { openPath, pickFile, pickFolder } from "../host";
 import { reportError, toast } from "../components/overlays";
@@ -8,7 +8,9 @@ import { runStatusLabel } from "../format";
 import { useT } from "../i18n";
 import { AcceptanceFooter, PlotTab } from "../results/PlotTab";
 import { PhaseViewer } from "../results/PhaseViewer";
+import { CompareTab, type CompareSource } from "../results/CompareTab";
 import { useApp } from "../store/app";
+import { basename } from "../util";
 import { NoProject, PageHeader } from "./common";
 
 type Overview = {
@@ -25,6 +27,7 @@ type Overview = {
 };
 
 type ItemKey =
+  | "compare"
   | "envelope"
   | "emittance"
   | "loss"
@@ -52,6 +55,7 @@ const TREE: { group: string; items: { key: ItemKey; label: string; icon: string 
       { key: "phase_advance", label: "Phase advance", icon: "graph-line" },
       { key: "syn_phase", label: "Synchronous phase", icon: "graph-scatter" },
       { key: "cavity_voltage", label: "Cavity voltage", icon: "graph" },
+      { key: "compare", label: "Compare runs", icon: "diff" },
     ],
   },
   {
@@ -82,10 +86,6 @@ const TREE: { group: string; items: { key: ItemKey; label: string; icon: string 
 const ENVELOPE = ["rms_x", "rms_y", "rms_xy", "max_x", "max_y", "max_xy", "c_x", "c_y", "c_xy", "phi", "beta_x", "beta_y", "beta_z", "beta_xyz", "alpha_x"];
 
 type Tab = { id: string; key: ItemKey; title: string };
-
-function basename(p: string) {
-  return p.split(/[\\/]/).pop() ?? p;
-}
 
 function Opt({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -354,6 +354,8 @@ function ExpandTool({ ov }: { ov: Overview }) {
       }),
     [t],
   );
+  // the back end has no "is it running" query and the finish event may have been lost while disconnected
+  useEffect(() => on("bridge.reconnected", () => setRunning(false)), []);
   return (
     <div className="tool-panel">
       <div className="form">
@@ -389,8 +391,13 @@ function ExpandTool({ ov }: { ov: Overview }) {
             icon="debug-stop"
             disabled={!running}
             onClick={async () => {
-              await call("tools.expandStop");
-              setRunning(false);
+              try {
+                await call("tools.expandStop");
+              } catch (e) {
+                reportError(e);
+              } finally {
+                setRunning(false);
+              }
             }}
           >
             {t("Stop")}
@@ -452,7 +459,7 @@ function PltToDstTool({ ov }: { ov: Overview }) {
 }
 
 type ResultSource = {
-  kind: "project" | "segment";
+  kind: "project" | "segment" | "archived";
   label: string;
   outputDir: string;
   status?: string | null;
@@ -460,6 +467,8 @@ type ResultSource = {
   zStart?: number;
   zEnd?: number;
   entry?: string | null;
+  mode?: string | null;
+  archivedAt?: string | null;
 };
 
 const ENTRY_LABEL: Record<string, string> = {
@@ -557,7 +566,9 @@ export default function ResultsPage() {
     label:
       s.kind === "project"
         ? `${tt("Full lattice")} (OutputFile)`
-        : [
+        : s.kind === "archived"
+          ? [s.label, s.time ?? "", s.status && s.status !== "finished" ? runStatusLabel(s.status) : null].filter(Boolean).join("  ·  ")
+          : [
             tt("Segment {label}", { label: s.label }),
             `z ${s.zStart ?? "?"}–${s.zEnd ?? "?"} m`,
             s.entry ? tt(ENTRY_SHORT[s.entry] ?? s.entry) : null,
@@ -651,6 +662,19 @@ export default function ResultsPage() {
         >
           {tt("Choose...")}
         </Button>
+        {current?.kind === "project" && current.status === "finished" && !project.lastRun?.archived && (
+          <Button
+            small
+            icon="archive"
+            tip={running ? tt("Cannot keep while a simulation is running") : tt("Keep this run (copy to Runs/)")}
+            disabled={running}
+            onClick={async () => {
+              if (await archiveRun()) loadSources();
+            }}
+          >
+            {tt("Keep this run")}
+          </Button>
+        )}
         {current && (
           <IconButton
             icon="trash"
@@ -675,6 +699,11 @@ export default function ResultsPage() {
           {tt("Open folder")}
         </Button>
       </div>
+      {current?.kind === "archived" && (
+        <div className="muted results-source-note">
+          {tt("Kept run {label}: a copy of OutputFile/ made {time}; its input files are in inputs/.", { label: current.label, time: current.archivedAt ?? "" })}
+        </div>
+      )}
       {current?.kind === "segment" && (
         <div className="muted results-source-note">
           {tt("Segment run: z starts at 0 at the segment entry (z = {z} m of the full lattice). Entry beam: {entry}.", {
@@ -722,7 +751,11 @@ export default function ResultsPage() {
               />
               {tabs.map((tb) => (
                 <div key={tb.id} className="results-tab" style={{ display: tb.id === active ? "flex" : "none" }}>
-                  <TabContent tab={tb} ov={ov} refreshKey={refreshKey} />
+                  {tb.key === "compare" ? (
+                    <CompareTab sources={sources as CompareSource[]} initial={shownDir ? [shownDir] : []} choices={ENVELOPE.concat(["emittance_x", "emittance_y", "emittance_z", "energy", "loss"])} refreshKey={refreshKey} />
+                  ) : (
+                    <TabContent tab={tb} ov={ov} refreshKey={refreshKey} />
+                  )}
                 </div>
               ))}
             </>

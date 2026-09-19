@@ -1,5 +1,5 @@
 import avas.constants as global_varible
-from avas.utils.readfile import read_txt, read_lattice_mulp, read_lattice_mulp_with_name
+from avas.utils.readfile import read_lattice_mulp, read_lattice_mulp_with_name
 def write_mulp_to_lattice_only_sim(lattice_mulp_path, lattice_path):
     """
     :param lattice_mulp_path:

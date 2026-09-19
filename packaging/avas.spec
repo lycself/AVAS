@@ -29,6 +29,9 @@ datas += collect_data_files("avas", subdir="engine")
 datas += collect_data_files("avas", subdir="static")
 datas += [(os.path.join(ROOT, "avas", "gui", "web"), os.path.join("avas", "gui", "web"))]
 datas += collect_data_files("webview")                  # pywebview's JavaScript glue
+manual = os.path.join(ROOT, "docs", "使用说明20260427.docx")   # Help > User manual
+if os.path.isfile(manual):
+    datas += [(manual, "docs")]
 stamp = os.path.join(ROOT, "avas", "_build.json")        # written by packaging/build.py
 if os.path.isfile(stamp):
     datas += [(stamp, "avas")]
@@ -38,8 +41,14 @@ icon = os.path.join(ROOT, "avas", "gui", "web", "avas.ico")
 icon = icon if os.path.isfile(icon) else None
 
 hiddenimports = (
-    ["avas.gui.app", "avas.api.basic", "avas.sim.error", "avas.sim.err_adjust", "avas.sim.linear_optics",
-     "sklearn.utils._typedefs", "scipy.optimize", "clr_loader", "pythonnet"]
+    ["avas.gui.app", "sklearn.utils._typedefs", "scipy.optimize", "clr_loader", "pythonnet"]
+    # the run / plot entry points import the engine wrapper, post-processing and plots lazily
+    + collect_submodules("avas.api")
+    + collect_submodules("avas.core")
+    + collect_submodules("avas.sim")
+    + collect_submodules("avas.post")
+    + collect_submodules("avas.data")
+    + collect_submodules("avas.utils")
     + collect_submodules("avas.gui.services")
     + collect_submodules("avas.ai")
     + collect_submodules("webview.platforms")
@@ -49,7 +58,7 @@ hiddenimports = (
 )
 
 common = dict(pathex=[ROOT], binaries=binaries, datas=datas, hiddenimports=hiddenimports, hookspath=[],
-              hooksconfig={}, runtime_hooks=[], excludes=["avas.gpu", "avas.hpc", "PyQt5", "PySide6", "tkinter"],
+              hooksconfig={}, runtime_hooks=[], excludes=["avas.gpu", "PyQt5", "PySide6", "tkinter"],
               noarchive=False)
 
 cli = Analysis([os.path.join(ROOT, "run_avas.py")], **common)

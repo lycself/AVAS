@@ -2,9 +2,10 @@
 
 Merged from the former ``conf/setting.py`` and ``conf/contants.py``.
 """
+import sys
 
-# 运行环境分为三种: windows, linux, hpc
-run_env = "windows"
+# 运行环境: windows 或 linux（由解释器平台决定）
+run_env = "windows" if sys.platform.startswith("win") else "linux"
 
 # 1 = write log files under avas.paths.LOG_DIR, 0 = disable logging
 if_logger = 1

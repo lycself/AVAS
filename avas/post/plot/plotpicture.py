@@ -1,11 +1,9 @@
 from avas.paths import lattice_source_path
-import matplotlib.pyplot as plt
-from avas.utils.readfile import read_txt, read_dst, read_lattice_mulp_with_name
+from avas.utils.readfile import read_lattice_mulp_with_name
 from avas.post.plot.initialplot import PicturelBar_2D, PicturePlot_2D
 import numpy as np
 from avas.data.latticeparameter import LatticeParameter
 from avas.data.datasetparameter import DatasetParameter
-from avas.utils.readfile import read_lattice_mulp_with_name
 class PlotCavityVoltage(PicturelBar_2D):
     """
     腔压图

@@ -3,6 +3,7 @@
 // mapped to a palette readable on both backgrounds.
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../store/app";
+import { cssColor } from "../util";
 import { Spinner } from "./ui";
 
 type PlotlyModule = typeof import("plotly.js-dist-min");
@@ -37,15 +38,11 @@ export function seriesColor(name: string | undefined, dark: boolean): string {
   return p ? p[dark ? 1 : 0] : name;
 }
 
-function cssVar(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
 export function themeLayout(dark: boolean): Partial<Plotly.Layout> {
-  const fg = cssVar("--fg") || (dark ? "#cccccc" : "#3b3b3b");
+  const fg = cssColor("--fg", dark ? "#cccccc" : "#3b3b3b");
   const grid = dark ? "#333333" : "#e6e6e6";
   const line = dark ? "#5a5a5a" : "#9a9a9a";
-  const bg = cssVar("--editor-bg") || (dark ? "#1f1f1f" : "#ffffff");
+  const bg = cssColor("--editor-bg", dark ? "#1f1f1f" : "#ffffff");
   const axis = { gridcolor: grid, linecolor: line, zerolinecolor: line, tickcolor: line, showline: true, mirror: true, ticks: "outside" as const, automargin: true };
   return {
     paper_bgcolor: bg,
@@ -55,7 +52,7 @@ export function themeLayout(dark: boolean): Partial<Plotly.Layout> {
     yaxis: axis,
     legend: { bgcolor: "rgba(0,0,0,0)", bordercolor: grid },
     colorway: ["r", "b", "g", "m", "blueviolet", "c", "orange"].map((c) => seriesColor(c, dark)),
-    hoverlabel: { bgcolor: cssVar("--tooltip-bg"), bordercolor: cssVar("--tooltip-border"), font: { color: fg } },
+    hoverlabel: { bgcolor: cssColor("--tooltip-bg"), bordercolor: cssColor("--tooltip-border"), font: { color: fg } },
     margin: { l: 64, r: 24, t: 24, b: 52 },
   };
 }

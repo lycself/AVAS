@@ -100,3 +100,22 @@ def test_web_build_is_current():
     with open(stamp, encoding="utf-8") as fh:
         built = json.load(fh).get("sha256")
     assert built == source_hash(), "avas/gui/web is older than frontend/: run 'npm run build' in frontend/ and commit avas/gui/web"
+
+
+def test_no_stale_translations():
+    """Every zh_CN.json key still appears in a front-end or back-end source (UserError texts included)."""
+    with open(os.path.join(SRC, "i18n", "zh_CN.json"), encoding="utf-8") as fh:
+        zh = json.load(fh)
+    text = []
+    for rel, path in _sources((".ts", ".tsx")):
+        text.append(_read(path))
+    for base, _dirs, files in os.walk(os.path.join(ROOT, "avas")):
+        if "web" in base.replace("\\", "/").split("/"):
+            continue
+        for name in files:
+            if name.endswith(".py"):
+                with open(os.path.join(base, name), encoding="utf-8", errors="replace") as fh:
+                    text.append(fh.read())
+    corpus = "\n".join(text)
+    stale = [k for k in zh if k not in corpus and json.dumps(k, ensure_ascii=False) not in corpus]
+    assert not stale, "zh_CN.json entries whose English text no longer exists in the sources (remove them):\n" + "\n".join(repr(k) for k in stale)

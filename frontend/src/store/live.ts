@@ -31,7 +31,7 @@ export type LiveBandItem = { label: string; group: string | null; time: string |
 
 export type LiveRunInfo = {
   id: string;
-  kind: "project" | "segment" | "assistant";
+  kind: "project" | "segment" | "assistant" | "scan";
   label: string;
   mode: string;
   started: string;
@@ -63,11 +63,12 @@ export const useLive = create<LiveState>(() => ({ run: null, lattice: null, prev
 const set = useLive.setState;
 const get = useLive.getState;
 
-function emptyArrays(): LiveArrays {
+export function emptyArrays(): LiveArrays {
   return { z: [], rmsX: [], rmsY: [], rmsZ: [], maxX: [], maxY: [], energy: [], alive: [] };
 }
 
-function toArrays(src: Record<string, ArrayLike<number | null> | undefined> | null | undefined): LiveArrays {
+/** Snapshot payload (typed arrays or lists, null for missing values) to plain arrays with NaN gaps. */
+export function toArrays(src: Record<string, ArrayLike<number | null> | undefined> | null | undefined): LiveArrays {
   const out = emptyArrays();
   if (!src) return out;
   for (const k of LIVE_KEYS) {
@@ -77,7 +78,8 @@ function toArrays(src: Record<string, ArrayLike<number | null> | undefined> | nu
   return out;
 }
 
-function appendRows(target: LiveArrays, rows: Record<string, (number | null)[]>) {
+/** Append the rows of a "run.live" event in place (null becomes NaN; unknown columns are ignored). */
+export function appendRows(target: LiveArrays, rows: Record<string, (number | null)[]>) {
   for (const k of LIVE_KEYS) {
     const v = rows[k];
     if (!v) continue;
@@ -155,7 +157,7 @@ function handle(e: any) {
         },
         version: st.version + 1,
       });
-      if (st.run?.kind === "assistant") refreshLive(); // every evaluation has its own lattice
+      if (st.run?.kind === "assistant" || st.run?.kind === "scan") refreshLive(); // every evaluation has its own lattice
       return;
     case "rows": {
       const ep = st.episode;

@@ -1,72 +1,102 @@
+"""Error studies: static (``Errorstat``), dynamic (``ErrorDyn``) and combined (``Errorstatdyn``).
 
-# 工作流程：
-#    generate_adjust_parameter：根据lattice_mulp记录需要adjust的元件及参数位置，这里的位置是整个
-#    lattice_mulp中所有的内容转换成list
+All three run the same schedule, :meth:`Error.run`:
 
-#    get_goal：修改参数，添加end，然后写入lattice
-#    根据诊断命令，计算loss
-from avas.paths import lattice_source_path
-import sys
-from avas.paths import resolve_io_dirs
-from scipy.optimize import minimize
+1. ``get_group_time``: ``err_step`` (groups x runs) and the ``err_*_on`` switches from the run lattice.
+2. The error-free reference run (``if_normal``) -> ``error_output/output_0_0`` and row 0 of ``errors_par.txt``.
+3. For every group / time: ``prepare_step`` draws the errors (``generate_lattice_mulp_list``; the seeded RNG is
+   consumed in lattice order, coupled commands first, then the uncoupled and beam commands) and, when the lattice has
+   matching ``adjust`` / ``diag_*`` commands, optimises the correctors (:class:`avas.sim.err_adjust.Adjust_Error`);
+   ``run_step`` writes the engine lattice (:meth:`Error.lattice_lines` is what differs between the modes) and runs
+   the engine into ``error_middle/output_0``, which is then moved to ``error_output/output_<group>_<time>``;
+   ``collect_step`` writes ``Error_Datas``, ``errors_par(_tot)``, ``Adjust_Datas`` and ``par_diag_datas``.
 
-import numpy as np
-
-from avas.data.latticeparameter import LatticeParameter
-from avas.data.datasetparameter import DatasetParameter
-
-from avas.utils.readfile import read_txt, read_lattice_mulp, read_lattice_mulp_with_name
-from avas.utils.treatlist import flatten_list, list_one_two
-from avas.utils.treatfile import copy_file, split_file
-from avas.utils.tool import write_to_txt, calculate_mean, calculate_rms, add_to_txt
-
+The class works inside the folder given as ``input_file`` (``lattice.txt`` is written there): ``avas run`` passes
+the staged copy ``<output>/inputs`` (see :mod:`avas.api.basic`), so the user's InputFile is never touched.
+"""
+import copy
+import logging
 import os
-
 import random
-from avas.core.MultiParticle import MultiParticle
-from avas.utils.treat_directory import list_files_in_directory, copy_directory, delete_directory
-import multiprocessing
 
 import avas.constants as global_varible
-import copy
-
-from avas.utils.tolattice import write_mulp_to_lattice_only_sim, write_mulp_to_lattice_only_sim2
-
-from avas.sim.err_adjust import Adjust_Error
-from avas.utils.exception import MissingcommandError
-from avas.utils.tool import judge_command_on_element, add_element_end_index, delete_element_end_index
-from avas.sim.diaginfo import DiagInfo
-
+from avas.core.MultiParticle import MultiParticle
+from avas.data.datasetparameter import DatasetParameter
+from avas.data.latticeparameter import LatticeParameter
+from avas.paths import lattice_source_path, resolve_io_dirs
 from avas.post.analysis.extodensity import ExtoDensity, MergeDensityData
+from avas.sim.diaginfo import DiagInfo
+from avas.sim.err_adjust import Adjust_Error, apply_adjust_results, stat_to_dyn_lines, write_engine_lines
+from avas.utils.exception import MissingcommandError
+from avas.utils.readfile import read_lattice_mulp_with_name, read_txt
+from avas.utils.tolattice import write_mulp_to_lattice_only_sim2
+from avas.utils.tool import (add_element_end_index, add_to_txt, calculate_mean, calculate_rms,
+                             delete_element_end_index, judge_command_on_element, write_to_txt)
+from avas.utils.treat_directory import copy_directory, delete_directory, list_files_in_directory
+from avas.utils.treatfile import copy_file
+
+log = logging.getLogger(__name__)
+
+# err_*_on switch lines -> attribute holding the flags (one per error column)
+SWITCH_ATTRS = {
+    "err_beam_stat_on": "err_beam_stat_on", "err_quad_stat_on": "err_quad_stat_on", "err_cav_stat_on": "err_cav_stat_on",
+    "err_beam_dyn_on": "err_beam_dyn_on", "err_quad_dyn_on": "err_quad_dyn_on", "err_cav_dyn_on": "err_cav_dyn_on",
+}
+# error command -> (switch attribute, index of the first error column in the command)
+COMMAND_SWITCH = {
+    "err_quad_ncpl_stat": ("err_quad_stat_on", 3), "err_quad_cpl_stat": ("err_quad_stat_on", 3),
+    "err_quad_ncpl_dyn": ("err_quad_dyn_on", 3), "err_quad_cpl_dyn": ("err_quad_dyn_on", 3),
+    "err_cav_ncpl_stat": ("err_cav_stat_on", 3), "err_cav_cpl_stat": ("err_cav_stat_on", 3),
+    "err_cav_ncpl_dyn": ("err_cav_dyn_on", 3), "err_cav_cpl_dyn": ("err_cav_dyn_on", 3),
+    "err_beam_stat": ("err_beam_stat_on", 2), "err_beam_dyn": ("err_beam_dyn_on", 2),
+}
+CPL_TO_NCPL = {"err_cav_cpl_dyn": "err_cav_ncpl_dyn", "err_cav_cpl_stat": "err_cav_ncpl_stat",
+               "err_quad_cpl_dyn": "err_quad_ncpl_dyn", "err_quad_cpl_stat": "err_quad_ncpl_stat"}
+# families of one element error: stat and dyn of the same element may not both be attached to it
+ERROR_FAMILIES = [["err_quad_ncpl_stat", "err_quad_cpl_stat"], ["err_quad_ncpl_dyn", "err_quad_cpl_dyn"],
+                  ["err_cav_ncpl_stat", "err_cav_cpl_stat"], ["err_cav_ncpl_dyn", "err_cav_cpl_dyn"]]
+
+ERRORS_PAR_TOT_TITLE = [
+    "step_err",                                                              # group_time
+    "ratio_loss",                                                            # lost / total macro-particles
+    "emit_x_increase", "emit_y_increase", "emit_z_increase",                 # eps/eps0 - 1
+    "x_center(m)", "y_center(m)", "x_'(rad)", "y_'(rad)",                    # 5..8
+    "rms_x(m)", "rms_y(m)", "rms_x'(rad)", "rms_y'(rad)",                    # 9..12
+    "delat_energy(MeV)",                                                     # 13, relative to the reference run
+    "alpha_xx'", "beta_xx'", "alpha_yy'", "beta_yy'", "alpha_zz'", "beta_zz'",
+]
+ERRORS_PAR_TITLE = (
+    ["step_err"]
+    + [f"ave({c})" for c in ERRORS_PAR_TOT_TITLE[1:13]] + ["ave(delat_energy)"]        # 1..13 means
+    + [f"rms({c})" for c in ERRORS_PAR_TOT_TITLE[5:13]] + ["rms(delat_energy(MeV))"]   # 14..22 spreads
+)
+FAILED_ROW_LENGTH = 14              # a lost beam is reported as ratio_loss 1 and zeros
+SUMMARY_LENGTH = 23
+
+
 class Error():
-    """
-    该类为误差分析
-    """
+    """One error study; see the module docstring.  Subclasses set the hooks below."""
+
+    SWITCHES = tuple(SWITCH_ATTRS)                       # switch attributes that must not all be zero
+    MISSING_SWITCH_MESSAGE = "Missing error on command"
+    SUPPORTS_ADJUST = True                               # static errors can be corrected with adjust / diag commands
+
     def __init__(self, item):
-
-        project_path = item.get("project_path")
-        seed = item.get("seed")
-        if_normal = item.get("if_normal")
-        field_path = item.get("field_path")
-        if_generate_density_file = item.get("if_generate_density_file")
-        restart = item.get("restart", 0)
-        self.restart = restart
-
-        self.device = item.get("device")
         self.item = item
+        self.project_path = item.get("project_path")
+        self.if_normal = item.get("if_normal")
+        self.field_path = item.get("field_path")
+        self.if_generate_density_file = item.get("if_generate_density_file")
+        self.restart = item.get("restart", 0)
+        self.device = item.get("device")
 
-        random.seed(seed)
-
-        self.if_generate_density_file = if_generate_density_file
-
-        self.field_path = field_path
-        self.project_path = project_path
-        self.if_normal = if_normal
+        # own generator: the same seed gives the same error sequence, independent of other random users
+        self.rng = random.Random(item.get("seed"))
 
         # input / output directories may be given explicitly (CLI) or derived
         # from the classic <project>/InputFile, <project>/OutputFile layout (GUI)
         self.input_path, self.output_path = resolve_io_dirs(
-            project_path, item.get("input_file"), item.get("output_file"))
+            self.project_path, item.get("input_file"), item.get("output_file"))
         os.makedirs(self.output_path, exist_ok=True)
 
         self.lattice_mulp_path = lattice_source_path(self.input_path)
@@ -76,119 +106,64 @@ class Error():
         self.error_middle_output0_path = os.path.join(self.output_path, 'error_middle', 'output_0')
         self.error_output_path = os.path.join(self.output_path, 'error_output')
         self.normal_out_path = os.path.join(self.error_output_path, 'output_0_0')
+        self.err_adjust_path = os.path.join(self.output_path, "error_adjust")
 
         self.errors_par_tot_path = os.path.join(self.output_path, "errors_par_tot.txt")
         self.errors_par_path = os.path.join(self.output_path, "errors_par.txt")
 
-        self.loss = []
-        self.opti_res = []
-
-
         self.all_group = 1
         self.all_time = 1
-        self.lattice_mulp_list = []
-        self.errors_par_tot_list_first = []
-        self.err_beam_stat_on = [0] * 13
-        self.err_quad_stat_on = [0, 0, 0, 0, 0, 0, 0]
-        self.err_cav_stat_on = [0, 0, 0, 0, 0, 0, 0]
-
-        self.err_beam_dyn_on = [0] * 13
-        self.err_quad_dyn_on = [0, 0, 0, 0, 0, 0, 0]
-        self.err_cav_dyn_on = [0, 0, 0, 0, 0, 0, 0]
         self.err_step_command = []
-        # self.err_beam_stat_on = []
-        # self.err_quad_stat_on = []
-        # self.err_cav_stat_on = []
-        #
-        # self.err_beam_dyn_on = []
-        # self.err_quad_dyn_on = []
-        # self.err_cav_dyn_on = []
+        self.err_beam_stat_on = [0] * 13
+        self.err_quad_stat_on = [0] * 7
+        self.err_cav_stat_on = [0] * 7
+        self.err_beam_dyn_on = [0] * 13
+        self.err_quad_dyn_on = [0] * 7
+        self.err_cav_dyn_on = [0] * 7
+        self.opti = 0
+        self.decimal = 5  # decimals kept for drawn errors
 
-
-        self.decimal = 5  # 小数点保留多少位
-        self.result_queue = multiprocessing.Queue()
         if self.restart == 0:
-            if os.path.exists(self.error_middle_path):
-                delete_directory(self.error_middle_path)
-            os.makedirs(self.error_middle_path)
-
-
-            if os.path.exists(self.error_output_path):
-                delete_directory(self.error_output_path)
-            os.makedirs(self.error_output_path)
-
-            self.err_adjust_path = os.path.join(self.output_path, "error_adjust")
-            if os.path.exists(self.err_adjust_path):
-                delete_directory(self.err_adjust_path)
-            os.makedirs(self.err_adjust_path)
+            for path in (self.error_middle_path, self.error_output_path, self.err_adjust_path):
+                if os.path.exists(path):
+                    delete_directory(path)
+                os.makedirs(path)
 
         v = LatticeParameter(self.lattice_mulp_path)
         v.get_parameter()
         self.lattice_total_length = v.total_length
 
-    def delete_element_end_index(self, error_lattice):
-        error_lattice_copy = copy.deepcopy(error_lattice)
-        for i in error_lattice_copy:
-            if i[0] in global_varible.all_element:
-                i.pop()
-        return error_lattice_copy
-
+    # ------------------------------------------------------------------ lattice: groups, switches, error drawing
     def get_group_time(self):
-        """
-        得到group和time
-        :return:
-        """
-
-
-        input_lines, _  = read_lattice_mulp_with_name(self.lattice_mulp_path)
-
-        for i in input_lines:
-            if i[0] == 'err_step':
-
-                if len(i) != 3:
+        """Read ``err_step`` and the ``err_*_on`` switches from the run lattice."""
+        input_lines, _ = read_lattice_mulp_with_name(self.lattice_mulp_path)
+        for line in input_lines:
+            if line[0] == 'err_step':
+                if len(line) != 3:
                     raise Exception("The err_step command miss parameters.")
-                if int(i[1]) <= 0:
+                if int(line[1]) <= 0:
                     raise Exception("The group parameter of the err_step command must be a positive integer.")
-                if int(i[2]) <= 0:
+                if int(line[2]) <= 0:
                     raise Exception("The time parameter of the err_step command must be a positive integer.")
-                self.err_step_command = i
+                self.err_step_command = line
+                self.all_group = int(line[1])
+                self.all_time = int(line[2])
+            elif line[0] in SWITCH_ATTRS:
+                flags = getattr(self, SWITCH_ATTRS[line[0]])
+                for j in range(1, len(line)):
+                    flags[j - 1] = int(line[j])
 
-                self.all_group = int(i[1])
-                self.all_time = int(i[2])
-
-            elif i[0] == 'err_beam_stat_on':
-                for j in range(1, len(i)):
-                    self.err_beam_stat_on[j-1] = int(i[j])
-
-            elif i[0] == 'err_quad_stat_on':
-                for j in range(1, len(i)):
-                    self.err_quad_stat_on[j-1] = int(i[j])
-
-            elif i[0] == 'err_cav_stat_on':
-                for j in range(1, len(i)):
-                    self.err_cav_stat_on[j-1] = int(i[j])
-
-            elif i[0] == 'err_beam_dyn_on':
-                for j in range(1, len(i)):
-                    self.err_beam_dyn_on[j-1] = int(i[j])
-
-            elif i[0] == 'err_quad_dyn_on':
-                for j in range(1, len(i)):
-                    self.err_quad_dyn_on[j-1] = int(i[j])
-
-            elif i[0] == 'err_cav_dyn_on':
-
-                for j in range(1, len(i)):
-                    self.err_cav_dyn_on[j-1] = int(i[j])
+    def check_switches(self):
+        if len(self.err_step_command) == 0:
+            raise MissingcommandError("err_step")
+        if all(set(getattr(self, name)) == {0} for name in self.SWITCHES):
+            raise Exception(self.MISSING_SWITCH_MESSAGE)
 
     def increase_error(self, input_lines):
-        """
-        向叠加场中添加误差, 将一个误差命令添加到所有的元件上
-        """
+        """Attach one coupled error command to the N following elements of its kind (recursive, one command a pass)."""
         N = -1
         command = []
         error_use_index = 0
-
         res = copy.deepcopy(input_lines)
 
         for i in range(len(input_lines)):
@@ -197,283 +172,139 @@ class Error():
                 command = input_lines[i]
                 command[1] = 1
                 error_use_index = i
-
             elif N == -1:
                 continue
-
             elif N == 0 or input_lines[i][0] == 'end':
                 res[error_use_index][-1] = True
-
-                err_judge = []
-                for i in res:
-                    if i[0] in global_varible.error_elemment_command:
-                        err_judge.append(i[-1])
-
-                # 当全部都是True
+                err_judge = [line[-1] for line in res if line[0] in global_varible.error_elemment_command]
                 if all(err_judge):
                     return res
-
-                else:
-
-                    return self.increase_error(res)
-
-
+                return self.increase_error(res)
             elif input_lines[i][0] in global_varible.mulpud_element and N > 0:
-                # 在叠加场添加磁场原件误差
+                # static-field map: quadrupole errors; RF field map: cavity errors
                 if input_lines[i][0] == 'field' and input_lines[i][4] == '3':
-                    if command[0] in (
-                            global_varible.error_elemment_command_quad + global_varible.error_elemment_command_quad_cpl):
+                    if command[0] in (global_varible.error_elemment_command_quad
+                                      + global_varible.error_elemment_command_quad_cpl):
                         res[i].append(command)
-
-                # 在叠加场添加高频腔原件误差
                 if input_lines[i][0] == 'field' and input_lines[i][4] == '1':
-                    if command[0] in (global_varible.error_elemment_command_cav + global_varible.error_elemment_command_cav_cpl):
+                    if command[0] in (global_varible.error_elemment_command_cav
+                                      + global_varible.error_elemment_command_cav_cpl):
                         res[i].append(command)
-
                 N -= 1
 
     def get_dimension(self, lst):
         if not isinstance(lst, list):
-            return 0  # 不是列表，维度为 0
-        else:
-            return 1 + max(self.get_dimension(item) for item in lst)
-
+            return 0
+        return 1 + max(self.get_dimension(item) for item in lst)
 
     def set_error_to_lattice(self, lattice):
-        # for i in lattice:
-        #     print(i)
-        lattice = copy.deepcopy(lattice)
+        """Append every error command (numbered ``err_<k>``) to the N elements of its kind that follow it."""
+        lattice = add_element_end_index(copy.deepcopy(lattice))
 
-        lattice = add_element_end_index(lattice)
-
-
-        #为每个误差命令添加一个编号
         err_command = []
-        index = 0
-        for i in lattice:
-            if i[0] in global_varible.error_elemment_command:
-                i.append(f"err_{index}")
-                index += 1
-                err_command.append(i)
+        for index, line in enumerate(line for line in lattice if line[0] in global_varible.error_elemment_command):
+            line.append(f"err_{index}")
+            err_command.append(line)
 
-        # for i in err_command:
-        #     print(i)
-        # breakpoint()
-        #每一个误差命令的作用范围
+        # the element indices each error command acts on
         err_command_action_scope = []
-        for i in err_command:
-            #误差命令的索引
-            err_index = lattice.index(i)
-            #作用元件数量
-            N = int(lattice[err_index][1])
-            #判断误差命令在哪个元件上
-            command_on_element = judge_command_on_element(lattice, i)
+        for command in err_command:
+            N = int(lattice[lattice.index(command)][1])
+            command_on_element = judge_command_on_element(lattice, command)
             if command_on_element is not None:
                 err_command_action_scope.append(list(range(command_on_element, command_on_element + N)))
             else:
                 err_command_action_scope.append([])
 
-        # for i in err_command:
-        #     print(i)
-
-
-        #根据命令和作用域向lattice插入
-        for i in range(len(err_command)):
-            if err_command[i][0] in global_varible.error_elemment_command_quad:
-
+        for i, command in enumerate(err_command):
+            if command[0] in global_varible.error_elemment_command_quad:
                 for j in lattice:
                     if j[0] == 'field' and int(float(j[4])) == 3:
                         if int(j[-1].split("_")[-1]) in err_command_action_scope[i]:
-                            j.insert(-1, err_command[i])
+                            j.insert(-1, command)
                     elif j[0] == "quad":
                         if int(j[-1].split("_")[-1]) in err_command_action_scope[i]:
-                            j.insert(-1, err_command[i])
-
-            elif err_command[i][0] in global_varible.error_elemment_command_cav:
+                            j.insert(-1, command)
+            elif command[0] in global_varible.error_elemment_command_cav:
                 for j in lattice:
                     if j[0] == 'field' and int(float(j[4])) == 1:
                         if int(j[-1].split("_")[-1]) in err_command_action_scope[i]:
-                            j.insert(-1, err_command[i])
+                            j.insert(-1, command)
 
-        lattice = self.delete_element_end_index(lattice)
-
-        return lattice
-
+        return delete_element_end_index(lattice)
 
     def generate_lattice_mulp_list(self, group):
-
+        """The run lattice with the errors of *group* drawn: one error command (N = 1) per element, elements indexed."""
         input_lines, _ = read_lattice_mulp_with_name(self.lattice_mulp_path)
 
-        #为cpl生成误差，如果是cpl，直接生成对应的误差
+        # coupled errors are drawn once per command, then every command is attached to its elements
         input_lines_copy = self.generate_error(input_lines, group, 'cpl')
-
-        #将误差命令添加到每个元件上，加到每个元件的结尾
         lattice = self.set_error_to_lattice(input_lines_copy)
-        # for i in lattice:
-        #     print(i)
-        # print("----------------------------")
-
-
-        #去掉误差命令
         lattice = [i for i in lattice if i[0] not in global_varible.error_elemment_command]
 
+        # unfold the attached commands in front of their element; an element keeps at most one command per family
         res_treat = []
-
-        error_commands_map = {
-            'err_quad_stat': ['err_quad_ncpl_stat', 'err_quad_cpl_stat'],
-            'err_quad_dyn': ['err_quad_ncpl_dyn', 'err_quad_cpl_dyn'],
-            'err_cav_stat': ['err_cav_ncpl_stat', 'err_cav_cpl_stat'],
-            'err_cav_dyn': ['err_cav_ncpl_dyn', 'err_cav_cpl_dyn']
-        }
-        #为每个误差添加唯一的误差，动态和静态，防止出现动态和静态同时存在
         for i in lattice:
             if self.get_dimension(i) == 1:
                 res_treat.append(i)
+                continue
+            lis = []
+            err_command_exist = []
+            i_copy = copy.deepcopy(i)
+            for j in i[::-1]:
+                if isinstance(j, list) and j[0] not in err_command_exist:
+                    lis.append(j)
+                    for family in ERROR_FAMILIES:
+                        if j[0] in family:
+                            err_command_exist.extend(family)
+                            break
+                    i_copy.pop()
+                elif isinstance(j, list) and j[0] in err_command_exist:
+                    i_copy.pop()
+                else:
+                    lis.append(i_copy)
+                    break
+            for k in lis:
+                res_treat.append(copy.deepcopy(k))
 
-            elif self.get_dimension(i) != 1:
-                lis = []
-                err_command_exist = []
-
-                i_copy = copy.deepcopy(i)
-
-                for j in i[::-1]:
-                    if isinstance(j, list) and j[0] not in err_command_exist:
-                        lis.append(j)
-
-                        if j[0] in error_commands_map["err_quad_stat"]:
-                            err_command_exist.extend(error_commands_map["err_quad_stat"])
-
-                        elif j[0] in error_commands_map["err_quad_dyn"]:
-                            err_command_exist.extend(error_commands_map["err_quad_dyn"])
-
-                        elif j[0] in error_commands_map["err_cav_stat"]:
-                            err_command_exist.extend(error_commands_map["err_cav_stat"])
-
-                        elif j[0] in error_commands_map["err_cav_dyn"]:
-                            err_command_exist.extend(error_commands_map["err_cav_dyn"])
-
-                        # if j[0] in ['err_quad_ncpl_stat', 'err_quad_cpl_stat']:
-                        #     err_command_exist.append('err_quad_ncpl_stat')
-                        #     err_command_exist.append('err_quad_cpl_stat')
-                        #
-                        # elif j[0] in ['err_cav_ncpl_stat', 'err_cav_cpl_stat']:
-                        #     err_command_exist.append('err_cav_ncpl_stat')
-                        #     err_command_exist.append('err_cav_cpl_stat')
-                        #
-                        # elif j[0] in ['err_quad_ncpl_dyn', 'err_quad_cpl_dyn']:
-                        #     err_command_exist.append('err_quad_ncpl_dyn')
-                        #     err_command_exist.append('err_quad_cpl_dyn')
-                        #
-                        # elif j[0] in ['err_cav_ncpl_dyn', 'err_cav_cpl_dyn']:
-                        #     err_command_exist.append('err_cav_ncpl_dyn')
-                        #     err_command_exist.append('err_cav_cpl_dyn')
-
-                        # err_command_exist.append(j[0])
-                        i_copy.pop()
-                    # 如果已经出现过
-                    elif isinstance(j, list) and j[0] in err_command_exist:
-                        i_copy.pop()
-
-                    else:
-                        lis.append(i_copy)
-                        break
-
-                for k in lis:
-                    k1 = copy.deepcopy(k)
-                    res_treat.append(k1)
-
-        # for i in res_treat:
-        #     print(i)
-        # breakpoint()
-
-        #删除误差后面的编号
         for i in res_treat:
             if i[0] in global_varible.error_elemment_command:
-                i.pop()
+                i.pop()                                       # the err_<k> number
 
-
-        #对ncpl误差进行生成
+        # uncoupled (and beam) errors are drawn per element, then every command becomes an uncoupled N = 1 one
         res_treat = self.generate_error(res_treat, group, 'ncpl')
-
-        #将所有的cpl变成ncpl
         for i in res_treat:
-            if i[0] == "err_cav_cpl_dyn":
-                i[0] = "err_cav_ncpl_dyn"
-
-            elif i[0] == "err_cav_cpl_stat":
-                i[0] = "err_cav_ncpl_stat"
-
-            elif i[0] == "err_quad_cpl_dyn":
-                i[0] = "err_quad_ncpl_dyn"
-
-            elif i[0] == "err_quad_cpl_stat":
-                i[0] = "err_quad_ncpl_stat"
-
-        #规定每个误差命令只作用于一个原件
-        for i in res_treat:
+            i[0] = CPL_TO_NCPL.get(i[0], i[0])
             if i[0] in global_varible.error_elemment_command:
                 i[1] = 1
 
-        # for i in res_treat:
-        #     print(i)
-
-        # index = 0
-        # for i in res_treat:
-        #     if i[0] in global_varible.all_element:
-        #         add_name = f'element_{index}'
-        #         i.append(add_name)
-        #         index += 1
-        res_treat = add_element_end_index(res_treat)
-        # for i in res_treat:
-        #     print(i)
-        # breakpoint()
-        self.lattice_mulp_list = res_treat
-        # for i in self.lattice_mulp_list:
-        #     print(i)
-
-        # for i in self.lattice_mulp_list:
-        #     print(i)
-        #返回值后面带了一个元件索引
+        self.lattice_mulp_list = add_element_end_index(res_treat)
         return self.lattice_mulp_list
 
-
-        #
-        # sys.exit(0)
-
     def generate_error_base(self, input, group):
-        """
-        根据每一个error命令产生对应的error
-        :param input:
-        :param group:
-        :return:
-        """
+        """Draw the values of one error command for *group* (amplitude ``value / all_group * group``)."""
         input = copy.deepcopy(input)
-
-
         target = None
+
         if input[0] in global_varible.error_elemment_command:
             for i in range(3, len(input)):
                 input[i] = float(input[i])
-
             input = input + [0] * (10 - len(input))
             target = input
-
-            if int(input[2]) == 0:
+            kind = int(input[2])
+            if kind == 0:
                 target = input
-
-            elif int(input[2]) == 1:
+            elif kind == 1:
                 for i in range(3, len(input) - 1):
                     dx = float(input[i]) / self.all_group
-                    target[i] = round(random.uniform(-1 * dx * (group), dx * (group)), self.decimal)
+                    target[i] = round(self.rng.uniform(-1 * dx * (group), dx * (group)), self.decimal)
                 target[2] = 0
-
-            elif int(input[2]) == 2:
+            elif kind == 2:
                 for i in range(3, len(input) - 1):
                     dx = float(input[i]) / self.all_group
-                    target[i] = round(random.gauss(0, dx * (group)), self.decimal)
+                    target[i] = round(self.rng.gauss(0, dx * (group)), self.decimal)
                 target[2] = 0
-
-            elif int(input[2]) == -1:
+            elif kind == -1:
                 for i in range(3, len(input) - 1):
                     dx = float(input[i]) / self.all_group
                     target[i] = dx * (group)
@@ -483,101 +314,57 @@ class Error():
             for i in range(2, len(input)):
                 input[i] = float(input[i])
             input = input + [0] * (15 - len(input))
-
             target = input
-
-            if int(input[1]) == 0:
+            kind = int(input[1])
+            if kind == 0:
                 target = input
-
-            elif int(input[1]) == 1:
+            elif kind == 1:
                 for i in range(2, len(input)):
                     dx = float(input[i]) / self.all_group
-                    target[i] = round(random.uniform(-1 * dx * group, dx * group), self.decimal)
+                    target[i] = round(self.rng.uniform(-1 * dx * group, dx * group), self.decimal)
                 target[1] = 0
-
-
-            elif int(input[1]) == 2:
+            elif kind == 2:
                 for i in range(2, len(input)):
                     dx = float(input[i]) / self.all_group
-                    target[i] = round(random.gauss(0, dx * group), self.decimal)
+                    target[i] = round(self.rng.gauss(0, dx * group), self.decimal)
                 target[1] = 0
-
-            elif int(input[1]) == -1:
+            elif kind == -1:
                 for i in range(2, len(input)):
                     dx = float(input[i]) / self.all_group
                     target[i] = dx * (group + 1)
                 target[1] = 0
 
-        if input[0] == 'err_quad_ncpl_stat' or input[0] =='err_quad_cpl_stat':
-            for i in range(len(self.err_quad_stat_on)):
-                if int(self.err_quad_stat_on[i]) == 0:
-                    target[i + 3] = 0
-
-        elif input[0] == 'err_quad_ncpl_dyn' or input[0] =='err_quad_cpl_dyn':
-            for i in range(len(self.err_quad_dyn_on)):
-                if int(self.err_quad_dyn_on[i]) == 0:
-                    target[i + 3] = 0
-
-        elif input[0] == 'err_cav_ncpl_stat' or input[0] =='err_cav_cpl_stat':
-            for i in range(len(self.err_cav_stat_on)):
-                if int(self.err_cav_stat_on[i]) == 0:
-                    target[i + 3] = 0
-
-
-        elif input[0] == 'err_cav_ncpl_dyn' or input[0] =='err_cav_cpl_dyn':
-            for i in range(len(self.err_cav_dyn_on)):
-                if int(self.err_cav_dyn_on[i]) == 0:
-                    target[i + 3] = 0
-
-        elif input[0] == 'err_beam_stat':
-            for i in range(len(self.err_beam_stat_on)):
-                if int(self.err_beam_stat_on[i]) == 0:
-                    target[i + 2] = 0
-
-        elif input[0] == 'err_beam_dyn':
-
-            for i in range(len(self.err_beam_dyn_on)):
-                if int(self.err_beam_dyn_on[i]) == 0:
-                    target[i + 2] = 0
+        # columns whose switch is off carry no error
+        if input[0] in COMMAND_SWITCH:
+            switch, first = COMMAND_SWITCH[input[0]]
+            for i, on in enumerate(getattr(self, switch)):
+                if int(on) == 0:
+                    target[i + first] = 0
 
         return target
 
     def generate_error(self, input_lines, group, kind):
-        """
-        将lattice_mulp写进新的lattice，将误差变成AVAS后端需要的情况
-        :param group:
-        :return:
-        """
-
+        """Draw the errors of every ``kind`` (``'cpl'`` or ``'ncpl'`` + beam) command; ``err_step`` becomes ``1 1``."""
         input_lines = copy.deepcopy(input_lines)
-
-        #产生ncpl的误差
         if kind == 'ncpl':
             for i in range(len(input_lines)):
                 if len(input_lines[i]) == 0:
                     continue
-
                 elif input_lines[i][0] == 'err_step':
                     input_lines[i] = ['err_step', '1', '1']
-
-
                 elif input_lines[i][0] in global_varible.error_elemment_command_ncpl or \
                         input_lines[i][0] in global_varible.error_beam_command:
                     input_lines[i] = self.generate_error_base(input_lines[i], group)
-
-        #产生cpl的误差
         elif kind == 'cpl':
             for i in range(len(input_lines)):
                 if len(input_lines[i]) == 0:
                     continue
-
                 elif input_lines[i][0] in global_varible.error_elemment_command_stat_cpl or \
                         input_lines[i][0] in global_varible.error_elemment_command_dyn_cpl:
                     input_lines[i] = self.generate_error_base(input_lines[i], group)
-
         return input_lines
 
-
+    # ------------------------------------------------------------------ engine runs
     def run_multiparticle(self, output_dir, if_error=1):
         item = {
             "project_path": self.project_path,
@@ -587,1053 +374,294 @@ class Error():
             "device": self.device,
             "if_error": if_error,
         }
-        multiparticle_obj = MultiParticle(item)
+        return MultiParticle(item).run()
 
-        res = multiparticle_obj.run()
-        return res
+    def finish_run(self, group, time):
+        """Keep the lattice with the results and move ``error_middle/output_0`` to ``error_output/output_<g>_<t>``."""
+        copy_file(self.lattice_path, self.error_middle_output0_path)
+        copy_directory(self.error_middle_output0_path, self.error_output_path, f'output_{group}_{time}')
+        delete_directory(self.error_middle_output0_path)
 
     def run_normal(self):
-        #模拟没有误差的情况
+        """The error-free reference run -> ``error_output/output_0_0``."""
         write_mulp_to_lattice_only_sim2(self.lattice_mulp_path, self.lattice_path)
-
-        ouput = self.error_middle_output0_path
-        os.mkdir(ouput)
-
-        # process = multiprocessing.Process(target=self.run_multiparticle,
-        #                                   args=(self.project_path, 'OutputFile/error_middle/output_0'))
-        #
-        # process.start()  # 启动子进程
-        # process.join()  # 等待子进程运行结束
-        if_error = 0
-        self.run_multiparticle(self.error_middle_output0_path)
-
+        os.makedirs(self.error_middle_output0_path, exist_ok=True)          # restart=1 keeps the previous folder
+        # the plain lattice has no err_step, so the engine writes into the folder itself (if_error=0)
+        self.run_multiparticle(self.error_middle_output0_path, if_error=0)
         self.write_density_every_time(0, 0)
+        self.finish_run(0, 0)
 
-        copy_file(self.lattice_path, self.normal_out_path)
-
-        new_name = f'output_0_0'
-
-
-        copy_directory(self.error_middle_output0_path, self.error_output_path, new_name)
-
-        delete_directory(self.error_middle_output0_path)
-
-    # def get_normal_data(self):
-    #     path = os.path.join(self.error_output_path, "output_-1_-1")
-    #     dataset_path = os.path.join(path, "DataSet.txt")
-    #     print(dataset_path)
-    #     dataset_obj = DatasetParameter(dataset_path, self.project_path, input_dir=self.input_path)
-    #     dataset_obj.get_parameter()
-    #
-    #     normal_data = [0,
-    #                    dataset_obj.num_of_particle,  # 总粒子数
-    #                    dataset_obj.emit_x[0],  # m, rad
-    #                    dataset_obj.emit_y[0],  # m, rad
-    #                    dataset_obj.emit_z[0],  # m, rad
-    #                    dataset_obj.x[-1],  # m
-    #                    dataset_obj.y[-1],  # m
-    #                    dataset_obj.x_1[-1],
-    #                    dataset_obj.y_1[-1],
-    #                    dataset_obj.rms_x[-1],
-    #                    dataset_obj.rms_y[-1],
-    #                    dataset_obj.rms_x1[-1],
-    #                    dataset_obj.rms_y1[-1],
-    #                    dataset_obj.ek[-1],  # MeV
-    #                    dataset_obj.phi[-1],  # deg
-    #
-    #                    ]
-    #     self.normal_data = normal_data
-    #     return normal_data
-
-
-    def write_err_par_tot_title(self):
-        errors_par_tot_title = [[
-        "step_err",     #组 0
-        "ratio_loss", #束流损失率，1- 存在粒子/总粒子 or 损失粒子 / 总粒子
-        "emit_x_increase", #,x, y z方向发射度增长， x/x0 - 1
-        "emit_y_increase",
-        "emit_z_increase",
-
-        "x_center(m)", #中心位置 5
-        "y_center(m)",
-        "x_'(rad)",
-        "y_'(rad)",
-
-        "rms_x(m)",
-        "rms_y(m)",
-        "rms_x'(rad)",   #11
-        "rms_y'(rad)",   #12
-
-        "delat_energy(MeV)", #能量变化  13
-        "alpha_xx'",
-        "beta_xx'",
-        "alpha_yy'",
-        "beta_yy'",
-        "alpha_zz'",
-        "beta_zz'",
-        ]]
-        write_to_txt(self.errors_par_tot_path, errors_par_tot_title)
-
-
-    def write_err_par_title(self):
-        # errors_par_title = [
-        #     [
-        #         "step_err",  # 组 0
-        #         "ave(ratio_loss)",  # 束流损失率，1- 存在粒子/总粒子 or 损失粒子 / 总粒子
-        #         "ave(emit_x_increase)",  # ,x, y z方向发射度增长， x/x0 - 1
-        #         "ave(emit_y_increase)",
-        #         "ave(emit_z_increase)",
-        #         "rms(x_center(m))",  # 中心位置 5
-        #         "rms(y_center(m))",#6
-        #         "rms(x_'(rad))",  #7
-        #         "rms(y_'(rad))",  #8
-        #         "ave(rms_x(m))",  #9
-        #         "ave(rms_y(m))", #10
-        #         "ave(rms_x'(rad))",  # 11
-        #         "ave(rms_y'(rad))",  # 12
-        #
-        #         "ave(delat_energy)",  # 能量变化  13
-        #
-        #         "ave(x_center(m))",  # 中心位置 14
-        #         "ave(y_center(m))",
-        #         "ave(x_'(rad))",
-        #         "ave(y_'(rad))",
-        #
-        #         "rms(delat_energy(MeV))",  # 能量变化  18
-        #
-        #         "rms(rms_x(m))",  #19
-        #         "rms(rms_y(m))",  # 20
-        #         "rms(rms_x'(rad))",  # 21
-        #         "rms(rms_y'(rad))",  # 22
-        #     ]
-        # ]
-        errors_par_title = [
-            [
-                "step_err",  # 组 0
-                "ave(ratio_loss)",  # 束流损失率，1- 存在粒子/总粒子 or 损失粒子 / 总粒子
-                "ave(emit_x_increase)",  # ,x, y z方向发射度增长， x/x0 - 1
-                "ave(emit_y_increase)",
-                "ave(emit_z_increase)",
-
-                "ave(x_center(m))",  # 中心位置 5
-                "ave(y_center(m))",
-                "ave(x_'(rad))",
-                "ave(y_'(rad))",
-
-                "ave(rms_x(m))",  # 9
-                "ave(rms_y(m))",  # 10
-                "ave(rms_x'(rad))",  # 11
-                "ave(rms_y'(rad))",  # 12
-
-                "ave(delat_energy)",  # 能量变化  13
-
-                "rms(x_center(m))",  # 中心位置 14
-                "rms(y_center(m))",#15
-                "rms(x_'(rad))",  #16
-                "rms(y_'(rad))",  #17
-
-
-                "rms(rms_x(m))",  #18
-                "rms(rms_y(m))",  # 19
-                "rms(rms_x'(rad))",  # 20
-                "rms(rms_y'(rad))",  # 21
-
-                "rms(delat_energy(MeV))",  # 能量变化  22
-
-            ]
-        ]
-        write_to_txt(self.errors_par_path, errors_par_title)
-
-    def write_err_par_every_time(self, group, time):
-        #误差模拟完毕后对文件进行后处理
-        #1.解析dataset文件
-
-
-        if time == 0:
-            output = self.normal_out_path
-        else:
-            output = os.path.join(self.error_output_path, f"output_{group}_{time}")
-
-
-        #解析正常的情况
-        if self.if_normal == 1:
-            dataset_path = os.path.join(self.normal_out_path, "DataSet.txt")
-
-            dataset_obj = DatasetParameter(dataset_path, self.project_path, input_dir=self.input_path)
-            dataset_obj.get_parameter()
-            normal_ek = dataset_obj.ek[-1]
-
-        if self.if_normal == 0:
-            normal_ek = 0
-
-
-        dataset_path = os.path.join(output, "DataSet.txt")
-        dataset_obj = DatasetParameter(dataset_path, self.project_path, input_dir=self.input_path)
-
-        v1 = dataset_obj.get_parameter()
-        if v1 is False:
-            errors_par_tot_list = [f"{group}_{time}"] + [1] + [0]*12
-        elif dataset_obj.z[-1] < (self.lattice_total_length-0.05):
-            errors_par_tot_list = [f"{group}_{time}"] + [1] + [0]*12
-        else:
-            errors_par_tot_list = [
-            f"{group}_{time}",
-            dataset_obj.loss[-1] / dataset_obj.num_of_particle,
-            dataset_obj.emit_x[-1]/dataset_obj.emit_x[0] - 1,
-            dataset_obj.emit_y[-1]/dataset_obj.emit_y[0] - 1,
-            dataset_obj.emit_z[-1]/dataset_obj.emit_z[0] - 1,
-            dataset_obj.x[-1],  # m
-            dataset_obj.y[-1],  # m
-            dataset_obj.x_1[-1],
-            dataset_obj.y_1[-1],
-            dataset_obj.rms_x[-1],
-            dataset_obj.rms_y[-1],
-            dataset_obj.rms_x1[-1],
-            dataset_obj.rms_y1[-1],
-            dataset_obj.ek[-1] - normal_ek,  # MeV
-            dataset_obj.alpha_x[-1],
-            dataset_obj.beta_x[-1],
-            dataset_obj.alpha_y[-1],
-            dataset_obj.beta_y[-1],
-            dataset_obj.alpha_z[-1],
-            dataset_obj.beta_z[-1],
-
-            # dataset_obj.phi[-1] - normal_data[14],  # deg
-            ]
-
-
-        #写入到errors_par_tot
-        for i in range(1, len(errors_par_tot_list)):
-            errors_par_tot_list[i] = "{:.5e}".format(errors_par_tot_list[i])
-        add_to_txt(self.errors_par_tot_path, [errors_par_tot_list])
-
-        #写入到errors_par
-        if time == 0:
-            t1_lis = errors_par_tot_list + [0] * 9
-            t1_lis[0] = 0
-
-            add_to_txt(self.errors_par_path, [t1_lis])
-
-        elif time == self.all_time:
-            errors_par_tot_list = read_txt(self.errors_par_tot_path, out="list")
-
-            t_lis = [j for j in errors_par_tot_list[1:] if int(j[0].split("_")[0]) == group]
-
-            t1_lis = [0] * 23
-            if len(t_lis) == 1:
-                t1_lis = t_lis[0] + [0] * 9
-                t1_lis[0] = group
-                t1_lis = [float(i) for i in t1_lis]
-
-
-
-
-            elif len(t_lis) > 1:
-                t1_lis[0] = group
-                t1_lis[1] = calculate_mean([float(j[1]) for j in t_lis])
-                t1_lis[2] = calculate_mean([float(j[2]) for j in t_lis])
-                t1_lis[3] = calculate_mean([float(j[3]) for j in t_lis])
-                t1_lis[4] = calculate_mean([float(j[4]) for j in t_lis])
-
-                t1_lis[5] = calculate_mean([float(j[5]) for j in t_lis])
-                t1_lis[6] = calculate_mean([float(j[6]) for j in t_lis])
-                t1_lis[7] = calculate_mean([float(j[7]) for j in t_lis])
-                t1_lis[8] = calculate_mean([float(j[8]) for j in t_lis])
-
-                t1_lis[9] = calculate_mean([float(j[9]) for j in t_lis])
-                t1_lis[10] = calculate_mean([float(j[10]) for j in t_lis])
-                t1_lis[11] = calculate_mean([float(j[11]) for j in t_lis])
-                t1_lis[12] = calculate_mean([float(j[12]) for j in t_lis])
-
-                t1_lis[13] = calculate_mean([float(j[13]) for j in t_lis])
-
-                t1_lis[14] = calculate_rms([float(j[5]) for j in t_lis])
-                t1_lis[15] = calculate_rms([float(j[6]) for j in t_lis])
-                t1_lis[16] = calculate_rms([float(j[7]) for j in t_lis])
-                t1_lis[17] = calculate_rms([float(j[8]) for j in t_lis])
-
-                t1_lis[18] = calculate_rms([float(j[9]) for j in t_lis])
-                t1_lis[19] = calculate_rms([float(j[10]) for j in t_lis])
-                t1_lis[20] = calculate_rms([float(j[11]) for j in t_lis])
-                t1_lis[21] = calculate_rms([float(j[12]) for j in t_lis])
-
-                t1_lis[22] = calculate_rms([float(j[13]) for j in t_lis])
-
-
-            for i in range(1, len(t1_lis)):
-                t1_lis[i] = "{:.5e}".format(t1_lis[i])
-            add_to_txt(self.errors_par_path, [t1_lis])
-
-
-    def write_density_every_time(self, group, time):
-        if self.if_normal == 1 and self.if_generate_density_file == 1:
-            pass
-        else:
-            return 0
-
-        is_normal = 0
-        if group == 0:
-            is_normal = 1
-
-        exdata_path = os.path.join(self.error_middle_output0_path, "PCHistogram.dat")
-
-
-        dataset_path = os.path.join(self.error_middle_output0_path, "DataSet.txt")
-        target_density_path = os.path.join(self.output_path,  f"density_par_{group}_{time}.dat")
-        # print(dataset_path)
-        # sys.exit()
-
-        # if is_normal == 1:
-        #     density_obj = PlttoDensity(beamset_path,  dataset_path, target_density_path)
-        #     density_obj.generate_density_file_onestep(is_normal)
-        #
-        # elif is_normal == 0:
-        #     #如果不是正常模拟
-        #     normal_density_path = os.path.join(self.output_path,  f"density_par_{0}_{0}.dat")
-        #     density_obj = PlttoDensity(beamset_path, dataset_path, target_density_path, normal_density_path, self.project_path)
-        #     density_obj.generate_density_file_onestep(is_normal)
-
-        if is_normal == 1:
-            density_obj = ExtoDensity(exdata_path,  dataset_path, target_density_path)
-            density_obj.generate_density_file_onestep(is_normal)
-
-        elif is_normal == 0:
-            normal_density_path = os.path.join(self.output_path,  f"density_par_{0}_{0}.dat")
-            density_obj = ExtoDensity(exdata_path, dataset_path, target_density_path, normal_density_path, self.project_path)
-            density_obj.generate_density_file_onestep(is_normal)
-
-        # os.remove(exdata_path)
-
-        if time == self.all_time:
-            #到了某一组的最后一次模拟
-            all_file = list_files_in_directory(self.output_path)
-
-            filtered_files = [path for path in all_file if f'density_par_{group}' in path]
-            target_density_path = os.path.join(self.output_path, f"density_tot_par_{group}.dat")
-            merge_obj = MergeDensityData(filtered_files, target_density_path)
-            merge_obj.generate_density_file()
-
-        if group == self.all_group and time == self.all_time:
-            #到了所有组的最后一次模拟
-            all_file = list_files_in_directory(self.output_path)
-
-            filtered_files = [path for path in all_file if f'density_tot_par' in path]
-            target_density_path = os.path.join(self.output_path, f"density_tot_par.dat")
-
-            merge_obj = MergeDensityData(filtered_files, target_density_path)
-            merge_obj.generate_density_file()
-
-    def write_err_datas(self, group, time):
-
-        err_datas_path = os.path.join(self.output_path, f"Error_Datas_{group}_{time}.txt")
-        lattice_path = self.lattice_path
-        input,_ = read_lattice_mulp_with_name(lattice_path)
-        # print(input)
-        # 为每个元件加编号
-
-        input = add_element_end_index(input)
-        res = []
-        for i in range(len(input)):
-            if input[i][0] == global_varible.error_elemment_command_dyn_ncpl[1]:
-                #quad
-                index = input[i+1][-1].split('_')[-1]
-                err_name = f"CAV_ERROR[{index}]"
-                t_lis = [err_name] + input[i][3:]
-                res.append(t_lis)
-            elif input[i][0] == global_varible.error_elemment_command_dyn_ncpl[0]:
-                # quad
-                index = input[i + 1][-1].split('_')[-1]
-                err_name = f"QUAD_ERROR[{index}]"
-                t_lis = [err_name] + input[i][3:]
-                res.append(t_lis)
-        write_to_txt(err_datas_path, res)
-
-
-    def judge_dyn_on(self):
-        if len(self.err_step_command) == 0:
-            raise MissingcommandError("err_step")
-        if (set(self.err_beam_dyn_on) == {0} and
-           set(self.err_quad_dyn_on) == {0} and
-           set(self.err_cav_dyn_on) == {0}):
-            raise Exception("Missing dynamic error on command")
-
-    def judge_stat_on(self):
-        if len(self.err_step_command) == 0:
-            raise MissingcommandError("err_step")
-        if (set(self.err_beam_stat_on) == {0} and
-           set(self.err_quad_stat_on) == {0} and
-           set(self.err_cav_stat_on) == {0}):
-            raise Exception("Missing static error on command")
-
-    def judge_stat_dyn_on(self):
-        if len(self.err_step_command) == 0:
-            raise MissingcommandError("err_step")
-        if (set(self.err_beam_stat_on) == {0} and
-           set(self.err_quad_stat_on) == {0} and
-           set(self.err_cav_stat_on) == {0} and
-           set(self.err_beam_dyn_on) == {0} and
-           set(self.err_quad_dyn_on) == {0} and
-           set(self.err_cav_dyn_on) == {0}):
-            raise Exception("Missing error on command")
-
-class ErrorDyn(Error):
-    def __init__(self, item):
-        super().__init__(item)
-
-
-    def run_one_time(self, group, time, lattice_mulp_list):
-        """
-        动态误差
-        :param group:
-        :param time:
-        :return:
-        """
-
-
-        #去掉末尾编号
-        error_lattice = self.delete_element_end_index(lattice_mulp_list)
-
-
-        for i in error_lattice:
-            # 静态误差注释掉
-            if (i[0] in global_varible.error_elemment_command_stat_ncpl or
-                    i[0] in global_varible.error_beam_stat):
-                i[0] = "!" + i[0]
-
-            # 开关 静态误差注释掉
-            elif i[0] in global_varible.error_elemment_stat_on or i[0] == 'err_beam_stat_on':
-                i[0] = "!" + i[0]
-
-        error_lattice = [i for i in error_lattice if i[0] in global_varible.err_write_command]
-
-
-
-        with open(self.lattice_path, 'w') as f:
-            for i in error_lattice:
-                if not i[0].startswith("!"):
-                    f.write(' '.join(map(str, i)) + '\n')
-
-        #进行模拟
+    def run_error_lattice(self, group, time):
+        """Run the engine on the ``lattice.txt`` just written (``err_step 1 1`` makes it write ``output_0``)."""
         if os.path.exists(self.error_middle_output0_path):
             delete_directory(self.error_middle_output0_path)
-        # os.makedirs(self.error_middle_output0_path)
-        # process = multiprocessing.Process(target=self.run_multiparticle,
-        #                                   args=(self.project_path, 'OutputFile/error_middle'))
-        #
-        # process.start()  # 启动子进程
-        # process.join()  # 等待子进程运行结束
-        res = self.run_multiparticle(self.error_middle_path)
+        self.run_multiparticle(self.error_middle_path)
         self.write_density_every_time(group, time)
-        copy_file(self.lattice_path, self.error_middle_output0_path)
-        new_name = f'output_{group}_{time}'
+        self.finish_run(group, time)
 
-
-        copy_directory(self.error_middle_output0_path, self.error_output_path, new_name)
-
-        delete_directory(self.error_middle_output0_path)
+    # ------------------------------------------------------------------ the study
+    def judge_opti(self):
+        """1 when an ``adjust`` and a ``diag_*`` command share a number N (corrector optimisation wanted)."""
+        lattice_mulp_list, _ = read_lattice_mulp_with_name(self.lattice_mulp_path)
+        all_adjust_N = [i[1] for i in lattice_mulp_list if i[0].lower() == "adjust"]
+        all_diag_N = [i[1] for i in lattice_mulp_list if i[0].lower().startswith("diag")]
+        return 1 if set(all_adjust_N) & set(all_diag_N) else 0
 
     def run(self):
-        """
-        跑动态误差
-        return:
-        """
         self.get_group_time()
-        self.judge_dyn_on()
-
-
-        if self.restart ==0:
+        self.check_switches()
+        self.opti = self.judge_opti() if self.SUPPORTS_ADJUST else 0
+        if self.restart == 0:
             self.write_err_par_title()
             self.write_err_par_tot_title()
-
             if self.if_normal == 1:
                 self.run_normal()
-                self.write_err_par_every_time(0,0)
+                self.write_err_par_every_time(0, 0)
+        for group in range(1, self.all_group + 1):
+            for time in range(1, self.all_time + 1):
+                log.info("error study: group %s, run %s", group, time)
+                plan = self.prepare_step(group, time)
+                self.run_step(group, time, plan)
+                self.collect_step(group, time, plan)
 
+    def prepare_step(self, group, time):
+        """Draw this run's errors (and optimise the correctors); returns ``(indexed lattice, corrector values)``."""
+        lattice = self.generate_lattice_mulp_list(group)
+        opti_res = self.optimize_correctors(group, time, lattice) if self.opti else None
+        return lattice, opti_res
 
+    def optimize_correctors(self, group, time, lattice):
+        v = Adjust_Error(self.project_path, self.field_path, self.input_path, self.output_path, rng=self.rng)
+        opti_res, loss = v.opti_one_time_different_group(group, time, lattice)
+        log.info("%s %s", opti_res, loss)
+        return opti_res
 
-        for i in range(1, self.all_group + 1):
-            for j in range(1, self.all_time + 1):
-                print(i, j)
-                lattice_mulp_list = self.generate_lattice_mulp_list(i)
-                self.run_one_time(i, j, lattice_mulp_list)
-                self.write_err_datas(i, j)  #误差数据
-                self.write_err_par_every_time(i, j)  #par_tot
+    def run_step(self, group, time, plan):
+        lattice, opti_res = plan
+        write_engine_lines(self.lattice_path, self.lattice_lines(lattice, opti_res))
+        self.run_error_lattice(group, time)
 
+    def lattice_lines(self, lattice, opti_res):
+        """The lines to simulate for the drawn, indexed *lattice* (mode specific)."""
+        raise NotImplementedError
 
-                # 将束诊参数写入到文件
-                group = i
-                time = j
-                item = {
-                    "project_path": self.project_path,
-                    "input_file": self.input_path,
-                    "output_file": os.path.join(self.output_path, "error_output", f"output_{group}_{time}"),
-                    "diag_file_path": os.path.join(self.output_path, f"par_diag_datas_{group}_{time}.txt"),
-                }
-                obj = DiagInfo(item)
-                obj.write_diag_info_to_file()
-
-class Errorstat(Error):
-    def __init__(self, item):
-        super().__init__(item)
-        self.all_error_lattice = []
-        # 只优化
-        # self.only_adjust_sign = 0
-        self.err_type = 'stat'
-        self.diag_every = {}
-
-
-    def run_use_corrected_result(self, opti_res_this, group, time, error_lattice):
-
-        # x =np.array(corrected_result).reshape(np.array(adjust_parameter_num).shape)
-        error_lattice = copy.deepcopy(error_lattice)
-
-
+    def collect_step(self, group, time, plan):
+        _lattice, opti_res = plan
+        self.write_err_datas(group, time)
+        self.write_err_par_every_time(group, time)
         if self.opti:
-            for k, v in opti_res_this.items():
-                print(k, v)
-                for com in error_lattice:
-                    if com[-1] == f'element_{k.split("_")[0]}':
-                        com[int(k.split("_")[1])] = v
-                        break
+            self.write_adjust_datas(group, time, opti_res)
+        self.write_diag_datas(group, time)
 
+    # ------------------------------------------------------------------ result files
+    def write_err_par_tot_title(self):
+        write_to_txt(self.errors_par_tot_path, [ERRORS_PAR_TOT_TITLE])
 
+    def write_err_par_title(self):
+        write_to_txt(self.errors_par_path, [ERRORS_PAR_TITLE])
 
-            # x = list_one_two(list(corrected_result), adjust_parameter_num)
-            # for i in range(len(adjust_element_num)):
-            #     for j in range(len(adjust_parameter_num[i])):
-            #         for com in error_lattice:
-            #             if com[-1] == f'element_{adjust_element_num[i]}':
-            #                 com[adjust_parameter_num[i][j]] = x[i][j]
-            #                 break
+    def reference_energy(self):
+        """Final energy of the reference run (0 without one)."""
+        if self.if_normal != 1:
+            return 0
+        dataset_obj = DatasetParameter(os.path.join(self.normal_out_path, "DataSet.txt"), self.project_path,
+                                       input_dir=self.input_path)
+        dataset_obj.get_parameter()
+        return dataset_obj.ek[-1]
 
-        # 删除error_lattice最后的编号
-        error_lattice = self.delete_element_end_index(error_lattice)
-
-        #动态误差全部注释掉，把静态误差变为动态误差
-        for i in error_lattice:
-            if (i[0] in global_varible.error_elemment_command_dyn_ncpl or
-                    i[0] in global_varible.error_beam_dyn):
-                i[0] = "!" + i[0]
-            # 如果是静态误差，变成动态误差
-            elif i[0] == 'err_beam_stat':
-                i[0] = 'err_beam_dyn'
-
-            elif i[0] == 'err_quad_ncpl_stat':
-                i[0] = 'err_quad_ncpl_dyn'
-
-            elif i[0] == 'err_cav_ncpl_stat':
-                i[0] = 'err_cav_ncpl_dyn'
-
-
-            # 开关
-            elif i[0] in global_varible.error_elemment_dyn_on or i[0] == 'err_beam_dyn_on':
-                i[0] = "!" + i[0]
-
-            elif i[0] == 'err_beam_stat_on':
-                i[0] = 'err_beam_dyn_on'
-
-            elif i[0] == global_varible.error_elemment_stat_on[0]:
-                i[0] = global_varible.error_elemment_dyn_on[0]
-
-            elif i[0] == global_varible.error_elemment_stat_on[1]:
-                i[0] = global_varible.error_elemment_dyn_on[1]
-
-        error_lattice = [i for i in error_lattice if i[0] in global_varible.err_write_command]
-        with open(self.lattice_path, 'w') as f:
-            for i in error_lattice:
-                f.write(' '.join(map(str, i)) + '\n')
-
-
-
-
-        if os.path.exists(self.error_middle_output0_path):
-            delete_directory(self.error_middle_output0_path)
-
-        # if self.only_adjust_sign == 1:
-        # if self.err_type == 'only_adjust':
-        #     os.makedirs(self.error_middle_output0_path)
-        #
-        #     process = multiprocessing.Process(target=self.run_multiparticle, args=(self.project_path, 'OutputFile/error_middle/output_0'))
-        # else:
-        #     process = multiprocessing.Process(target=self.run_multiparticle, args=(self.project_path, 'OutputFile/error_middle'))
-        #
-        # process.start()  # 启动子进程
-        # process.join()  # 等待子进程运行结束
-
-        self.run_multiparticle(self.error_middle_path)
-
-
-
-        self.write_density_every_time(group, time)
-
-        copy_file(self.lattice_path, self.error_middle_output0_path)
-
-        new_name = f'output_{group}_{time}'
-
-        copy_directory(self.error_middle_output0_path, self.error_output_path, new_name)
-
-        delete_directory(self.error_middle_output0_path)
-
-    def run_one_time_opti(self, group, time, lattice_mulp_list):
-        self.diag_every.clear()
-        """
-        静态误差完整跑一次, 需要矫正
-
-        :param group:
-        :param time:
-        :return:
-        """
-        v = Adjust_Error(self.project_path, self.field_path, self.input_path, self.output_path)
-        opti_res_this_dict, diag_res_this = v.opti_one_time_different_group(group, time, lattice_mulp_list)
-
-        return opti_res_this_dict, diag_res_this
-
-
-
-    def write_adjust_datas(self, group, time, opti_res_this):
-        adjust_datas_path = os.path.join(self.output_path, f"Adjust_Datas_{group}_{time}.txt")
-        #
-        res = []
-        # for i, index in enumerate(adjust_element_num):
-        #     err_name = f"element_adjust[{index}]"
-        #     t_lis = [err_name] + opti_res_this[i]
-        #     res.append(t_lis)
-        for k, v in opti_res_this.items():
-            t_lis = [f"element_adjust[{k}]"] + [round(v, 5)]
-            res.append(t_lis)
-        write_to_txt(adjust_datas_path, res)
-    def judge_opti(self,):
-        "判断是否需要优化"
-        lattice_mulp_list, _ = read_lattice_mulp_with_name(self.lattice_mulp_path )
-        all_adjust_N = []
-        all_diag_N = []
-        for i in lattice_mulp_list:
-            if i[0].lower() == "adjust":
-                all_adjust_N.append(i[1])
-            elif i[0].lower().startswith("diag"):
-                all_diag_N.append(i[1])
-
-        common_N = list(set(all_adjust_N) & set(all_diag_N))
-        if len(common_N) != 0:
-            return 1
+    def run_summary_row(self, group, time):
+        """The ``errors_par_tot`` row of one run (formatted); a lost beam gives ``ratio_loss`` 1 and zeros."""
+        output = self.normal_out_path if time == 0 else os.path.join(self.error_output_path, f"output_{group}_{time}")
+        normal_ek = self.reference_energy()
+        dataset_obj = DatasetParameter(os.path.join(output, "DataSet.txt"), self.project_path, input_dir=self.input_path)
+        ok = dataset_obj.get_parameter()
+        if ok is False or dataset_obj.z[-1] < (self.lattice_total_length - 0.05):
+            row = [f"{group}_{time}", 1] + [0] * (FAILED_ROW_LENGTH - 2)
         else:
+            row = [
+                f"{group}_{time}",
+                dataset_obj.loss[-1] / dataset_obj.num_of_particle,
+                dataset_obj.emit_x[-1] / dataset_obj.emit_x[0] - 1,
+                dataset_obj.emit_y[-1] / dataset_obj.emit_y[0] - 1,
+                dataset_obj.emit_z[-1] / dataset_obj.emit_z[0] - 1,
+                dataset_obj.x[-1], dataset_obj.y[-1], dataset_obj.x_1[-1], dataset_obj.y_1[-1],
+                dataset_obj.rms_x[-1], dataset_obj.rms_y[-1], dataset_obj.rms_x1[-1], dataset_obj.rms_y1[-1],
+                dataset_obj.ek[-1] - normal_ek,
+                dataset_obj.alpha_x[-1], dataset_obj.beta_x[-1],
+                dataset_obj.alpha_y[-1], dataset_obj.beta_y[-1],
+                dataset_obj.alpha_z[-1], dataset_obj.beta_z[-1],
+            ]
+        return [row[0]] + ["{:.5e}".format(v) for v in row[1:]]
+
+    def group_summary_row(self, group):
+        """The ``errors_par`` row of *group*: means of columns 1..13, spreads of 5..13 over its runs."""
+        rows = read_txt(self.errors_par_tot_path, out="list")
+        runs = [j for j in rows[1:] if int(j[0].split("_")[0]) == group]
+        if len(runs) == 1:
+            row = [float(v) for v in [group] + runs[0][1:] + [0] * 9]
+        elif len(runs) > 1:
+            row = [0] * SUMMARY_LENGTH
+            row[0] = group
+            for c in range(1, 14):
+                column = [float(j[c]) for j in runs]
+                row[c] = calculate_mean(column)
+                if c >= 5:
+                    row[c + 9] = calculate_rms(column)
+        else:
+            row = [0] * SUMMARY_LENGTH
+        return [row[0]] + ["{:.5e}".format(v) for v in row[1:]]
+
+    def write_err_par_every_time(self, group, time):
+        """Append the run to ``errors_par_tot.txt``; row 0 / the group summary to ``errors_par.txt``."""
+        row = self.run_summary_row(group, time)
+        add_to_txt(self.errors_par_tot_path, [row])
+        if time == 0:
+            add_to_txt(self.errors_par_path, [[0] + row[1:] + [0] * 9])
+        elif time == self.all_time:
+            add_to_txt(self.errors_par_path, [self.group_summary_row(group)])
+
+    def write_density_every_time(self, group, time):
+        """Density file of one run (needs ``pchistogram``), merged per group and over all groups at the end."""
+        if not (self.if_normal == 1 and self.if_generate_density_file == 1):
+            return 0
+        exdata_path = os.path.join(self.error_middle_output0_path, "PCHistogram.dat")
+        if not os.path.isfile(exdata_path):
+            # the engine writes PCHistogram.dat only with `pchistogram 1 ...` in input.txt
+            log.info("no PCHistogram.dat in %s (pchistogram is off): density files skipped", self.error_middle_output0_path)
             return 0
 
-    def run(self):
-        # print(1529)
-        self.get_group_time()
-        self.judge_stat_on()
-
-        self.write_err_par_title()
-        self.write_err_par_tot_title()
-        if self.if_normal == 1:
-            self.run_normal()
-            self.write_err_par_every_time(0, 0)
-
-
-        self.opti = self.judge_opti()
-
-        if self.opti:
-            print(1579, "进行优化")
-            for i in range(1, self.all_group+1):
-                for j in range(1, self.all_time + 1):
-                    lattice_mulp_list = self.generate_lattice_mulp_list(i)
-                    opti_res_this, loss_this = self.run_one_time_opti(i, j, lattice_mulp_list)
-                    print(opti_res_this, loss_this)
-                    # opti_res_this = {'1_8': 0.4933612120807681, '1_7': 0.7579544029403025,
-                    #                  '5_8': 0.7614636313839422, '5_7': 0.25891675029296335}
-                    #
-                    # diag_res = {'1_1': [[1.204, -0.01123944581, 0.009045890000000001, 1.68642, 1.68972, 2.45712],
-                    #                     [1.22, -0.012475369, 0.01064619, 1.83377, 1.83652, 2.4571]]}
-                    group = i
-                    time = j
-
-                    # 使用优化后的结果运行一次
-                    self.run_use_corrected_result(opti_res_this, group, time, lattice_mulp_list)
-
-                    # 将优化参数写入到文件
-                    self.write_adjust_datas(group, time,  opti_res_this)
-                    # 将束诊参数写入到文件
-                    item = {
-                        "project_path": self.project_path,
-                        "input_file": self.input_path,
-                        "output_file": os.path.join(self.output_path, "error_output", f"output_{group}_{time}"),
-                        "diag_file_path": os.path.join(self.output_path, f"par_diag_datas_{group}_{time}.txt"),
-                    }
-                    obj = DiagInfo(item)
-                    obj.write_diag_info_to_file()
-
-
-                    self.write_err_datas(i, j)
-                    self.write_err_par_every_time(i, j)
-
+        dataset_path = os.path.join(self.error_middle_output0_path, "DataSet.txt")
+        target_density_path = os.path.join(self.output_path, f"density_par_{group}_{time}.dat")
+        if group == 0:
+            ExtoDensity(exdata_path, dataset_path, target_density_path).generate_density_file_onestep(1)
         else:
-            print(1590, "不进行优化")
-            for i in range(1, self.all_group+1):
-                for j in range(1, self.all_time+1):
-                    print(i, j)
-                    lattice_mulp_list = self.generate_lattice_mulp_list(i)
-                    self.run_use_corrected_result(0, i, j, lattice_mulp_list)
-                    self.write_err_datas(i, j)
-                    self.write_err_par_every_time(i, j)
+            normal_density_path = os.path.join(self.output_path, "density_par_0_0.dat")
+            ExtoDensity(exdata_path, dataset_path, target_density_path, normal_density_path,
+                        self.project_path).generate_density_file_onestep(0)
 
-                    group = i
-                    time = j
-                    item = {
-                        "project_path": self.project_path,
-                        "input_file": self.input_path,
-                        "output_file": os.path.join(self.output_path, "error_output", f"output_{group}_{time}"),
-                        "diag_file_path": os.path.join(self.output_path, f"par_diag_datas_{group}_{time}.txt"),
-                    }
-                    obj = DiagInfo(item)
-                    obj.write_diag_info_to_file()
+        if time == self.all_time:
+            files = [p for p in list_files_in_directory(self.output_path) if f'density_par_{group}' in p]
+            MergeDensityData(files, os.path.join(self.output_path, f"density_tot_par_{group}.dat")).generate_density_file()
+        if group == self.all_group and time == self.all_time:
+            files = [p for p in list_files_in_directory(self.output_path) if 'density_tot_par' in p]
+            MergeDensityData(files, os.path.join(self.output_path, "density_tot_par.dat")).generate_density_file()
+
+    def write_err_datas(self, group, time):
+        """``Error_Datas_<g>_<t>.txt``: the error values applied to every cavity / quadrupole of this run."""
+        lines, _ = read_lattice_mulp_with_name(self.lattice_path)
+        lines = add_element_end_index(lines)
+        names = {"err_cav_ncpl_dyn": "CAV_ERROR", "err_quad_ncpl_dyn": "QUAD_ERROR"}
+        res = []
+        for i, line in enumerate(lines):
+            if line[0] in names:
+                index = lines[i + 1][-1].split('_')[-1]           # the element that follows the command
+                res.append([f"{names[line[0]]}[{index}]"] + line[3:])
+        write_to_txt(os.path.join(self.output_path, f"Error_Datas_{group}_{time}.txt"), res)
+
+    def write_adjust_datas(self, group, time, opti_res):
+        res = [[f"element_adjust[{k}]", round(v, 5)] for k, v in opti_res.items()]
+        write_to_txt(os.path.join(self.output_path, f"Adjust_Datas_{group}_{time}.txt"), res)
+
+    def write_diag_datas(self, group, time):
+        """``par_diag_datas_<g>_<t>.txt``: beam parameters at the ``diag_*`` commands of this run."""
+        item = {
+            "project_path": self.project_path,
+            "input_file": self.input_path,
+            "output_file": os.path.join(self.error_output_path, f"output_{group}_{time}"),
+            "diag_file_path": os.path.join(self.output_path, f"par_diag_datas_{group}_{time}.txt"),
+        }
+        DiagInfo(item).write_diag_info_to_file()
 
 
+class ErrorDyn(Error):
+    """Dynamic errors only: the static commands are left out, the engine applies the drawn values."""
+
+    SWITCHES = ("err_beam_dyn_on", "err_quad_dyn_on", "err_cav_dyn_on")
+    MISSING_SWITCH_MESSAGE = "Missing dynamic error on command"
+    SUPPORTS_ADJUST = False
+
+    def lattice_lines(self, lattice, opti_res):
+        # write_engine_lines keeps only the dynamic commands and switches
+        return delete_element_end_index(lattice)
+
+
+class Errorstat(Error):
+    """Static errors: the drawn values are written as fixed dynamic errors (optionally corrected first)."""
+
+    SWITCHES = ("err_beam_stat_on", "err_quad_stat_on", "err_cav_stat_on")
+    MISSING_SWITCH_MESSAGE = "Missing static error on command"
+
+    def lattice_lines(self, lattice, opti_res):
+        if opti_res:
+            lattice = apply_adjust_results(lattice, opti_res)
+        return stat_to_dyn_lines(delete_element_end_index(lattice), beam_switch=True)
 
 
 class Errorstatdyn(Errorstat):
-    def __init__(self, item):
-        super().__init__(item)
-        self.err_type = 'stat_dyn'
-
-
-    def run_stat_dyn_one_time(self, opti_res_this, group, time, error_lattice,
-                                  opti):
-        error_lattice = copy.deepcopy(error_lattice)
-        if opti:
-            for k, v in opti_res_this.items():
-                print(k, v)
-                for com in error_lattice:
-                    if com[-1] == f'element_{k.split("_")[0]}':
-                        com[int(k.split("_")[1])] = v
-                        break
-
-            # x = list_one_two(list(x), adjust_parameter_num)
-            # # print(adjust_parameter_num)
-            # print('x', x)
-            # for i in range(len(adjust_element_num)):
-            #     for j in range(len(adjust_parameter_num[i])):
-            #         for com in error_lattice:
-            #             if com[-1] == f'element_{adjust_element_num[i]}':
-            #                 com[adjust_parameter_num[i][j]] = x[i][j]
-
-
-        ####################
-        # 将静态的动态误差的开启结合起来
-
-        tmp_err_beam_stat = []
-        tmp_err_beam_dyn = []
-        for i in range(len(error_lattice)):
-            # 处理双误差情况
-            if error_lattice[i][0] in global_varible.mulpud_element:
-                #如果一个元件前面两个都是误差，那么一定一个是静态的，一个是动态的的
-                if error_lattice[i - 1][0] in global_varible.error_elemment_command_ncpl and \
-                        error_lattice[i - 2][0] in global_varible.error_elemment_command_ncpl:
-
-                    for j in range(3, len(error_lattice[i - 2])):
-                        error_lattice[i - 2][j] += error_lattice[i - 1][j]
-                    error_lattice[i - 1].insert(0, False)
-
-                    #把静态的变成动态的
-                    if error_lattice[i - 2][0] == global_varible.error_elemment_command_stat_ncpl[0]:
-                        error_lattice[i - 2][0] = global_varible.error_elemment_command_dyn_ncpl[0]
-
-                    elif error_lattice[i - 2][0] == global_varible.error_elemment_command_stat_ncpl[1]:
-                        error_lattice[i - 2][0] = global_varible.error_elemment_command_dyn_ncpl[1]
-
-                    # print(error_lattice)
-
-                # 如果一个元件前面一个是误差，那么直接把静态变成动态
-                elif error_lattice[i - 1][0] in global_varible.error_elemment_command_ncpl:
-                    if error_lattice[i - 1][0] == global_varible.error_elemment_command_stat_ncpl[0]:
-                        error_lattice[i - 1][0] = global_varible.error_elemment_command_dyn_ncpl[0]
-
-                    elif error_lattice[i - 1][0] == global_varible.error_elemment_command_stat_ncpl[1]:
-                        error_lattice[i - 1][0] = global_varible.error_elemment_command_dyn_ncpl[1]
-
-            #把所有的on命令都准备删除
-            elif error_lattice[i][0] in global_varible.error_elemment_dyn_on or \
-                    error_lattice[i][0] in global_varible.error_elemment_stat_on or \
-                    error_lattice[i][0] in global_varible.error_beam_dyn_on or \
-                    error_lattice[i][0] in global_varible.error_beam_stat_on:
-
-                error_lattice[i].insert(0, False)
-
-            #把所有的束流误差删除
-            elif error_lattice[i][0] == 'err_beam_stat':
-                tmp_err_beam_stat = copy.deepcopy(error_lattice[i])
-                error_lattice[i].insert(0, False)
-
-            elif error_lattice[i][0] == 'err_beam_dyn':
-                tmp_err_beam_dyn = copy.deepcopy(error_lattice[i])
-                error_lattice[i].insert(0, False)
-
-        # 插入元件开关命令
-        #插入腔体误差开启
-        new_err_quad_dyn_on = ['err_quad_dyn_on']
-        for i in range(len(self.err_quad_dyn_on)):
-            if self.err_quad_dyn_on[i] == 1 or self.err_quad_stat_on[i] == 1:
-                new_err_quad_dyn_on.append(1)
-            else:
-                new_err_quad_dyn_on.append(0)
-
-        new_err_cav_dyn_on = ['err_cav_dyn_on']
-        for i in range(len(self.err_cav_dyn_on)):
-            if self.err_cav_dyn_on[i] == 1 or self.err_cav_stat_on[i] == 1:
-                new_err_cav_dyn_on.append(1)
-            else:
-                new_err_cav_dyn_on.append(0)
-
-        #如果存在cav的误差
-        if set(new_err_cav_dyn_on[1:]) != {0}:
-            error_lattice.insert(2, new_err_cav_dyn_on)
-
-        #如果存在quad的误差
-        if set(new_err_quad_dyn_on[1:]) != {0}:
-            error_lattice.insert(2, new_err_quad_dyn_on)
-
-        # 插入beam动态误差
-
-        new_err_beam_dyn = ['err_beam_dyn', 0]
-        #如果动态误差和静态误差都存在
-        if len(tmp_err_beam_stat) != 0 and len(tmp_err_beam_dyn) != 0:
-            tmp_v = [float(tmp_err_beam_stat[i]) + float(tmp_err_beam_dyn[i]) for i in
-                     range(2, len(tmp_err_beam_stat))]
-            new_err_beam_dyn = new_err_beam_dyn + tmp_v
-        #如果只有动态误差
-        elif len(tmp_err_beam_dyn) != 0:
-            tmp_v = [float(tmp_err_beam_dyn[i]) for i in range(2, len(tmp_err_beam_dyn))]
-            new_err_beam_dyn = new_err_beam_dyn + tmp_v
-        #如果只有静态误差
-        elif len(tmp_err_beam_stat) != 0:
-            tmp_v = [float(tmp_err_beam_stat[i]) for i in range(2, len(tmp_err_beam_stat))]
-            new_err_beam_dyn = new_err_beam_dyn + tmp_v
-
-        #插入beam误差
-        if len(new_err_beam_dyn) != 2:
-            error_lattice.insert(2, new_err_beam_dyn)
-
-        new_err_beam_dyn_on = ['err_beam_dyn_on']
-        for i in range(len(self.err_beam_stat_on)):
-            if self.err_beam_stat_on[i] == 1 or self.err_beam_dyn_on[i] == 1:
-                new_err_beam_dyn_on.append(1)
-            else:
-                new_err_beam_dyn_on.append(0)
-
-        # 插入beam误差开关：
-        if set(new_err_beam_dyn_on[1:]) != {0}:
-            error_lattice.insert(2, new_err_beam_dyn_on)
-
-
-        # 去掉编号后缀
-        error_lattice = delete_element_end_index(error_lattice)
-        error_lattice = [i for i in error_lattice if i[0] is not False]
-
-        #############################
-
-        error_lattice = [i for i in error_lattice if i[0] in global_varible.err_write_command]
-        with open(self.lattice_path, 'w') as f:
-            for i in error_lattice:
-                f.write(' '.join(map(str, i)) + '\n')
-
-        # try:
-        #     process = multiprocessing.Process(target=self.run_multiparticle,
-        #                                       args=(self.project_path, 'OutputFile/error_middle'))
-        #
-        #     process.start()  # 启动子进程
-        #     process.join()  # 等待子进程运行结束
-        #
-        # except Exception as e:
-        #     # 处理异常，如果需要
-        #     print(f"An error occurred: {str(e)}")
-        #
-        # finally:
-        #     # 无论是否发生异常都会执行这里的代码
-        #     if process.is_alive():
-        #         process.terminate()  # 终止子进程
-        self.run_multiparticle(self.error_middle_path)
-
-        copy_file(self.lattice_path, self.error_middle_output0_path)
-
-
-        self.write_density_every_time(group, time)
-
-        new_name = f'output_{group}_{time}'
-
-        copy_directory(self.error_middle_output0_path, self.error_output_path, new_name)
-
-        delete_directory(self.error_middle_output0_path)
-    def run(self):
-        """
-        跑静态误差与动态误差， 应该分成两种情况，
-        1. 需要优化
-        2. 不需要优选
-        :return:
-        """
-        self.get_group_time()
-        self.judge_stat_dyn_on()
-
-        self.write_err_par_title()
-        self.write_err_par_tot_title()
-
-
-        self.opti = self.judge_opti()
-
-        # 第一种情况，需要优化
-        if self.opti:
-            #进行优化
-
-            #动态误差静态误差一起跑
-
-            opti_res = []
-            for i in range(1, self.all_group+1):
-                for j in range(1, self.all_time+1):
-                    print(i, j)
-
-                    lattice_mulp_list = self.generate_lattice_mulp_list(i)
-                    self.all_error_lattice.append(lattice_mulp_list)
-                    #只使用静态误差进行优化
-                    opti_res_this, loss_this = self.run_one_time_opti(i, j, lattice_mulp_list)
-
-                    opti_res.append(opti_res_this)
-
-                    # 将优化参数写入到文件
-                    self.write_adjust_datas(i, j,  opti_res_this)
-
-
-
-
-            #将优化的结果进行保存
-
-            if self.if_normal == 1:
-                self.run_normal()
-                self.write_err_par_every_time(0, 0)
-
-            # lattice_mulp_list = self.generate_lattice_mulp_list(0)
-
-            for i in range(1, self.all_group+1):
-                for j in range(1, self.all_time+1):
-                    opti_res_this = (opti_res)[(i-1) * self.all_time + (j-1)]
-                    error_lattice_index = self.all_error_lattice[(i-1) * self.all_time + (j-1)]
-
-                    # 得到lattice的定位信息
-                    self.run_stat_dyn_one_time(opti_res_this, i, j, error_lattice_index,True)
-
-                    self.write_err_datas(i, j)
-                    self.write_err_par_every_time(i, j)
-
-                    group = i
-                    time = j
-
-                    # 将束诊参数写入到文件
-                    item = {
-                        "project_path": self.project_path,
-                        "input_file": self.input_path,
-                        "output_file": os.path.join(self.output_path, "error_output", f"output_{group}_{time}"),
-                        "diag_file_path": os.path.join(self.output_path, f"par_diag_datas_{group}_{time}.txt"),
-                    }
-                    obj = DiagInfo(item)
-                    obj.write_diag_info_to_file()
-
-
-        # 第二种情况，不需要优化
-        else:
-            if self.if_normal == 1:
-                self.run_normal()
-                self.write_err_par_every_time(0, 0)
-
-
-
-            for i in range(1, self.all_group+1):
-                for j in range(1, self.all_time+1):
-                    error_lattice_index = self.generate_lattice_mulp_list(i)
-                    self.all_error_lattice.append(error_lattice_index)
-                    self.run_stat_dyn_one_time([], i, j, error_lattice_index,False)
-                    self.write_err_datas(i, j)
-                    self.write_err_par_every_time(i, j)
-
-                    # 将束诊参数写入到文件
-                    group = i
-                    time = j
-                    item = {
-                        "project_path": self.project_path,
-                        "input_file": self.input_path,
-                        "output_file": os.path.join(self.output_path, "error_output", f"output_{group}_{time}"),
-                        "diag_file_path": os.path.join(self.output_path, f"par_diag_datas_{group}_{time}.txt"),
-                    }
-                    obj = DiagInfo(item)
-                    obj.write_diag_info_to_file()
-
-
-class OnlyAdjust(Errorstat):
-    def __init__(self, project_path, seed):
-        super().__init__(project_path, seed)
-
-    def run(self):
-        self.run_normal()
-
-        # self.only_adjust_sign = 1
-        self.err_type = 'only_adjust'
-        input_lines, _ = read_lattice_mulp_with_name(self.lattice_mulp_path)
-        index = 0
-        for i in input_lines:
-            if i[0] in global_varible.long_element:
-                add_name = f'element_{index}'
-                i.append(add_name)
-                index += 1
-
-
-        self.lattice_mulp_list = copy.deepcopy(input_lines)
-
-
-        # adjust_parameter_lattice_command, adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-        # adjust_parameter_n, adjust_parameter_use_init = self.generate_adjust_parameter()
-        #
-        #
-        # opti_res, loss = self.optimize_one_group(0, 0, self.lattice_mulp_list,
-        #                                      adjust_element_num, adjust_parameter_initial_value, adjust_parameter_num, adjust_parameter_range, \
-        #                                     adjust_parameter_n, adjust_parameter_use_init)
-        #
-        # self.opti = 1
-        # self.run_use_corrected_result(opti_res, 0, 0, self.lattice_mulp_list ,
-        #                           adjust_element_num, adjust_parameter_num)
-        self.opti = 1
-        self.run_one_time_opti(0,0)
-
-if __name__ == "__main__":
-    # obj = ErrorStat(r'C:\Users\anxin\Desktop\test_control\test_error')
-    # obj.read_lattice_parameter()
-    # obj.generate_error_lattice(1)
-    # obj.generate_adjust_parameter()
-    # # obj.optimize_one_group(1)
-    # obj.treat_diag()
-
-    # start = time.time()
-    # print("start", start)
-    # for i in range(10):
-    #     print(f"{i}"*50)
-    #     file = r"E:\using\test_avas_qt\fileld_ciads\OutputFile"
-    #     delete_directory(file)
-
-    #     os.mkdir(file)
-
-
-    path = r"C:\Users\shliu\Desktop\yanshou\av_error"
-    # obj = ErrorDyn(path,
-    #                50, 1, field_path=None, if_generate_density_file = 1)
-
-    #
-
-    item = {
-        "project_path": path,
-        "seed": 0,
-        "if_normal": 1,
-        "field_path": None,
-        "if_generate_density_file":1,
-        "device":"cpu",
-        "restart": 0,
-    }
-    obj = ErrorDyn(item)
-
-    obj.run()
-
+    """Static and dynamic errors together: per element the two commands are summed into one dynamic command,
+    the beam errors likewise, and the switches are the union of the static and dynamic ones."""
+
+    SWITCHES = tuple(SWITCH_ATTRS)
+    MISSING_SWITCH_MESSAGE = "Missing error on command"
+
+    def lattice_lines(self, lattice, opti_res):
+        lines = apply_adjust_results(lattice, opti_res) if opti_res else copy.deepcopy(lattice)
+        beam_stat, beam_dyn = self.merge_element_errors(lines)
+        self.insert_merged_beam_error(lines, beam_stat, beam_dyn)
+        lines = delete_element_end_index(lines)
+        return [i for i in lines if i[0] is not False]
+
+    def merge_element_errors(self, lines):
+        """Sum the static and dynamic command in front of each element (in place; dropped lines get ``False`` at
+        index 0), mark all switch lines for removal and return the beam error lines found."""
+        ncpl = global_varible.error_elemment_command_ncpl
+        stat_to_dyn = dict(zip(global_varible.error_elemment_command_stat_ncpl,
+                               global_varible.error_elemment_command_dyn_ncpl))
+        switches = (global_varible.error_elemment_dyn_on + global_varible.error_elemment_stat_on
+                    + global_varible.error_beam_dyn_on + global_varible.error_beam_stat_on)
+        beam_stat, beam_dyn = [], []
+        for i in range(len(lines)):
+            head = lines[i][0]
+            if head in global_varible.mulpud_element:
+                if lines[i - 1][0] in ncpl and lines[i - 2][0] in ncpl:
+                    # two error commands before an element: one static, one dynamic
+                    for j in range(3, len(lines[i - 2])):
+                        lines[i - 2][j] += lines[i - 1][j]
+                    lines[i - 1].insert(0, False)
+                    lines[i - 2][0] = stat_to_dyn.get(lines[i - 2][0], lines[i - 2][0])
+                elif lines[i - 1][0] in ncpl:
+                    lines[i - 1][0] = stat_to_dyn.get(lines[i - 1][0], lines[i - 1][0])
+            elif head in switches:
+                lines[i].insert(0, False)
+            elif head == 'err_beam_stat':
+                beam_stat = copy.deepcopy(lines[i])
+                lines[i].insert(0, False)
+            elif head == 'err_beam_dyn':
+                beam_dyn = copy.deepcopy(lines[i])
+                lines[i].insert(0, False)
+        return beam_stat, beam_dyn
+
+    def insert_merged_beam_error(self, lines, beam_stat, beam_dyn):
+        """Insert (after ``start`` / ``err_step``) the union switches and the summed beam error."""
+        def union(stat_on, dyn_on):
+            return [1 if a == 1 or b == 1 else 0 for a, b in zip(stat_on, dyn_on)]
+
+        quad_on = ['err_quad_dyn_on'] + union(self.err_quad_stat_on, self.err_quad_dyn_on)
+        cav_on = ['err_cav_dyn_on'] + union(self.err_cav_stat_on, self.err_cav_dyn_on)
+        beam_on = ['err_beam_dyn_on'] + union(self.err_beam_stat_on, self.err_beam_dyn_on)
+        if set(cav_on[1:]) != {0}:
+            lines.insert(2, cav_on)
+        if set(quad_on[1:]) != {0}:
+            lines.insert(2, quad_on)
+
+        beam = ['err_beam_dyn', 0]
+        if beam_stat and beam_dyn:
+            beam += [float(beam_stat[i]) + float(beam_dyn[i]) for i in range(2, len(beam_stat))]
+        elif beam_dyn:
+            beam += [float(beam_dyn[i]) for i in range(2, len(beam_dyn))]
+        elif beam_stat:
+            beam += [float(beam_stat[i]) for i in range(2, len(beam_stat))]
+        if len(beam) != 2:
+            lines.insert(2, beam)
+        if set(beam_on[1:]) != {0}:
+            lines.insert(2, beam_on)

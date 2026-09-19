@@ -1,11 +1,9 @@
 """此文件为画相图"""
-import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 
 import time
 
-import matplotlib as mpl
 from scipy.ndimage import gaussian_filter
 from avas.utils.my_jet import make_tracewin_like_jet
 
@@ -15,7 +13,6 @@ from avas.utils.pixel_scatter import pixel_scatter, warmup
 import logging
 from avas.log import setup_logger
 from avas.config import dst_picture_title_dict
-import sys
 logger = logging.getLogger(__name__)
 
 def plot_dst_density(ax, x, y, xlabel, ylabel, font, this_twiss):

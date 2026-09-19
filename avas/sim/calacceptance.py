@@ -1,16 +1,8 @@
 from avas.paths import lattice_source_path
-import sys
 
-import numpy as np
 import os
 import pandas as pd
-import numpy
 from avas.data.beamset import BeamsetParameter
-import math
-from avas.constants import c_light, Pi
-from avas.data.latticeparameter import LatticeParameter
-import matplotlib.pyplot as plt
-import matplotlib
 from avas.utils.tool import trans_xp_xx1
 from avas.utils.tool import cal_twiss
 class Acceptance():

@@ -1,5 +1,6 @@
 // Lattice document as returned by lattice.parse (avas/gui/services/lattice.py).
 import { call } from "../bridge";
+import { fmtG } from "../format";
 import { pick } from "../i18n";
 
 export type Bi = [string, string];
@@ -114,9 +115,7 @@ export function renameEdits(st: Statement, newName: string): Edit[] {
   return [[st.line, formatStatement(st, { name })]];
 }
 
-function g(v: number) {
-  return String(Number(v.toPrecision(6)));
-}
+const g = (v: number) => fmtG(v, 6);
 
 export function statementSummary(st: Statement, kw: Keyword | undefined): string {
   const p = (k: number) => st.params[k] ?? "";
@@ -151,7 +150,5 @@ export function elementColorVar(st: Statement): string {
   return map[st.key] ?? (st.category === "diag" ? "--el-diag" : "--el-other");
 }
 
-export function fmt6(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "–";
-  return String(Number(v.toPrecision(6)));
-}
+/** Display value with 6 significant digits (read-outs, tooltips; never written back to a file). */
+export const fmt6 = (v: number | null | undefined): string => fmtG(v, 6);

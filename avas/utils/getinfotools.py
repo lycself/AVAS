@@ -1,9 +1,7 @@
 import os.path
 
-from avas.utils.readfile import read_dst, read_txt, read_dst_fast
+from avas.utils.readfile import read_txt, read_dst_fast
 
-from avas.utils.readfile import read_dst, read_txt
-from avas.utils.iniconfig import IniConfig
 from avas.utils.inputconfig import InputConfig
 def get_mass_freq(project_path):
     """Beam mass / frequency / current from ``<project>/InputFile/beam.txt``."""

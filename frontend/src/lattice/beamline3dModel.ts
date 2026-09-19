@@ -131,6 +131,20 @@ export type Model = {
   maxR: number;
 };
 
+/**
+ * Cheap fingerprint of everything buildModel() looks at, so a re-parse that only
+ * changed comments or diagnostics does not rebuild the 3D scene.
+ */
+export function structureKey(doc: LatticeDoc | null): string {
+  if (!doc) return "";
+  const parts: string[] = [String(doc.totalLength ?? 0)];
+  for (const s of doc.statements) {
+    if (!s.active || !s.isElement || s.zStart == null) continue;
+    parts.push(`${s.line}|${s.key}|${s.keyword}|${s.name}|${s.fieldType}|${s.category}|${s.block ?? ""}|${s.zStart}|${s.zEnd ?? ""}|${s.params.join(" ")}`);
+  }
+  return parts.join("\n");
+}
+
 export function buildModel(doc: LatticeDoc | null): Model {
   const sts = doc ? doc.statements.filter((s) => s.active && s.isElement && s.zStart != null) : [];
   const elems: Elem[] = sts.map((s) => {
@@ -209,14 +223,6 @@ export function autoExaggeration(m: Model): number {
 export function roundNice(v: number) {
   if (v < 10) return Math.round(v * 10) / 10;
   return Number(v.toPrecision(2));
-}
-
-export function niceStep(raw: number) {
-  if (!(raw > 0)) return 1;
-  const exp = Math.floor(Math.log10(raw));
-  const base = raw / 10 ** exp;
-  for (const n of [1, 2, 5, 10]) if (base <= n) return n * 10 ** exp;
-  return 10 ** (exp + 1);
 }
 
 /* ------------------------------------------------------------------ reference orbit */
