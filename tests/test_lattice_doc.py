@@ -155,6 +155,8 @@ def test_file_kinds_by_content(tmp_path):
                               "FIELD_MAP 70 380 0 26 200 0 0 0 q120 0\nEND\n", encoding="utf-8")
     (d / "notes.txt").write_text("hello world\nthis is a note\n", encoding="utf-8")
     (d / "End to End.ini").write_bytes(b"TraceWin_options_file" + b"\x00" * 64)
+    # lattice.txt is regenerated before every run and kept out of the repo (.gitignore), so write one here
+    (d / "lattice.txt").write_text("start\ndrift 0.1 0.02 0\nend\n", encoding="utf-8")
     kinds = {n: fk.detect(str(d / n)) for n in os.listdir(d)}
     assert kinds["my_version_2.txt"] == fk.KIND_LATTICE
     assert kinds["lattice_mulp.txt"] == fk.KIND_LATTICE

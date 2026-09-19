@@ -53,6 +53,9 @@ def test_run_with_other_lattice_file(run_dirs, monkeypatch):
     with open(os.path.join(inp, "lattice_long.txt"), "w", encoding="utf-8") as fh:
         fh.write(alt)
     out = os.path.join(WORK, "Results_lattice")
+    # lattice.txt is not tracked (.gitignore), so a fresh clone / CI has none: remember what is there before the run
+    user_lattice = os.path.join(inp, "lattice.txt")
+    before = open(user_lattice, encoding="utf-8").read() if os.path.isfile(user_lattice) else None
     assert main(["run", "--input", inp, "--output", out, "--lattice", "lattice_long.txt"]) == 0
     monkeypatch.delenv(paths.LATTICE_ENV_VAR, raising=False)
     with open(os.path.join(out, "avas_run.json"), encoding="utf-8") as fh:
@@ -66,12 +69,10 @@ def test_run_with_other_lattice_file(run_dirs, monkeypatch):
     for name in ("input.txt", "beam.txt", "lattice_long.txt"):
         assert os.path.isfile(os.path.join(staged, name))
     assert not any(f.endswith((".edx", ".bsz")) for f in os.listdir(staged))   # field maps are not copied
-    # the user's input folder is left alone: its lattice.txt is the one shipped with the example
-    with open(os.path.join(inp, "lattice.txt"), encoding="utf-8") as fh:
-        untouched = fh.read()
-    with open(os.path.join(EXAMPLE_INPUT, "lattice.txt"), encoding="utf-8") as fh:
-        assert untouched == fh.read()
-    assert "drift 0.1 0.02 0" not in untouched
+    # the user's input folder is left alone: lattice.txt is neither created nor rewritten there
+    after = open(user_lattice, encoding="utf-8").read() if os.path.isfile(user_lattice) else None
+    assert after == before
+    assert after is None or "drift 0.1 0.02 0" not in after
     last = [line.split() for line in open(os.path.join(out, "DataSet.txt"), encoding="utf-8") if line.strip()][-1]
     assert last  # simulation produced data
 
