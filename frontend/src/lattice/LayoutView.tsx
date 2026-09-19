@@ -301,6 +301,27 @@ export function LayoutView({
   const zOf = (x: number) => view[0] + ((x - plot.left) / pw) * (view[1] - view[0]);
   const glyphCy = GLYPH_H / 2 + 4;
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const x = e.clientX - canvas.getBoundingClientRect().left;
+      const frac = (x - plot.left) / pw;
+      const f = e.deltaY < 0 ? 0.8 : 1.25;
+      setView(([start, end]) => {
+        const zc = start + frac * (end - start);
+        const span = Math.min(Math.max((end - start) * f, 1e-4), total * 1.2);
+        return [zc - frac * span, zc - frac * span + span];
+      });
+      fitted.current = false;
+      follow.current = false;
+    };
+    // A non-passive native listener lets zoom cancel the page's default scroll.
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+  }, [plot.left, pw, total]);
+
   // vertical scale (mm) from what is visible
   const yMax = useMemo(() => {
     let m = 0;
@@ -825,16 +846,6 @@ export function LayoutView({
       <canvas
         ref={canvasRef}
         style={{ width: "100%", height: "100%", display: "block", cursor: hoverKey ? "pointer" : undefined }}
-        onWheel={(e) => {
-          const { x } = local(e);
-          const zc = zOf(x);
-          const f = e.deltaY < 0 ? 0.8 : 1.25;
-          const span = Math.min(Math.max((view[1] - view[0]) * f, 1e-4), total * 1.2);
-          const frac = (x - plot.left) / pw;
-          setView([zc - frac * span, zc - frac * span + span]);
-          fitted.current = false;
-          follow.current = false;
-        }}
         onMouseDown={(e) => {
           if (e.button !== 0) return;
           wrapRef.current?.focus({ preventScroll: true });

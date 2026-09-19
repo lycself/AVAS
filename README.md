@@ -26,31 +26,33 @@ AVAS 是一个直线加速器束流动力学模拟程序：C++ 计算内核（`a
 
 ### 安装：在项目目录下手动创建 `.venv`
 
+**本文的 Windows 命令示例默认在 PowerShell 中执行**（Windows Terminal 中请选择 PowerShell 标签页）。AVAS 也支持命令提示符（CMD），但虚拟环境激活命令不同；在 CMD 中复制示例时，请去掉 `#` 及其后面的注释。
+
 在仓库根目录用满足上面版本要求的 64 位 Python 创建虚拟环境（把 `python` 换成你要用的解释器路径，例如 `C:\Python311\python.exe`）：
 
-```bash
+```powershell
 python -m venv .venv
 ```
 
 激活并安装 AVAS 及全部依赖（可编辑模式，改代码即时生效）：
 
-```bash
-.venv\Scripts\activate
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
 
-```bash
+```powershell
 python -m pip install --upgrade pip
 ```
 
-```bash
+```powershell
 pip install -e .[dev]
 ```
 
-Linux / macOS 的激活命令是 `source .venv/bin/activate`，其余相同。
+CMD 的激活命令是 `.venv\Scripts\activate.bat`。Linux / macOS 的激活命令是 `source .venv/bin/activate`，其余相同。
 
 安装完成后：
 
-* `.\run_avas.py ...` 和 `run_avas.cmd ...` **总是**使用 `.venv` 里的 Python，无论你在哪个终端、用哪个 `python` 启动它，不需要先激活（不想这样时设环境变量 `AVAS_NO_VENV=1`）。
+* `.\run_avas.py ...` 和 `.\run_avas.cmd ...` **总是**使用 `.venv` 里的 Python，无论你在哪个终端、用哪个 `python` 启动它，不需要先激活（不想这样时设环境变量 `AVAS_NO_VENV=1`）。
 * 激活 `.venv` 后可以直接用 `avas ...` 和 `avas-gui`。
 * `.venv/` 已在 `.gitignore` 中，不会进入仓库。
 
@@ -60,7 +62,7 @@ Linux / macOS 的激活命令是 `source .venv/bin/activate`，其余相同。
 
 输入目录和输出目录完全解耦：`--input` 指向包含 `input.txt`、`beam.txt` 和结构文件的目录（或包含 `InputFile/` 的项目目录），`--output` 指向任意目录（不存在会自动创建）。结构文件默认是 `ini.ini` 中 `[lattice] source` 指定的文件（在界面「结构」页选择），没有指定时为 `lattice_mulp.txt`；也可以用 `--lattice` 临时指定。
 
-```bash
+```powershell
 # 运行模拟（等价于 avas run ...）
 avas --input "C:\proj\InputFile" --output "C:\proj\Results_001"
 
@@ -88,7 +90,7 @@ avas doctor
 
 参数扫描：对一个参数的每个取值各运行一次，结果表打印在终端并写入 `<项目>/Scans/<名称>_<时间>/`（`scan.json`、`scan.csv`），项目输入文件不变。
 
-```bash
+```powershell
 avas scan --input "C:\proj\InputFile" --target Q1 --param G --values 10,12,14
 avas scan --input "C:\proj\InputFile" --target 12 --param phase --values -40:-20:5          # 第 12 行，起点:终点:个数
 avas scan --input "C:\proj\InputFile" --keyword beam.particlenumber --values 1000,5000 --metrics transmission,energy_out
@@ -103,7 +105,7 @@ avas scan --input "C:\proj\InputFile" --keyword beam.particlenumber --values 100
 
 界面可以用**桌面窗口**打开，也可以在**浏览器**里打开（见下面「浏览器模式」）；两种方式的页面、功能和实时显示完全一致。
 
-```bash
+```powershell
 avas gui
 ```
 
@@ -160,7 +162,7 @@ avas gui
    AI 助手的试算也在这里显示（用它自己的 lattice）。运行结束后保留最终状态，可以回放；完整运行进行中可勾选「与前一次运行对比」
    把上一次的包络画成灰线（默认不显示）。**历史记录回放**：下方「运行记录」列表里每条完成的记录（OutputFile、已保留的运行、
    分段运行）都有「回放」按钮，点后示意面板切换到这条记录（按它 `inputs/` 快照里的 lattice 画，分段运行按分段起点对齐）并开始回放，
-   × 回到本次运行；新的运行开始时自动回到实时显示。
+   × 回到本次运行；新的运行开始时自动回到实时显示。鼠标在束线布局图内时，滚轮只缩放图形，不滚动页面；移到图外后正常滚动页面（结构页布局图同样如此）。
    **运行锁**：完整运行、误差研究和分段运行进行中（包括暂停）时，所有输入文件只读——结构、束流、设置、文件页以及运行用的 lattice
    选择都不能修改，后端同样拒绝写入，AI 助手此时提出的修改会被直接拒绝并说明原因。原因是分段运行每个阶段开始时才复制输入文件，
    而且运行记录里的输入快照和实时显示都以运行开始时的输入为准，运行中修改会让结果混入两套输入。AI 助手的参数扫描 / 优化和扫描页使用副本，不加锁。
@@ -181,7 +183,7 @@ avas gui
 
 #### 浏览器模式
 
-```bash
+```powershell
 avas serve --open
 ```
 
@@ -243,35 +245,37 @@ A **64-bit** interpreter is required because the engine `avas/engine/AVAS.dll` (
 
 ### Install: create `.venv` in the project directory
 
+**Windows command examples in this README assume PowerShell** (select a PowerShell tab in Windows Terminal). AVAS also works in Command Prompt (CMD), but the virtual-environment activation command differs; when copying examples into CMD, remove `#` and the comment that follows it.
+
 From the repository root, using a 64-bit Python that satisfies the table above (replace `python` with the interpreter you want, e.g. `C:\Python311\python.exe`):
 
-```bash
+```powershell
 python -m venv .venv
 ```
 
 Activate it and install AVAS with all dependencies in editable mode:
 
-```bash
-.venv\Scripts\activate
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
 
-```bash
+```powershell
 python -m pip install --upgrade pip
 ```
 
-```bash
+```powershell
 pip install -e .[dev]
 ```
 
-On Linux / macOS activate with `source .venv/bin/activate`.
+In CMD, activate with `.venv\Scripts\activate.bat`. On Linux / macOS activate with `source .venv/bin/activate`.
 
-Afterwards `.\run_avas.py ...` and `run_avas.cmd ...` always execute inside `.venv`, whichever Python launched them and without activating first (set `AVAS_NO_VENV=1` to opt out). With the venv activated the `avas` and `avas-gui` commands are available directly. `.venv/` is git-ignored. Without a venv, `pip install -e .` in any suitable environment works too.
+Afterwards `.\run_avas.py ...` and `.\run_avas.cmd ...` always execute inside `.venv`, whichever Python launched them and without activating first (set `AVAS_NO_VENV=1` to opt out). With the venv activated the `avas` and `avas-gui` commands are available directly. `.venv/` is git-ignored. Without a venv, `pip install -e .` in any suitable environment works too.
 
 ### Command line
 
 Input and output directories are independent. `--input` is the directory holding `input.txt`, `beam.txt` and the lattice (or a project directory containing `InputFile/`); `--output` is any directory and is created if needed. The lattice is `[lattice] source` from `ini.ini` (chosen on the Lattice page), else `lattice_mulp.txt`; `--lattice FILE` overrides it.
 
-```bash
+```powershell
 avas --input "C:\proj\InputFile" --output "C:\proj\Results_001"      # same as: avas run ...
 avas run --input ... --output ... --lattice lattice_init.txt         # another lattice file of the input dir
 avas run --input ... --output ... --mode stat --seed 7               # error study: stat | dyn | stat_dyn
@@ -287,7 +291,7 @@ avas doctor                                                          # self-test
 
 Parameter scan: one run per value of one parameter, results printed as a table and written to `<project>/Scans/<label>_<time>/` (`scan.json`, `scan.csv`); the project's inputs are not changed.
 
-```bash
+```powershell
 avas scan --input "C:\proj\InputFile" --target Q1 --param G --values 10,12,14
 avas scan --input "C:\proj\InputFile" --target 12 --param phase --values -40:-20:5          # line 12, start:stop:count
 avas scan --input "C:\proj\InputFile" --keyword beam.particlenumber --values 1000,5000 --metrics transmission,energy_out
@@ -303,7 +307,7 @@ same copy: the `lattice.txt` of every error seed is written to `<output>/inputs/
 
 The interface opens either as a **desktop window** or in a **browser** (see "Browser mode" below); the pages, features and live display are identical.
 
-```bash
+```powershell
 avas gui
 ```
 
@@ -313,9 +317,11 @@ The Lattice page also has a **visual editor** on the same text model (one undo h
 
 **Run page and input lock.** Below the progress, *Live beam* draws the lattice the run uses with the envelope written so far, the moving bunch and the losses, and shows the bunch position, macro-particles alive, transmission, energy and rms sizes (segment stages, error seeds and the assistant's sandbox evaluations included); after the run it keeps the final state and offers a replay; during a project run *Compare with the run before* (off by default) overlays the previous envelope in grey. Every finished record in the *Run records* list below (OutputFile, kept runs, segment runs) has a **Replay** button: the panel switches to that record (drawn on the lattice of its `inputs/` snapshot; a segment run at its entry z) and starts the replay, × returns to the last run, and a new run takes the panel back (`run.replay` reads the envelope from the record's DataSet.txt). While a project run, error study or segment run is running or paused, all input files are read-only (Lattice, Beam, Settings and Files pages, the run-lattice selection; the back end refuses writes too, and the assistant's change proposals are refused with an explanation), because segment runs copy InputFile at the start of every stage and the run record's input snapshot and the live display describe the inputs the run started with; editing in between would mix two configurations. The assistant's scans and the Scan page work on copies and do not lock. **View → Motion** chooses full (the default) / reduced / off / automatic (follows Windows' animation effects).
 
+In the beamline layout on the Run and Lattice pages, the mouse wheel zooms the plot without scrolling the page. Move the pointer outside the plot to scroll the page normally.
+
 #### Browser mode
 
-```bash
+```powershell
 avas serve --open
 ```
 
