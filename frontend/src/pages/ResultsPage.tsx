@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { call, on } from "../bridge";
+import { openPath, pickFile, pickFolder } from "../host";
 import { reportError, toast } from "../components/overlays";
 import { Button, cx, Empty, Icon, IconButton, Radio, Select, Spinner, Tabs, TextInput } from "../components/ui";
 import { runStatusLabel } from "../format";
@@ -110,7 +111,7 @@ function FilePick({ value, files, onChange, filters, directory }: { value: strin
         tip={t("Other file...")}
         onClick={async () => {
           try {
-            const p = await call<string | null>("dialog.openFile", { directory, filters });
+            const p = await pickFile({ directory, filters });
             if (p) onChange(p);
           } catch (e) {
             reportError(e);
@@ -626,7 +627,7 @@ export default function ResultsPage() {
           icon="folder-opened"
           tip={tt("Open another results folder")}
           onClick={async () => {
-            const p = await call<string | null>("dialog.openFolder", { directory: ov?.outputDir ?? "" });
+            const p = await pickFolder({ directory: ov?.outputDir ?? "", title: tt("Open another results folder") });
             if (p) {
               setOutputDir(p);
               setTabs([]);
@@ -647,7 +648,7 @@ export default function ResultsPage() {
         >
           {tt("Refresh all")}
         </Button>
-        <Button small variant="ghost" icon="folder" onClick={() => call("shell.open", { path: shownDir }).catch(reportError)}>
+        <Button small variant="ghost" icon="folder" onClick={() => openPath(shownDir).catch(reportError)}>
           {tt("Open folder")}
         </Button>
       </div>

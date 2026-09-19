@@ -28,6 +28,9 @@ dependencies = [
     "scikit-learn>=1.3",
     "numba>=0.57",
     "pywebview>=5.3",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
+    "websockets>=13",
     "Send2Trash>=1.8",
     "openpyxl>=3.0",
 ]
@@ -35,7 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 hpc = ["mpi4py>=3.1"]
 build = ["pyinstaller>=6.0"]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "httpx>=0.27"]
 
 [project.scripts]
 avas = "avas.cli.main:main"

@@ -19,6 +19,7 @@ def info():
         "python": sys.version.split()[0],
         "platform": sys.platform,
         "baseUrl": gui_app.state()["base_url"],
+        "host": "webview" if gui_app.state()["window"] is not None else "browser",
         "settings": s.all(),
         "systemDark": gui_app.system_prefers_dark(),
         "webview2": webview2.installed_version(),
@@ -77,7 +78,7 @@ def clear_log():
 def _window():
     win = gui_app.state()["window"]
     if win is None:
-        raise UserError("No window")
+        raise UserError("Native dialogs need the desktop window; in a browser use the page's own file chooser.")
     return win
 
 

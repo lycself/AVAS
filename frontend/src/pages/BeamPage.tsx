@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { call } from "../bridge";
+import { pickFile } from "../host";
 import { confirmDialog, DialogFrame, reportError, showDialog, toast } from "../components/overlays";
 import { Plot, seriesColor } from "../components/Plot";
 import { Button, Checkbox, Section, Select, Spinner, TextInput } from "../components/ui";
@@ -157,7 +158,7 @@ export default function BeamPage() {
 
   const chooseDst = async () => {
     try {
-      const path = await call<string | null>("dialog.openFile", { directory: inputDir, filters: ["DST (*.dst)", "All files (*.*)"] });
+      const path = await pickFile({ directory: inputDir, filters: ["DST (*.dst)", "All files (*.*)"] });
       if (!path) return;
       let res = await call<any>("beam.importDst", { source: path });
       if (res.exists) {

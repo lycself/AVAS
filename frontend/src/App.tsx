@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { inHost } from "./bridge";
 import { DialogLayer, MenuLayer, ToastLayer, TooltipLayer } from "./components/overlays";
 import { Spinner } from "./components/ui";
 import { Shell } from "./shell/Shell";
@@ -21,12 +20,6 @@ export function App() {
   const ready = useApp((s) => s.ready);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    if (!inHost()) {
-      const timer = window.setTimeout(() => {
-        if (!window.pywebview) setError("This page is the AVAS interface; start it with 'avas gui'.");
-      }, 3000);
-      window.addEventListener("pywebviewready", () => window.clearTimeout(timer), { once: true });
-    }
     initLog();
     initFrontRequests();
     initApp()

@@ -1,9 +1,11 @@
-"""GUI entry point: ``avas gui`` / ``python -m avas gui`` / ``avas-gui``.
+"""Desktop entry point: ``avas gui`` / ``python -m avas gui`` / ``avas-gui``.
 
-Starts the loopback server, opens one pywebview window (Edge WebView2 on
-Windows) on the built page and runs the GUI loop.  Set ``AVAS_GUI_DEV_URL``
-(e.g. ``http://localhost:5173``) to load the Vite dev server instead, and
-``AVAS_GUI_DEBUG=1`` to enable the WebView developer tools.
+Starts the GUI server (:mod:`avas.gui.server`), opens one pywebview window
+(Edge WebView2 on Windows) on its page and runs the GUI loop.  The page uses
+the same HTTP / WebSocket transport as a browser would (``avas serve``);
+pywebview only provides the window frame and the native file dialogs.  Set
+``AVAS_GUI_DEV_URL`` (e.g. ``http://localhost:5173``) to load the Vite dev
+server instead, and ``AVAS_GUI_DEBUG=1`` to enable the WebView developer tools.
 """
 import logging
 import multiprocessing
@@ -153,9 +155,10 @@ def main(argv=None, language=None):
     import webview
     from avas.gui import services  # noqa: F401 - registers RPC handlers
 
-    srv, base = server.start()
-    _state["server"], _state["base_url"] = srv, base
-    url = os.environ.get("AVAS_GUI_DEV_URL") or f"{base}/index.html"
+    dev_url = os.environ.get("AVAS_GUI_DEV_URL")
+    srv = server.start(cors_origins=[dev_url.rstrip("/")] if dev_url else None)
+    _state["server"], _state["base_url"] = srv, srv.base_url
+    url = srv.page_url("webview", dev_url=dev_url)
 
     geo = s.get("ui/window") or {}
     dark = resolve_theme(s.get("ui/theme")) == "dark"
@@ -169,9 +172,10 @@ def main(argv=None, language=None):
     if geo.get("x") is not None and geo.get("y") is not None and _on_some_screen(geo, width, height):
         kwargs.update(x=int(geo["x"]), y=int(geo["y"]))
 
-    win = webview.create_window(APP_TITLE, url, js_api=bridge.Api(), **kwargs)
+    # No js_api: the page talks to the HTTP server like a browser would; the window only
+    # provides the frame and the native file dialogs.
+    win = webview.create_window(APP_TITLE, url, **kwargs)
     _state["window"] = win
-    bridge.attach_window(win)
     win.events.shown += _on_shown
     win.events.loaded += _on_loaded
     win.events.closing += _on_closing

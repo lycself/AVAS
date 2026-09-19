@@ -38,6 +38,7 @@ frontend/node_modules/
 packaging/redist/
 tests/_output_gui/
 tests/_output_assistant/
+tests/_output_server/
 # build stamp written by packaging/build.py
 avas/_build.json
 # assistant work folders inside projects (sandbox runs, backups)

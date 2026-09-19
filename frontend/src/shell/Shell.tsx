@@ -18,6 +18,7 @@ import {
   blockedByDialog,
 } from "../actions";
 import { closeMenu, openMenu, openMenuBelow, type MenuItem } from "../components/overlays";
+import { canQuit } from "../host";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { cx, Icon, IconButton, Spinner } from "../components/ui";
 import { LANGUAGES, useT, type Language } from "../i18n";
@@ -98,8 +99,7 @@ function MenuBar() {
         { label: t("Show in Explorer"), icon: "folder", disabled: !open, onClick: revealProject },
         { type: "separator" },
         { label: t("Save"), shortcut: "Ctrl+S", icon: "save", disabled: !open, onClick: () => saveAll() },
-        { type: "separator" },
-        { label: t("Exit"), shortcut: "Ctrl+Q", onClick: quit },
+        ...(canQuit() ? [{ type: "separator" } as const, { label: t("Exit"), shortcut: "Ctrl+Q", onClick: quit }] : []),
       ],
     },
     {

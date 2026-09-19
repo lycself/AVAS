@@ -1,17 +1,23 @@
 """Python <-> JavaScript plumbing.
 
-* **Calls** (JS -> Python): the page calls ``pywebview.api.call(method, params)``.
+* **Calls** (JS -> Python): the page posts ``{"method", "params"}`` to
+  ``/api/rpc`` (:mod:`avas.gui.server`) and :func:`dispatch` runs the handler.
   Handlers are registered with :func:`rpc` under dotted names
   (``"project.open"``); ``params`` is a dict passed as keyword arguments.
   The reply is a JSON *string* ``{"ok": true, "result": ...}`` or
   ``{"ok": false, "error": ..., "detail": ...}``.  NaN / inf become ``null``
   and numpy types are converted, so the page can always ``JSON.parse`` it.
 * **Events** (Python -> JS): :func:`emit` queues ``(name, payload)``; a
-  flusher thread delivers the queue in batches every ~40 ms through
-  ``window.__avasEmit(batch)``, so a chatty log never floods the page.
-* **Blobs**: large numeric arrays travel as binary over the local HTTP server
-  (see :mod:`avas.gui.server`); :func:`blob` stores an array and returns a
-  small JSON reference the page resolves with ``fetch``.
+  flusher thread delivers the queue in batches every ~40 ms to every
+  connected page's WebSocket (:func:`subscribe`), so a chatty log never
+  floods the page.
+* **Blobs**: large numeric arrays travel as binary over the HTTP server;
+  :func:`blob` stores an array and returns a small JSON reference the page
+  resolves with ``fetch``.
+
+The same transport serves the desktop window (pywebview), a local browser
+and, later, a shared server: pywebview only provides the window and the
+native file dialogs.
 """
 import json
 import logging
@@ -26,7 +32,6 @@ import numpy as np
 log = logging.getLogger("avas.gui")
 
 _handlers = {}
-_window = None
 _queue = []
 _queue_lock = threading.Lock()
 _flusher = None
@@ -97,13 +102,6 @@ def take_blob(key):
 
 
 # --------------------------------------------------------------------------- calls
-class Api:
-    """The object handed to pywebview as ``js_api``: exposes only :meth:`call`."""
-
-    def call(self, method, params=None):
-        return dispatch(method, params)
-
-
 def dispatch(method, params=None):
     fn = _handlers.get(method)
     if fn is None:
@@ -126,16 +124,6 @@ def dispatch(method, params=None):
 
 
 # --------------------------------------------------------------------------- events
-def attach_window(window):
-    global _window
-    _window = window
-    start_flusher()
-
-
-def window():
-    return _window
-
-
 def emit(name, payload=None):
     with _queue_lock:
         _queue.append([name, payload])
@@ -144,18 +132,26 @@ def emit(name, payload=None):
 _subscribers = []
 
 
-def subscribe():
-    """Development: an event queue for an HTTP event-stream client (see server.py)."""
-    import queue
-    q = queue.Queue()
-    _subscribers.append(q)
+def subscribe(deliver):
+    """Register a connected page: ``deliver(text)`` gets each JSON-encoded batch.
+
+    Called from the flusher thread; the server hands the text to the page's
+    WebSocket.  Events emitted while nobody is connected are dropped (pages
+    fetch the current state when they connect), so a reload never replays a
+    backlog of stale progress.
+    """
+    _subscribers.append(deliver)
     start_flusher()
-    return q
+    return deliver
 
 
-def unsubscribe(q):
-    if q in _subscribers:
-        _subscribers.remove(q)
+def unsubscribe(deliver):
+    if deliver in _subscribers:
+        _subscribers.remove(deliver)
+
+
+def connected():
+    return len(_subscribers)
 
 
 def start_flusher():
@@ -168,21 +164,20 @@ def start_flusher():
 def _flush_loop():
     while True:
         time.sleep(0.04)
-        if _window is None and not _subscribers:
-            continue
         with _queue_lock:
             if not _queue:
                 continue
             batch = _queue[:]
             _queue.clear()
-        for q in list(_subscribers):
-            q.put(batch)
-        if _window is None:
+        if not _subscribers:
             continue
         try:
-            _window.run_js(f"window.__avasEmit && window.__avasEmit({dumps(batch)})")
-        except Exception:  # noqa: BLE001 - window closing / not loaded yet
-            with _queue_lock:
-                if len(_queue) < 10000:
-                    _queue[:0] = batch
-            time.sleep(0.2)
+            text = dumps(batch)
+        except Exception as exc:  # noqa: BLE001 - a payload that is not JSON-able
+            log.error("event batch dropped: %s", exc)
+            continue
+        for deliver in list(_subscribers):
+            try:
+                deliver(text)
+            except Exception:  # noqa: BLE001 - connection going away
+                unsubscribe(deliver)

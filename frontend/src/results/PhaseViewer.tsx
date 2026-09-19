@@ -2,6 +2,7 @@
 // four density panels with the rms ellipse, percent emittances, zoom re-binning.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { call } from "../bridge";
+import { pickFile } from "../host";
 import { reportError } from "../components/overlays";
 import { Plot } from "../components/Plot";
 import { Button, Icon, IconButton, Select, Spinner, TextInput } from "../components/ui";
@@ -236,7 +237,7 @@ export function PhaseViewer({ source, outputDir, refreshKey }: { source: Source;
           tip={t("Other file...")}
           onClick={async () => {
             try {
-              const p = await call<string | null>("dialog.openFile", { directory: outputDir ?? "", filters: source.kind === "dst" ? ["DST (*.dst)"] : ["PLT (*.plt)"] });
+              const p = await pickFile({ directory: outputDir ?? "", filters: source.kind === "dst" ? ["DST (*.dst)"] : ["PLT (*.plt)"] });
               if (p) setFile(p);
             } catch (e) {
               reportError(e);

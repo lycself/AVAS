@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { pauseSimulation, resumeSimulation, runSimulation, stopSimulation } from "../actions";
 import { call } from "../bridge";
+import { openPath } from "../host";
 import { reportError } from "../components/overlays";
 import { Badge, Button, cx, ProgressBar, Section } from "../components/ui";
 import { fmtSeconds, runStatusLabel } from "../format";
@@ -160,7 +161,7 @@ export default function RunPage() {
                 <Button
                   variant="ghost"
                   icon="folder"
-                  onClick={() => call("shell.open", { path: last.source === "segment" && last.outputDir ? last.outputDir : project.outputDir }).catch(reportError)}
+                  onClick={() => openPath(last.source === "segment" && last.outputDir ? last.outputDir : project.outputDir).catch(reportError)}
                 >
                   {t("Open output folder")}
                 </Button>

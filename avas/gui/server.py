@@ -1,19 +1,46 @@
-"""Loopback HTTP server: serves the built page and binary blobs.
+"""HTTP server: the built page, RPC calls, the event stream, blobs and downloads.
 
-Serving the page ourselves (instead of pywebview's file loader) keeps the page
-and ``/blob/<id>`` on one origin, so large arrays can be fetched as raw
-little-endian bytes without CORS or JSON overhead.  The server binds to
-127.0.0.1 only; blob URLs are unguessable one-shot ids.
+One transport for every way of running the GUI: the desktop window
+(pywebview shows this server's page), a local browser (``avas serve``) and,
+later, a shared server.  Routes:
+
+* ``POST /api/rpc``       ``{"method", "params"}`` -> :func:`bridge.dispatch` reply
+* ``WS   /api/events``    JSON batches ``[[name, payload], ...]`` from :func:`bridge.emit`
+* ``GET  /blob/<id>``     raw little-endian bytes of a :func:`bridge.blob` array (one shot)
+* ``GET  /download?path`` a local file as an attachment (browser mode: "open" a result file)
+* ``GET  /<file>``        the built front end from ``web/`` (``index.html`` is never cached)
+
+Every request except the static page must carry the **access token**
+(``X-AVAS-Token`` header, or ``?token=`` for WebSocket and download links).
+The token is generated at start and put in the page URL; without it any web
+page open in the user's browser could call the RPC and read or write local
+files.  The server binds to 127.0.0.1 unless told otherwise.  Handlers are
+blocking Python (they may open native dialogs), so they run in a thread pool.
 """
-import http.server
+import asyncio
+import logging
 import os
 import posixpath
+import secrets
+import socket
 import threading
+import time
 import urllib.parse
+
+from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import FileResponse, PlainTextResponse, Response
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocketDisconnect
 
 from avas.gui import bridge
 
+log = logging.getLogger("avas.gui")
+
 WEB_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+TOKEN_HEADER = "X-AVAS-Token"
 
 MIME = {
     ".html": "text/html; charset=utf-8",
@@ -31,84 +58,166 @@ MIME = {
 }
 
 
-class _Handler(http.server.BaseHTTPRequestHandler):
-    server_version = "AVAS"
-    protocol_version = "HTTP/1.1"
+class _QuietConnectionResets(logging.Filter):
+    """Windows' Proactor loop logs an error when the page drops a connection (reload, tab closed); not ours."""
 
-    def log_message(self, *args):  # silence
-        pass
+    def filter(self, record):
+        exc = record.exc_info[1] if record.exc_info and len(record.exc_info) > 1 else None
+        return not (isinstance(exc, ConnectionResetError) and "_call_connection_lost" in record.getMessage())
 
-    def _send(self, code, body, ctype, extra=None):
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        for k, v in (extra or {}).items():
-            self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(body)
 
-    def do_POST(self):  # noqa: N802
-        # development only (avas.gui.devserver): RPC over HTTP for a plain browser
-        if not self.server.dev_rpc or urllib.parse.urlparse(self.path).path != "/rpc":
-            self._send(404, b"not found", "text/plain")
-            return
-        length = int(self.headers.get("Content-Length") or 0)
-        import json
-        req = json.loads(self.rfile.read(length) or b"{}")
-        body = bridge.dispatch(req.get("method"), req.get("params")).encode("utf-8")
-        self._send(200, body, "application/json; charset=utf-8")
+class GuiServer:
+    """A running server; see :func:`start`."""
 
-    def _events(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        q = bridge.subscribe()
+    def __init__(self, web_root, host, port, token, cors_origins=None):
+        self.web_root = os.path.abspath(web_root)
+        self.host = host
+        self.token = token
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.bind((host, port))
+        self._sock.set_inheritable(True)
+        self.port = self._sock.getsockname()[1]
+        self.base_url = f"http://{host}:{self.port}"
+        self.app = self._build_app(cors_origins)
+        self._uvicorn = None
+        self._thread = None
+
+    # ------------------------------------------------------------------ app
+    def _build_app(self, cors_origins):
+        middleware = []
+        if cors_origins:                       # Vite dev server on another port
+            middleware.append(Middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_methods=["*"],
+                                         allow_headers=["*"]))
+        routes = [
+            Route("/api/rpc", self._rpc, methods=["POST"]),
+            WebSocketRoute("/api/events", self._events),
+            Route("/blob/{key}", self._blob, methods=["GET"]),
+            Route("/download", self._download, methods=["GET"]),
+            Route("/{path:path}", self._static, methods=["GET"]),
+        ]
+        return Starlette(routes=routes, middleware=middleware)
+
+    def _authorized(self, request):
+        given = request.headers.get(TOKEN_HEADER) or request.query_params.get("token") or ""
+        return self.token is None or secrets.compare_digest(given, self.token)
+
+    async def _rpc(self, request):
+        if not self._authorized(request):
+            return PlainTextResponse("missing or wrong access token", status_code=401)
         try:
+            req = await request.json()
+        except ValueError:
+            return PlainTextResponse("bad request", status_code=400)
+        if not isinstance(req, dict) or not isinstance(req.get("method"), str):
+            return PlainTextResponse("bad request", status_code=400)
+        params = req.get("params") or {}
+        if not isinstance(params, dict):
+            return PlainTextResponse("bad request", status_code=400)
+        body = await run_in_threadpool(bridge.dispatch, req["method"], params)
+        return Response(body, media_type="application/json; charset=utf-8", headers={"Cache-Control": "no-store"})
+
+    async def _events(self, websocket):
+        if not self._authorized(websocket):
+            await websocket.close(code=4401)
+            return
+        await websocket.accept()
+        loop = asyncio.get_running_loop()
+        queue = asyncio.Queue()
+
+        def deliver(text):
+            loop.call_soon_threadsafe(queue.put_nowait, text)
+
+        async def pump():
             while True:
-                batch = q.get()
-                self.wfile.write(b"data: " + bridge.dumps(batch).encode("utf-8") + b"\n\n")
-                self.wfile.flush()
-        except OSError:
+                await websocket.send_text(await queue.get())
+
+        bridge.subscribe(deliver)
+        task = asyncio.create_task(pump())
+        try:
+            while True:                        # the page never sends anything; this notices the close
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # noqa: BLE001 - connection reset
             pass
         finally:
-            bridge.unsubscribe(q)
+            bridge.unsubscribe(deliver)
+            task.cancel()
 
-    def do_GET(self):  # noqa: N802
-        path = urllib.parse.urlparse(self.path).path
-        if path == "/events" and self.server.dev_rpc:
-            self._events()
-            return
-        if path.startswith("/blob/"):
-            arr = bridge.take_blob(path[len("/blob/"):])
-            if arr is None:
-                self._send(404, b"gone", "text/plain")
-            else:
-                self._send(200, arr.tobytes(), "application/octet-stream", {"Cache-Control": "no-store"})
-            return
-        rel = posixpath.normpath(urllib.parse.unquote(path)).lstrip("/")
+    async def _blob(self, request):
+        if not self._authorized(request):
+            return PlainTextResponse("missing or wrong access token", status_code=401)
+        arr = bridge.take_blob(request.path_params["key"])
+        if arr is None:
+            return PlainTextResponse("gone", status_code=404)
+        return Response(arr.tobytes(), media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+    async def _download(self, request):
+        """Browser mode: a local file the page cannot open with the system shell."""
+        if not self._authorized(request):
+            return PlainTextResponse("missing or wrong access token", status_code=401)
+        path = request.query_params.get("path") or ""
+        if not path or not os.path.isfile(path):
+            return PlainTextResponse("not found", status_code=404)
+        inline = request.query_params.get("inline") == "1"
+        return FileResponse(path, filename=None if inline else os.path.basename(path),
+                            media_type=MIME.get(os.path.splitext(path)[1].lower(), "application/octet-stream"),
+                            headers={"Cache-Control": "no-store"})
+
+    async def _static(self, request):
+        rel = posixpath.normpath(urllib.parse.unquote(request.path_params["path"] or "")).lstrip("/")
         if rel in ("", "."):
             rel = "index.html"
-        full = os.path.join(self.server.web_root, *rel.split("/"))
-        if not os.path.abspath(full).startswith(os.path.abspath(self.server.web_root)) or not os.path.isfile(full):
-            self._send(404, b"not found", "text/plain")
-            return
-        with open(full, "rb") as fh:
-            body = fh.read()
+        full = os.path.abspath(os.path.join(self.web_root, *rel.split("/")))
+        if not full.startswith(self.web_root + os.sep) or not os.path.isfile(full):
+            return PlainTextResponse("not found", status_code=404)
         ext = os.path.splitext(full)[1].lower()
         cache = "no-cache" if ext == ".html" else "max-age=3600"
-        self._send(200, body, MIME.get(ext, "application/octet-stream"), {"Cache-Control": cache})
+        return FileResponse(full, media_type=MIME.get(ext, "application/octet-stream"), headers={"Cache-Control": cache})
+
+    # ------------------------------------------------------------------ lifecycle
+    def page_url(self, host_kind="browser", dev_url=None):
+        """URL of the page including the access token; ``host_kind`` tells the page what it runs in."""
+        query = {"host": host_kind}
+        if self.token:
+            query["token"] = self.token
+        if dev_url:                            # Vite dev server: page elsewhere, API here
+            query["api"] = self.base_url
+            return f"{dev_url.rstrip('/')}/?{urllib.parse.urlencode(query)}"
+        return f"{self.base_url}/index.html?{urllib.parse.urlencode(query)}"
+
+    def serve(self):
+        """Start uvicorn in a daemon thread and return once it accepts connections."""
+        import uvicorn
+
+        logging.getLogger("asyncio").addFilter(_QuietConnectionResets())
+        config = uvicorn.Config(self.app, log_config=None, log_level="warning", access_log=False, lifespan="off",
+                                ws_ping_interval=20.0, ws_ping_timeout=60.0)
+        self._uvicorn = uvicorn.Server(config)
+        self._thread = threading.Thread(target=self._uvicorn.run, kwargs={"sockets": [self._sock]},
+                                        name="avas-gui-http", daemon=True)
+        self._thread.start()
+        deadline = time.monotonic() + 10
+        while not self._uvicorn.started:
+            if time.monotonic() > deadline or not self._thread.is_alive():
+                raise RuntimeError("the GUI server did not start")
+            time.sleep(0.01)
+        return self
+
+    def shutdown(self):
+        if self._uvicorn is not None:
+            self._uvicorn.should_exit = True
+            self._thread.join(timeout=5)
+        try:
+            self._sock.close()
+        except OSError:
+            pass
 
 
-class _Server(http.server.ThreadingHTTPServer):
-    daemon_threads = True
-
-
-def start(web_root=WEB_ROOT, port=0, dev_rpc=False):
-    server = _Server(("127.0.0.1", port), _Handler)
-    server.web_root = web_root
-    server.dev_rpc = dev_rpc
-    threading.Thread(target=server.serve_forever, name="avas-gui-http", daemon=True).start()
-    return server, f"http://127.0.0.1:{server.server_address[1]}"
+def start(web_root=WEB_ROOT, host="127.0.0.1", port=0, token="", cors_origins=None):
+    """Serve the GUI; ``token=""`` generates one, ``None`` disables the check (development only)."""
+    if token == "":
+        token = secrets.token_urlsafe(24)
+    if token is None:
+        log.warning("GUI server started WITHOUT an access token: any local program or web page can call it")
+    return GuiServer(web_root, host, port, token, cors_origins).serve()

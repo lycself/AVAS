@@ -1,6 +1,7 @@
 // Global application state: preferences, project summary, simulation state.
 import { create } from "zustand";
-import { call, on, setBaseUrl } from "../bridge";
+import { call, isDesktop, on } from "../bridge";
+import { applyZoom } from "../host";
 import { useLang, type Language } from "../i18n";
 import { initLive } from "./live";
 
@@ -180,7 +181,7 @@ export function setScale(scale: number) {
   const nearest = SCALES.reduce((a, b) => (Math.abs(b - scale) < Math.abs(a - scale) ? b : a));
   set({ scale: nearest });
   persist({ "ui/uiScale": nearest });
-  call("app.zoom", { factor: nearest / 100 }).catch(() => undefined);
+  applyZoom(nearest / 100);
 }
 
 export function stepScale(direction: 1 | -1) {
@@ -250,7 +251,6 @@ export async function refreshProject() {
 /* ------------------------------------------------------------------ startup */
 export async function initApp() {
   const info = await call<any>("app.info");
-  setBaseUrl(info.baseUrl);
   const s = info.settings as Settings;
   const lang = (s["ui/language"] === "zh_CN" ? "zh_CN" : "en") as Language;
   useLang.getState().setLang(lang);
@@ -267,9 +267,19 @@ export async function initApp() {
     logHeight: Math.max(80, Number(s["ui/logHeight"]) || 200),
   });
   applyTheme();
+  if (!isDesktop()) applyZoom(get().scale / 100); // the window applies its zoom itself when the page has loaded
   on("project", (summary: ProjectSummary) => setProject(summary));
   on("run.progress", (state: RunState) => set({ run: state }));
   on("run.finished", (state: RunState) => set({ run: { ...state, running: false }, lastFinished: state }));
+  // events emitted while the WebSocket was down are lost: fetch what they would have told us
+  on("bridge.reconnected", async () => {
+    try {
+      set({ run: await call<RunState>("run.state") });
+      setProject(await call<ProjectSummary>("project.summary"));
+    } catch {
+      /* the back end is gone; the next call reports it */
+    }
+  });
   initLive();
   const run = await call<RunState>("run.state");
   set({ run });

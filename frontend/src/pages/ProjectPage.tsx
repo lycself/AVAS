@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { closeProject, newProject, openProject, projectMenuItems, revealProject, runSimulation } from "../actions";
 import { call, on } from "../bridge";
+import { openPath } from "../host";
 import { openMenuBelow, reportError } from "../components/overlays";
 import { Badge, Button, cx, Icon, IconButton, Spinner } from "../components/ui";
 import { fmtG, fmtSeconds, runStatusLabel } from "../format";
@@ -351,7 +352,7 @@ function Overview() {
                 {data.outputFiles || data.outputDirs ? t("{files} files, {dirs} folders", { files: data.outputFiles ?? 0, dirs: data.outputDirs ?? 0 }) : t("none yet")}
               </span>
               {data.outputDir && (
-                <a onClick={() => call("shell.open", { path: data.outputDir }).catch(reportError)}>{t("Open output folder")}</a>
+                <a onClick={() => openPath(data.outputDir).catch(reportError)}>{t("Open output folder")}</a>
               )}
             </div>
           </Card>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { call } from "../bridge";
+import { openPath, pickFiles, revealPath } from "../host";
 import { choiceDialog, confirmDialog, openMenu, promptDialog, reportError, toast } from "../components/overlays";
 import { Badge, Button, cx, Icon, IconButton, Spinner, Tabs } from "../components/ui";
 import { humanSize } from "../format";
@@ -263,7 +264,7 @@ export default function FilesPage() {
 
   const importFiles = async () => {
     try {
-      const paths = await call<string[] | null>("dialog.openFile", { multiple: true });
+      const paths = await pickFiles({ title: tt("Copy files into InputFile...") });
       if (!paths?.length) return;
       let res = await call<{ copied: string[]; existing: string[] }>("files.import", { sources: paths });
       if (res.existing.length) {
@@ -359,8 +360,8 @@ export default function FilesPage() {
         },
         { label: tt("Move to recycle bin"), icon: "trash", danger: true, disabled: locked, onClick: () => trash(f) },
         { type: "separator" },
-        { label: tt("Reveal in Explorer"), icon: "folder-opened", onClick: () => call("shell.reveal", { path: f.path }).catch(reportError) },
-        { label: tt("Open with the default program"), icon: "link-external", onClick: () => call("shell.open", { path: f.path }).catch(reportError) },
+        { label: tt("Reveal in Explorer"), icon: "folder-opened", onClick: () => revealPath(f.path).catch(reportError) },
+        { label: tt("Open with the default program"), icon: "link-external", onClick: () => openPath(f.path).catch(reportError) },
         { label: tt("Copy path"), icon: "clippy", onClick: () => navigator.clipboard?.writeText(f.path) },
       ],
       e.clientX,
@@ -389,7 +390,7 @@ export default function FilesPage() {
           {"\n"}
           {opened.path}
           {"\n\n"}
-          <Button icon="link-external" onClick={() => call("shell.open", { path: opened.path }).catch(reportError)}>
+          <Button icon="link-external" onClick={() => openPath(opened.path).catch(reportError)}>
             {tt("Open with the default program")}
           </Button>
         </div>
@@ -457,7 +458,7 @@ export default function FilesPage() {
             <IconButton icon="new-file" tip={tt("New file...")} disabled={locked} onClick={newFile} />
             <IconButton icon="cloud-download" tip={tt("Copy files into InputFile...")} disabled={locked} onClick={importFiles} />
             <IconButton icon="refresh" tip={tt("Refresh")} onClick={refresh} />
-            <IconButton icon="folder-opened" tip={tt("Open folder")} onClick={() => call("shell.open", { path: listing.dir }).catch(reportError)} />
+            <IconButton icon="folder-opened" tip={tt("Open folder")} onClick={() => openPath(listing.dir).catch(reportError)} />
           </div>
           <div className="files-list">
             {groups.map((g) => {

@@ -1,6 +1,7 @@
 // Commands shared by the menu bar, tool bar, shortcuts and pages.
-import { call, on } from "./bridge";
+import { call, isDesktop, on } from "./bridge";
 import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, reportError, toast, type MenuItem } from "./components/overlays";
+import { canQuit, openPath, pickFolder, pickSaveFile } from "./host";
 import { t } from "./i18n";
 import { refreshProject, setPage, setProject, showStatus, useApp, type ProjectSummary } from "./store/app";
 import { allPages, dirtyPages, useDirty } from "./store/pages";
@@ -33,7 +34,7 @@ export async function openProject(path?: string) {
     let target = path;
     if (!target) {
       const start = useApp.getState().project.lastDir ?? "";
-      target = (await call<string | null>("dialog.openFolder", { directory: start })) ?? undefined;
+      target = (await pickFolder({ directory: start, title: t("Open project") })) ?? undefined;
       if (!target) return;
     }
     if (!(await resolveUnsaved(t("opening another project")))) return;
@@ -52,7 +53,7 @@ export async function newProject() {
   }
   try {
     const start = useApp.getState().project.lastDir ?? "";
-    const target = await call<string | null>("dialog.saveFile", { directory: start, filename: "avas_project" });
+    const target = await pickSaveFile({ directory: start, filename: "avas_project", title: t("New project") });
     if (!target) return;
     if (!(await resolveUnsaved(t("creating a project")))) return;
     const summary = await call<ProjectSummary>("project.create", { path: target });
@@ -76,7 +77,7 @@ export async function closeProject() {
 
 export function revealProject() {
   const path = useApp.getState().project.path;
-  if (path) call("shell.open", { path }).catch((e) => reportError(e));
+  if (path) openPath(path).catch((e) => reportError(e));
 }
 
 function basename(p: string) {
@@ -234,21 +235,27 @@ async function confirmClose() {
 }
 
 export function quit() {
-  confirmClose();
+  if (canQuit()) confirmClose();
 }
 
 // Closing the window: Python cancels the close while something is unsaved or running
 // and asks the page (event "app.closeRequested"); the guard flag is kept in sync here.
+// In a browser the tab's own "leave page?" prompt guards unsaved changes instead.
 on("app.closeRequested", () => confirmClose());
 let lastGuard: boolean | null = null;
 function syncCloseGuard() {
   const unsaved = Object.values(useDirty.getState().dirty).some(Boolean);
   if (unsaved !== lastGuard) {
     lastGuard = unsaved;
-    call("app.closeGuard", { unsaved }).catch(() => undefined);
+    if (isDesktop()) call("app.closeGuard", { unsaved }).catch(() => undefined);
   }
 }
 useDirty.subscribe(syncCloseGuard);
+if (!isDesktop()) {
+  window.addEventListener("beforeunload", (e) => {
+    if (lastGuard) e.preventDefault();
+  });
+}
 
 export function isTyping(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null;

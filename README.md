@@ -77,8 +77,9 @@ avas plot phase       --dst "C:\proj\Results_001\outData_0.210000.dst" --plane x
 avas plot syn_phase   --output "C:\proj\Results_001"
 avas plot cavity_voltage --output "C:\proj\Results_001" --ratio efield=1.0
 
-# 图形界面 / 版本信息 / 安装自检（内核、WebView2、界面、AI 助手、线性预览）
+# 图形界面 / 浏览器模式 / 版本信息 / 安装自检（内核、WebView2、界面、AI 助手、线性预览）
 avas gui --lang zh_CN
+avas serve --open
 avas info
 avas doctor
 ```
@@ -91,8 +92,12 @@ avas doctor
 avas gui
 ```
 
-界面是一个普通的桌面窗口（pywebview + Edge WebView2），里面用网页技术绘制，不需要打开浏览器。布局与 VS Code 相同：
-顶部菜单栏和工具按钮、左侧导航栏、中间页面、下方日志面板、底部状态栏。按工作流分为七页：
+界面是一个普通的桌面窗口（pywebview + Edge WebView2），里面用网页技术绘制，不需要打开浏览器。
+同一个界面也可以在浏览器里用：`avas serve` 只启动后端并打印一个带随机访问令牌的地址（加 `--open` 自动打开；
+`--port` / `--host` 指定地址，默认只接受本机连接，`--host 0.0.0.0` 会向局域网开放，目前没有用户管理，只在可信网络使用）。
+浏览器里没有系统文件对话框，改用页面自带的文件夹 / 文件选择器；「打开输出文件夹」显示带下载按钮的目录，「用默认程序打开」和导出图会直接下载；
+链接在新标签页打开；菜单里没有「退出」，关掉标签页即可。其他功能（实时显示、AI 助手等）完全相同。
+布局与 VS Code 相同：顶部菜单栏和工具按钮、左侧导航栏、中间页面、下方日志面板、底部状态栏。按工作流分为七页：
 
 1. **Project** 没有打开项目时是欢迎页（新建 / 打开 / 最近项目）；打开项目后是项目概览：上次运行（状态、传输效率、
    末端能量，以及 DataSet.txt 中 NaN、全部丢束等诊断和原因提示）、束流、结构（元件统计、问题数）、模拟设置、文件，
@@ -185,9 +190,11 @@ avas gui
 cd frontend && npm install && npm run build
 ```
 
-`python -m avas.gui.devserver` 可以在普通浏览器里打开界面调试（`http://127.0.0.1:8765/index.html?devrpc`，文件对话框不可用）。
+前后端只通过 HTTP 通信（`avas/gui/server.py`：`POST /api/rpc` 调用、WebSocket `/api/events` 事件、`/blob/` 二进制数组），
+桌面窗口和浏览器用同一条通路，pywebview 只负责窗口和原生文件对话框。调试时用 `avas serve --settings <临时 json>`
+在浏览器里打开界面（`python -m avas.gui.devserver` 仍可用，等价于加了 `--token dev` 和独立设置文件的 `avas serve`）；
 加 `--fake-engine 60` 时，「运行」不调用内核，而是把输出目录里已有的 DataSet.txt 在 60 秒内逐行重放（`--fake-lose 0.1` 模拟损失），
-用于检查实时显示。后端接口在 `avas/gui/services/`，每个页面调用的函数都在 `tests/test_gui.py` 中有测试；
+用于检查实时显示。后端接口在 `avas/gui/services/`，每个页面调用的函数都在 `tests/test_gui.py` 中有测试，通信层在 `tests/test_server.py`；
 `tests/test_design_rules.py` 检查写死的颜色、缺少的中文翻译以及 `avas/gui/web/` 是否由当前前端源码构建。
 给 AI 编程助手和开发者的规则见 [AGENTS.md](AGENTS.md)。
 
@@ -296,6 +303,7 @@ avas run --input ... --output ... --mode stat --seed 7               # error stu
 avas plot emittance_x --output "C:\proj\Results_001" --save emit_x.png
 avas plot phase --dst "C:\proj\Results_001\outData_0.210000.dst"
 avas gui --lang en
+avas serve --open                                                    # the same interface in a web browser
 avas info
 avas doctor                                                          # self-test of an installation
 ```
@@ -312,7 +320,9 @@ The **AI assistant** (`Ctrl+Shift+A`) works with any OpenAI-compatible endpoint,
 
 **Run page and input lock.** Below the progress, *Live beam* draws the lattice the run uses with the envelope written so far, the moving bunch and the losses, and shows the bunch position, macro-particles alive, transmission, energy and rms sizes (segment stages, error seeds and the assistant's sandbox evaluations included); after the run it keeps the final state and offers a replay. While a project run, error study or segment run is running or paused, all input files are read-only (Lattice, Beam, Settings and Files pages, the run-lattice selection; the back end refuses writes too, and the assistant's change proposals are refused with an explanation), because error studies re-read the lattice for every group and segment runs copy InputFile at every stage. The assistant's own scans work on copies and do not lock. **View → Motion** chooses full (the default) / reduced / off / automatic (follows Windows' animation effects).
 
-The front end lives in `frontend/` (React + TypeScript + Vite); its build output `avas/gui/web/` is committed, so running AVAS needs no Node.js. Rebuild with `cd frontend && npm install && npm run build`. `python -m avas.gui.devserver` serves the GUI to an ordinary browser for development; with `--fake-engine 60` a run replays the DataSet.txt already in the output folder over 60 s instead of starting the engine (`--fake-lose 0.1` loses particles), for checking the live display. Back-end calls are in `avas/gui/services/` and tested in `tests/test_gui.py`; `tests/test_design_rules.py` checks for hard-coded colours, missing Chinese translations and a stale `avas/gui/web/` build. Rules for AI coding assistants and developers: [AGENTS.md](AGENTS.md).
+**Browser mode.** `avas serve` runs the back end without a window and prints a URL (with a random access token) to open in any modern browser; `--open` opens it, `--port` / `--host` choose the address (the default binds to this machine only; `--host 0.0.0.0` exposes it to the network, where the token is the only protection because there is no user management yet). In a browser the native file dialogs are replaced by the page's own folder / file chooser, "open folder" shows the folder with download buttons, "open file" and plot export download the file, and links open in a new tab; the Exit entry is absent (close the tab). Everything else, including the live run display and the assistant, is identical.
+
+The front end lives in `frontend/` (React + TypeScript + Vite); its build output `avas/gui/web/` is committed, so running AVAS needs no Node.js. Rebuild with `cd frontend && npm install && npm run build`. Front end and back end talk only over HTTP (`avas/gui/server.py`, Starlette + uvicorn: `POST /api/rpc`, a WebSocket `/api/events` for events, `/blob/` for binary arrays); the desktop window and a browser use the same transport, pywebview only provides the window and the native dialogs. For development `avas serve --settings <scratch json>` (or the old `python -m avas.gui.devserver`, which fixes the token to `dev`) serves the GUI to a browser; with `--fake-engine 60` a run replays the DataSet.txt already in the output folder over 60 s instead of starting the engine (`--fake-lose 0.1` loses particles), for checking the live display. Back-end calls are in `avas/gui/services/` and tested in `tests/test_gui.py`, the transport in `tests/test_server.py`; `tests/test_design_rules.py` checks for hard-coded colours, missing Chinese translations and a stale `avas/gui/web/` build. Rules for AI coding assistants and developers: [AGENTS.md](AGENTS.md).
 
 ### Stand-alone build
 
