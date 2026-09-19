@@ -140,6 +140,13 @@ packaging/        PyInstaller + Inno Setup 打包
   `run.liveSnapshot` 一次取全；前端 `store/live.ts` 保存，`lattice/bunchPlayer.ts` 统一给出束团位置（实时跟随 / 回放），
   2D（`LayoutView`）、3D（`Beamline3D`）、运行页（`LiveBeamPanel`）只负责画。束团和粒子云是按 rms 包络画的**示意**，界面上必须标注，
   不能画成像真实分布。可视化编辑器只显示本项目的完整运行、误差研究和分段运行；AI 试算只在运行页显示。
+- **回放的分工**（2026-09-20 与用户商定）：运行页是回放的主场——实时面板在运行结束后回放本次运行，「运行记录」列表里每条完成的记录
+  有「回放」按钮，`run.replay(outputDir)` 从记录的 DataSet.txt 读包络（完整运行按 `inputs/` 快照里的 lattice 画，分段运行用项目当前 lattice
+  加 z 偏移），前端 `store/live.ts` 的 `record` 让 `LiveBeamPanel` 切换到该记录，新运行开始（`begin` 事件）时自动清掉。
+  结构页只回放「上次运行」（曲线绑定正在编辑的 lattice），不做历史选择；结果页不放播放器。运行页的「与前一次运行对比」灰线和结构页一样
+  默认关闭（`localStorage` `avas.live.compare`）。结构页「上次运行」曲线默认不显示（显示设置存 `avas.visual.show.v2`，旧键会迁移），
+  回放条不依赖它，点回放时自动打开。图例每项左侧的 × 隐藏该曲线（×放右侧会和 x/y 字母混淆），隐藏集合存 `localStorage` `avas.layout.hidden`，
+  所有布局图共用。
   动画遵守 **视图 → 动效** 设置（用户要求默认「完整」；「自动」才跟随 Windows 动画效果），最多 30 帧 / 秒，不可见时停止。
 
 ### 5.5 AI 助手

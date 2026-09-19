@@ -8,6 +8,7 @@ import { fmtSeconds, runStatusLabel } from "../format";
 import { useT } from "../i18n";
 import { LiveBeamPanel } from "../lattice/LiveBeamPanel";
 import { setPage, showResults, useApp } from "../store/app";
+import { openRecordReplay } from "../store/live";
 import { NoProject, PageHeader } from "./common";
 
 const MODE_LABEL: Record<string, string> = {
@@ -254,6 +255,16 @@ function RunRecords({ running }: { running: boolean }) {
                 <div className="run-record-sub selectable">{empty ? t("no run recorded for this project") : details}</div>
               </div>
               <div className="run-record-actions">
+                <IconButton
+                  icon="play-circle"
+                  tip={running ? t("Cannot replay while a simulation is running") : status !== "finished" ? t("Only a finished run can be replayed") : t("Replay this record")}
+                  disabled={running || status !== "finished" || empty}
+                  onClick={() =>
+                    openRecordReplay(rec.outputDir)
+                      .then(() => document.querySelector(".live-beam")?.scrollIntoView({ behavior: "smooth", block: "nearest" }))
+                      .catch(reportError)
+                  }
+                />
                 {isProject && status === "finished" && !archived && (
                   <IconButton icon="archive" tip={running ? t("Cannot keep while a simulation is running") : t("Keep this run (copy to Runs/)")} disabled={running} onClick={keep} />
                 )}

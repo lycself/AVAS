@@ -334,3 +334,65 @@ def monitor():
 def live_snapshot():
     """Everything the live display has for the current (or last) run; ``None`` before the first run."""
     return _monitor.snapshot()
+
+
+@rpc("run.replay")
+def replay_record(outputDir):
+    """A finished run record for the replay on the Run page, read from its results folder.
+
+    *outputDir* is OutputFile/, an archived run (Runs/<record>/) or a segment run's
+    OutputFile.  Returns ``{kind, label, started, mode, outputDir, zOffset, lattice,
+    rows, losses, particles0}``: the lattice the run was made from (the ``inputs/``
+    snapshot of a full run; a segment run is drawn on the project's lattice at its
+    z offset, like a live segment run) and the envelope from DataSet.txt as blobs.
+    """
+    import json
+    from avas.gui.bridge import UserError
+    from avas.gui.project import RUN_INFO_FILE
+    from avas.gui.services.lattice import _cached, _stamp
+    from avas.gui.services.runs import RUNS_DIR
+    from avas.gui.services.segments import SEGMENTS_DIR
+    from avas.gui import context
+    p = context.project().require()
+    folder = os.path.abspath(outputDir or "")
+    root = os.path.abspath(p.path)
+    if not os.path.normcase(folder).startswith(os.path.normcase(root) + os.sep) or not os.path.isdir(folder):
+        raise UserError("The results folder is not part of this project.")
+    dataset = os.path.join(folder, "DataSet.txt")
+    env = _cached(("env", os.path.normcase(folder)), _stamp(dataset), lambda: dataset_envelope(folder))
+    if env is None or len(env["z"]) < 2:
+        raise UserError("This record has no DataSet.txt to replay.")
+    rel = os.path.relpath(folder, root).split(os.sep)
+    z_offset = 0.0
+    if rel[0] == SEGMENTS_DIR and len(rel) >= 2:
+        kind = "segment"
+        seg_dir = os.path.join(root, rel[0], rel[1])
+        try:
+            with open(os.path.join(seg_dir, "segment.json"), encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except (OSError, ValueError):
+            meta = {}
+        label = meta.get("label") or rel[1]
+        started = meta.get("finished") or meta.get("created")
+        mode = "basic"
+        z_offset = float((meta.get("segment") or {}).get("z_start") or 0.0)
+        lattice = _lattice_info(p.lattice_path(), p.lattice_name(), p.field_dirs())
+    else:
+        kind = "archived" if rel[0] == RUNS_DIR else "project"
+        try:
+            with open(os.path.join(folder, RUN_INFO_FILE), encoding="utf-8") as fh:
+                info = json.load(fh)
+        except (OSError, ValueError):
+            info = {}
+        label = info.get("label") or ("OutputFile" if kind == "project" else rel[-1])
+        started = info.get("started")
+        mode = info.get("mode") or "basic"
+        name = info.get("lattice") or p.lattice_name()
+        snap = os.path.join(folder, "inputs", name) if name else ""
+        lattice = _lattice_info(snap if os.path.isfile(snap) else p.lattice_path(), name, p.field_dirs())
+    rows = {k: env[k] for k in ROW_KEYS if k in env}
+    if z_offset:
+        rows["z"] = rows["z"] + z_offset
+    losses = [{"z": float(l["z"]) + z_offset, "n": l["n"]} for l in env.get("losses", [])]
+    return {"kind": kind, "label": label, "started": started, "mode": mode, "outputDir": folder, "zOffset": z_offset,
+            "lattice": lattice, "rows": _blobs(rows), "losses": losses, "particles0": env.get("particles")}

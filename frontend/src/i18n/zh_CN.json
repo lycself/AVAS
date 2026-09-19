@@ -109,7 +109,6 @@
  "Click an element or its label: select · Double-click: focus": "单击元件或标签：选中 · 双击：聚焦",
  "Click to switch project": "点击切换项目",
  "Click “Edit” to change the lattice.": "点击“编辑”后才能修改 lattice。",
- "Click: highlight the curve · double-click: show only this curve · Esc: clear": "单击：高亮该曲线 · 双击：只显示该曲线 · Esc：取消",
  "Close": "关闭",
  "Close project": "关闭项目",
  "Close the assistant (Ctrl+Shift+A)": "关闭助手（Ctrl+Shift+A）",
@@ -1013,5 +1012,18 @@
  "The assistant is already running a simulation study.": "AI 助手正在进行模拟研究。",
  "Another simulation is running; wait for it to finish.": "另一个模拟正在运行，请等它结束。",
  "A file name cannot contain \\ / : * ? \" < > |": "文件名不能包含 \\ / : * ? \" < > |",
- "These files already exist in InputFile and will be overwritten:\n{names}": "以下文件在 InputFile 中已存在，将被覆盖：\n{names}"
+ "These files already exist in InputFile and will be overwritten:\n{names}": "以下文件在 InputFile 中已存在，将被覆盖：\n{names}",
+ "Replay this record": "回放这条记录",
+ "Replay of a run record": "运行记录回放",
+ "record {label}": "记录 {label}",
+ "record {label} · {date}": "记录 {label} · {date}",
+ "Back to the last run": "回到本次运行",
+ "Loading the record…": "正在读取记录…",
+ "Cannot replay while a simulation is running": "模拟运行中不能回放",
+ "Only a finished run can be replayed": "只有完成的运行才能回放",
+ "Hide this curve": "隐藏这条曲线",
+ "Show this curve": "显示这条曲线",
+ "Show all curves": "显示全部曲线",
+ "Click: highlight the curve · double-click: show only this curve · ×: hide it · Esc: clear": "单击：高亮曲线 · 双击：只看这条 · ×：隐藏 · Esc：清除",
+ "Show the run before as a grey reference while this one runs": "运行时把上一次运行的包络画成灰色参考线"
 }

@@ -48,17 +48,63 @@ export type LiveLattice = { name: string; text: string; fieldDirs: string[]; has
 /** Envelope of the run before the current one (same shape as the last-run envelope). */
 export type LivePrevious = Record<string, any> & { z: ArrayLike<number>; started?: string; latticeHash?: string | null };
 
+/** A finished run record opened for replay on the Run page ("run.replay"). */
+export type LiveRecord = {
+  kind: "project" | "archived" | "segment";
+  label: string;
+  started: string | null;
+  mode: string;
+  outputDir: string;
+  zOffset: number;
+  lattice: LiveLattice | null;
+  rows: LiveArrays;
+  losses: LiveLoss[];
+  particles0: number | null;
+};
+
 type LiveState = {
   run: LiveRunInfo | null;
   lattice: LiveLattice | null;
   previous: LivePrevious | null;
   episode: LiveEpisode | null;
   band: LiveBandItem[];
+  /** a run record chosen for replay instead of the live run (cleared when a run starts) */
+  record: LiveRecord | null;
+  recordLoading: string | null;
   /** bumps on every change of the data (cheap dependency for drawing) */
   version: number;
 };
 
-export const useLive = create<LiveState>(() => ({ run: null, lattice: null, previous: null, episode: null, band: [], version: 0 }));
+export const useLive = create<LiveState>(() => ({ run: null, lattice: null, previous: null, episode: null, band: [], record: null, recordLoading: null, version: 0 }));
+
+/** Open a run record (its results folder) for replay on the Run page. */
+export async function openRecordReplay(outputDir: string): Promise<LiveRecord> {
+  useLive.setState({ recordLoading: outputDir });
+  try {
+    const r = await call<any>("run.replay", { outputDir });
+    const record: LiveRecord = {
+      kind: r.kind,
+      label: r.label,
+      started: r.started ?? null,
+      mode: r.mode ?? "basic",
+      outputDir: r.outputDir,
+      zOffset: r.zOffset ?? 0,
+      lattice: r.lattice ?? null,
+      rows: toArrays(r.rows),
+      losses: (r.losses ?? []).map((l: any) => ({ z: l.z, n: l.n, t: 0 })),
+      particles0: r.particles0 ?? null,
+    };
+    useLive.setState((st) => ({ record, recordLoading: null, version: st.version + 1 }));
+    return record;
+  } catch (e) {
+    useLive.setState({ recordLoading: null });
+    throw e;
+  }
+}
+
+export function closeRecordReplay() {
+  useLive.setState((st) => (st.record ? { record: null, version: st.version + 1 } : {}));
+}
 
 const set = useLive.setState;
 const get = useLive.getState;
@@ -100,7 +146,7 @@ export function refreshLive(delay = 150) {
       const s = await call<any>("run.liveSnapshot");
       if (my !== snapshotSeq) return;
       if (!s) {
-        set((st) => ({ run: null, lattice: null, previous: null, episode: null, band: [], version: st.version + 1 }));
+        set((st) => ({ run: null, lattice: null, previous: null, episode: null, band: [], record: st.record, version: st.version + 1 }));
         return;
       }
       const { lattice, previous, episode, band, ...run } = s;
@@ -136,7 +182,7 @@ function handle(e: any) {
   const st = get();
   switch (e?.type) {
     case "begin":
-      set({ run: e.run, lattice: null, previous: null, episode: null, band: [], version: st.version + 1 });
+      set({ run: e.run, lattice: null, previous: null, episode: null, band: [], record: null, version: st.version + 1 });
       refreshLive(0); // lattice text and the previous run's envelope
       return;
     case "episode":

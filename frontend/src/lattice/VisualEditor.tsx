@@ -75,7 +75,7 @@ function save(key: string, value: unknown) {
   }
 }
 
-const DEFAULT_SHOW: LayoutShow = { run: true, preview: true, aperture: true, losses: true, max: false, energy: false, scale: "beam", compare: false, band: true };
+const DEFAULT_SHOW: LayoutShow = { run: false, preview: true, aperture: true, losses: true, max: false, energy: false, scale: "beam", compare: false, band: true };
 
 // the assistant's sandbox studies use their own lattices: only the Run page shows them
 const BUNCH_KINDS: ("project" | "segment")[] = ["project", "segment"];
@@ -95,7 +95,8 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   };
   const theme = useApp((s) => s.resolvedTheme);
   const kw = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k])), [schema]);
-  const [show, setShowState] = useState<LayoutShow>(() => load("avas.visual.show", DEFAULT_SHOW));
+  // "avas.visual.show" (older versions) showed the last run by default; the setting keeps the rest
+  const [show, setShowState] = useState<LayoutShow>(() => load("avas.visual.show.v2", { ...load("avas.visual.show", DEFAULT_SHOW), run: false }));
   const [view, setView] = useState<"2d" | "3d">(() => (localStorage.getItem("avas.visual.view") === "3d" ? "3d" : "2d"));
   const [spaceCharge, setSpaceCharge] = useState<boolean>(() => localStorage.getItem("avas.visual.sc") !== "0");
   const [layoutH, setLayoutH] = useState(() => Number(localStorage.getItem("avas.visual.layoutH")) || 380);
@@ -107,14 +108,14 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   const setShow = (patch: Partial<LayoutShow>) =>
     setShowState((s) => {
       const next = { ...s, ...patch };
-      save("avas.visual.show", next);
+      save("avas.visual.show.v2", next);
       return next;
     });
 
   // run results belong to the lattice the run uses; another opened file shows none of them
   const runOn = show.run && runResults !== false;
   const bunchKinds = runResults !== false ? BUNCH_KINDS : NO_BUNCH; // the moving bunch belongs to the run lattice too
-  const run = useRunEnvelope(runOn);
+  const run = useRunEnvelope(runResults !== false); // loaded even while hidden: the replay bar needs it
   const preview = useLinearPreview({ enabled: show.preview, fieldDirs, spaceCharge });
   const drafting = useRef(false);
 
@@ -502,8 +503,16 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
           {t("{n} elements", { n: doc.elementCount })} · {t("total length {v} m", { v: Number(doc.totalLength.toPrecision(6)) })}
         </span>
         <span className="grow" />
-        {runOn && !liveRunning && replayTrack && (
-          <PlayerBar id={`lastrun:${run.data?.started ?? ""}`} label={t("last run")} track={replayTrack} restMass={restMass} kind="project" compact />
+        {runResults !== false && !liveRunning && replayTrack && (
+          <PlayerBar
+            id={`lastrun:${run.data?.started ?? ""}`}
+            label={t("last run")}
+            track={replayTrack}
+            restMass={restMass}
+            kind="project"
+            compact
+            onStart={() => !show.run && setShow({ run: true })}
+          />
         )}
       </div>
       <div className="ve-layout" style={{ height: layoutH }}>

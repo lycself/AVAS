@@ -7,9 +7,10 @@
 // Wheel = zoom, drag = pan, double-click = fit (the view follows the bunch again),
 // click = select the element, or highlight the curve under the cursor.  Legend
 // entries highlight their curve (click) or show only it (double-click); Esc
-// clears both.  Palette items can be dropped onto the beamline.
+// clears both; the × on the left of an entry hides that curve (remembered in
+// localStorage).  Palette items can be dropped onto the beamline.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { cx } from "../components/ui";
+import { cx, Icon } from "../components/ui";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
 import type { LiveBandItem } from "../store/live";
@@ -90,6 +91,24 @@ type Props = {
 
 const AXIS_H = 22;
 const HIT_PX = 6;
+const HIDDEN_KEY = "avas.layout.hidden"; // legend entries hidden with their × (shared by every layout view)
+
+function loadHidden(): Set<string> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHidden(keys: Set<string>) {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...keys]));
+  } catch {
+    /* storage unavailable */
+  }
+}
 const FLASH_MS = 1500;
 
 // fixed pseudo-random normal pairs (and a keep threshold) for the schematic particle cloud
@@ -141,6 +160,17 @@ export function LayoutView({
   const [drop, setDrop] = useState<{ z: number; kind: string } | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const [solo, setSolo] = useState<string | null>(null);
+  const [hidden, setHiddenState] = useState<Set<string>>(loadHidden);
+  const setHidden = (next: Set<string>) => {
+    saveHidden(next);
+    setHiddenState(next);
+  };
+  const toggleHidden = (key: string) => {
+    const next = new Set(hidden);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setHidden(next);
+  };
   const fitted = useRef(true);
   const follow = useRef(true);
   const lastTotal = useRef(-1);
@@ -220,9 +250,9 @@ export function LayoutView({
 
   // a highlighted curve that disappeared is forgotten
   useEffect(() => {
-    if (pinned && !series.some((s) => s.key === pinned)) setPinned(null);
-    if (solo && !series.some((s) => s.key === solo)) setSolo(null);
-  }, [series, pinned, solo]);
+    if (pinned && (!series.some((s) => s.key === pinned) || hidden.has(pinned))) setPinned(null);
+    if (solo && (!series.some((s) => s.key === solo) || hidden.has(solo))) setSolo(null);
+  }, [series, pinned, solo, hidden]);
 
   const total = Math.max(doc.totalLength ?? 0, ...items.map((i) => i.z1), 1e-6);
   const fit = () => {
@@ -275,12 +305,12 @@ export function LayoutView({
   const yMax = useMemo(() => {
     let m = 0;
     for (const s of series) {
-      if (s.axis !== "size" || (solo && s.key !== solo)) continue;
+      if (s.axis !== "size" || (solo && s.key !== solo) || hidden.has(s.key)) continue;
       for (let i = 0; i < s.z.length; i++) if (s.z[i] >= view[0] && s.z[i] <= view[1] && Number.isFinite(s.v[i])) m = Math.max(m, Math.abs(s.v[i]));
     }
     if (show.scale === "pipe" || m === 0) for (const it of items) if (it.r && it.z1 >= view[0] && it.z0 <= view[1]) m = Math.max(m, it.r * 1000);
     return m > 0 ? m * 1.15 : 1;
-  }, [series, show.scale, items, view, solo]);
+  }, [series, show.scale, items, view, solo, hidden]);
 
   const eRange = useMemo(() => {
     let lo = Infinity;
@@ -507,7 +537,7 @@ export function LayoutView({
       if (!colors.has(name)) colors.set(name, cssColor(name));
       return colors.get(name)!;
     };
-    const visible = series.filter((s) => (!solo || s.key === solo) && (s.axis === "size" || (show.energy && eRange)));
+    const visible = series.filter((s) => (!solo || s.key === solo) && !hidden.has(s.key) && (s.axis === "size" || (show.energy && eRange)));
     // the highlighted curve is drawn last, on top
     visible.sort((a, b) => Number(a.key === highlight) - Number(b.key === highlight));
     for (const s of visible) {
@@ -578,7 +608,7 @@ export function LayoutView({
     ctx.fillText(t("z (m)"), plot.left + pw, ay);
     drawBunch(lastFrame.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, view, size, selected, theme, series, lossSets, show, yMax, eRange, highlight, solo, range, compact]);
+  }, [items, view, size, selected, theme, series, lossSets, show, yMax, eRange, highlight, solo, hidden, range, compact]);
 
   // ---- hover crosshair and drop marker on their own canvas: moving the mouse never redraws the curves
   const hoverX = hover?.x ?? null;
@@ -753,7 +783,7 @@ export function LayoutView({
     if (it?.r) rows.push({ k: t("Aperture"), v: `${fmt6(it.r * 1000)} mm` });
     const values: { k: string; v: string; strong?: boolean }[] = [];
     for (const s of legend) {
-      if (s.key === "band" || (solo && s.key !== solo)) continue;
+      if (s.key === "band" || (solo && s.key !== solo) || hidden.has(s.key)) continue;
       const v = sampleAt(s.z, s.v, z);
       if (Number.isFinite(v)) values.push({ k: s.label, v: s.axis === "energy" ? `${fmt6(v)} MeV` : `${fmt6(v)} mm`, strong: s.key === highlight });
     }
@@ -865,24 +895,38 @@ export function LayoutView({
         </div>
       )}
       {legend.length > 0 && (
-        <div className="layout-legend" data-tip={t("Click: highlight the curve · double-click: show only this curve · Esc: clear")}>
-          {legend.map((s) => (
-            <button
-              key={s.key}
-              className={cx("lg-item", highlight === s.key && "active", solo === s.key && "solo", !!highlight && highlight !== s.key && "dim")}
-              onClick={() => setPinned((p) => (p === s.key ? null : s.key))}
-              onDoubleClick={() => {
-                setSolo((v) => (v === s.key ? null : s.key));
-                setPinned(null);
-              }}
-            >
-              <i
-                className={cx("lg-line", s.dash.length > 0 && "dashed")}
-                style={s.dash.length ? { borderColor: `var(${s.color})`, opacity: Math.max(0.5, s.alpha) } : { background: `var(${s.color})`, opacity: Math.max(0.5, s.alpha) }}
-              />
-              {s.label}
+        <div className="layout-legend" data-tip={t("Click: highlight the curve · double-click: show only this curve · ×: hide it · Esc: clear")}>
+          {legend.map((s) => {
+            const off = hidden.has(s.key);
+            return (
+              <span key={s.key} className={cx("lg-item", off && "hidden", highlight === s.key && "active", solo === s.key && "solo", !!highlight && highlight !== s.key && "dim")}>
+                <button type="button" className="lg-hide" data-tip={off ? t("Show this curve") : t("Hide this curve")} aria-label={off ? t("Show this curve") : t("Hide this curve")} onClick={() => toggleHidden(s.key)}>
+                  <Icon name={off ? "eye" : "close"} />
+                </button>
+                <button
+                  type="button"
+                  className="lg-name"
+                  onClick={() => !off && setPinned((p) => (p === s.key ? null : s.key))}
+                  onDoubleClick={() => {
+                    if (off) return;
+                    setSolo((v) => (v === s.key ? null : s.key));
+                    setPinned(null);
+                  }}
+                >
+                  <i
+                    className={cx("lg-line", s.dash.length > 0 && "dashed")}
+                    style={s.dash.length ? { borderColor: `var(${s.color})`, opacity: Math.max(0.5, s.alpha) } : { background: `var(${s.color})`, opacity: Math.max(0.5, s.alpha) }}
+                  />
+                  {s.label}
+                </button>
+              </span>
+            );
+          })}
+          {legend.some((s) => hidden.has(s.key)) && (
+            <button type="button" className="lg-item lg-all" onClick={() => setHidden(new Set([...hidden].filter((k) => !legend.some((s) => s.key === k))))}>
+              <Icon name="eye" /> {t("Show all curves")}
             </button>
-          ))}
+          )}
           {lossSets.length > 0 && (
             <span className="lg-item static">
               <i className="lg-line" style={{ background: "var(--danger)", width: 3, height: 10 }} /> {t("losses")}

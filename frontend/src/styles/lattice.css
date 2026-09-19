@@ -117,12 +117,20 @@
 .layout-tip .strong { font-weight: 600; color: var(--fg-strong); }
 .layout-drop-hint { position: absolute; top: 4px; z-index: 21; pointer-events: none; background: var(--accent); color: var(--on-accent); border-radius: 3px; padding: 1px 6px; font-size: 11px; }
 .layout-legend { position: absolute; right: 12px; bottom: 26px; max-width: 78%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 4px; font-size: 11px; color: var(--fg-muted); background: color-mix(in srgb, var(--beamline-bg) 80%, transparent); padding: 1px 4px; border-radius: 3px; }
-.layout-legend .lg-item { display: inline-flex; align-items: center; gap: 2px; border: 0; background: transparent; color: inherit; font: inherit; padding: 1px 4px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
-.layout-legend .lg-item:hover { background: var(--list-hover); color: var(--fg); }
+.layout-legend .lg-item { display: inline-flex; align-items: center; gap: 0; border: 0; background: transparent; color: inherit; font: inherit; padding: 0; border-radius: 3px; white-space: nowrap; }
+.layout-legend .lg-item > button { display: inline-flex; align-items: center; gap: 2px; border: 0; background: transparent; color: inherit; font: inherit; padding: 1px 3px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+.layout-legend .lg-item > button:hover { background: var(--list-hover); color: var(--fg); }
+.layout-legend .lg-hide { opacity: .45; }
+.layout-legend .lg-hide .codicon { font-size: 11px; }
+.layout-legend .lg-item:hover .lg-hide, .layout-legend .lg-item.hidden .lg-hide { opacity: 1; }
+.layout-legend .lg-item.hidden .lg-name { opacity: .45; text-decoration: line-through; cursor: default; }
+.layout-legend .lg-item.hidden .lg-line { opacity: .3 !important; }
 .layout-legend .lg-item.active { color: var(--fg-strong); font-weight: 600; }
 .layout-legend .lg-item.solo { box-shadow: inset 0 0 0 1px var(--accent); }
 .layout-legend .lg-item.dim { opacity: .55; }
-.layout-legend .lg-item.static { cursor: default; background: transparent; }
+.layout-legend .lg-item.static { cursor: default; background: transparent; padding: 1px 4px; }
+.layout-legend .lg-all { gap: 3px; padding: 1px 4px; cursor: pointer; color: var(--accent); }
+.layout-legend .lg-all:hover { background: var(--list-hover); }
 .layout-view.compact .layout-legend { bottom: 24px; }
 
 /* ---------------------------------------------------------------- component view */

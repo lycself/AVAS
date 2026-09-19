@@ -14,9 +14,11 @@ type Props = {
   kind?: BunchFrame["kind"];
   compact?: boolean;
   className?: string;
+  /** called when the replay is started from this bar */
+  onStart?: () => void;
 };
 
-export function PlayerBar({ id, label, track, restMass, kind, compact, className }: Props) {
+export function PlayerBar({ id, label, track, restMass, kind, compact, className, onStart }: Props) {
   const t = useT();
   const replay = usePlayer((s) => s.replay);
   const mine = replay?.id === id;
@@ -30,7 +32,11 @@ export function PlayerBar({ id, label, track, restMass, kind, compact, className
         icon="play-circle"
         className={className}
         disabled={!usable}
-        onClick={() => track && startReplay(id, label, track, { restMass, kind })}
+        onClick={() => {
+          if (!track) return;
+          startReplay(id, label, track, { restMass, kind });
+          onStart?.();
+        }}
         tip={t("Replay: a schematic bunch travels along the beam line with the envelope of {label}", { label })}
       >
         {t("Replay")}

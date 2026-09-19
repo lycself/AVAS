@@ -14,6 +14,15 @@ class BeamsetParameter():
 
 
     def get_step(self):
+        # Header: Char + Char + dumpPeriodicity(int) + Np(int) + Ib(double) + freq(double) + mc2(double)
+        byte_head = 1 + 1 + 4 * 2 + 8 * 3
+        if os.path.getsize(self.beamset_path) < byte_head:
+            # Empty / truncated file (e.g. dumpperiodicity 0 or the run was stopped before the first dump).
+            self.numofp = 0
+            self.Ib = self.freq = self.BaseMassInMeV = 0.0
+            self.byte_onestep = self.step_byte_head = self.step_particle_block_bytes = 0
+            self.byte_head = byte_head
+            return 0
         with open(self.beamset_path, 'rb') as f:
 
             tdata = struct.unpack("<c", f.read(1))

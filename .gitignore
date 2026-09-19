@@ -44,3 +44,6 @@ tests/_output_scan/
 avas/_build.json
 # assistant work folders inside projects (sandbox runs, backups)
 .avas_ai/
+
+# Claude Code dev-server config
+.claude/

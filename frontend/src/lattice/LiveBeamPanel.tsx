@@ -4,28 +4,42 @@
 // at the bunch.  After the run it keeps the final state and offers a replay.
 // Shown for project runs, error studies, segment runs and the assistant's studies
 // (drawn on their own candidate lattice).
+// A run record chosen in the records list (store/live: openRecordReplay) takes the
+// panel over: its lattice, its envelope and a replay, until it is closed or a new
+// run starts.
 import { useEffect, useMemo, useState } from "react";
 import { call } from "../bridge";
-import { Icon, Spinner } from "../components/ui";
+import { Checkbox, Icon, IconButton, Spinner } from "../components/ui";
 import { fmtG } from "../format";
 import { useT } from "../i18n";
 import { useApp } from "../store/app";
-import { useLive } from "../store/live";
-import { useBunchFrame, type Track } from "./bunchPlayer";
+import { closeRecordReplay, lastFinite, useLive, type LiveLattice } from "../store/live";
+import { startReplay, useBunchFrame, usePlayer, type Track } from "./bunchPlayer";
 import { LayoutView, type EnvelopeCurves, type LayoutShow } from "./LayoutView";
 import { PlayerBar } from "./PlayerBar";
 import { loadSchema, type LatticeDoc, type Schema } from "./types";
 
 const SHOW: LayoutShow = { run: false, preview: false, aperture: true, losses: true, max: false, energy: false, scale: "beam", band: true };
 const ALL_KINDS: ("project" | "segment" | "assistant" | "scan")[] = ["project", "segment", "assistant", "scan"];
+const COMPARE_KEY = "avas.live.compare";
+
+function loadCompare(): boolean {
+  try {
+    return localStorage.getItem(COMPARE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export function LiveBeamPanel() {
   const t = useT();
   const run = useLive((s) => s.run);
-  const lattice = useLive((s) => s.lattice);
+  const liveLattice = useLive((s) => s.lattice);
   const episode = useLive((s) => s.episode);
   const band = useLive((s) => s.band);
   const previous = useLive((s) => s.previous);
+  const record = useLive((s) => s.record);
+  const recordLoading = useLive((s) => s.recordLoading);
   const version = useLive((s) => s.version);
   const appRun = useApp((s) => s.run);
   const projectOpen = useApp((s) => s.project.open);
@@ -34,7 +48,12 @@ export function LiveBeamPanel() {
   /** the run's lattice could not be parsed (the last good one stays on screen) */
   const [parseError, setParseError] = useState<string | null>(null);
   const [restMass, setRestMass] = useState<number | null>(null);
+  const [compare, setCompareState] = useState<boolean>(loadCompare);
   const frame = useBunchFrame(4);
+
+  // a record replaces the live run in the panel (never while a run is in progress)
+  const showRecord = !!record && !run?.running;
+  const lattice: LiveLattice | null = showRecord ? record!.lattice : liveLattice;
 
   useEffect(() => {
     loadSchema().then(setSchema);
@@ -61,54 +80,88 @@ export function LiveBeamPanel() {
     call<{ form: Record<string, string> }>("beam.load")
       .then((b) => setRestMass(Number(b.form.particlerestmass) || null))
       .catch(() => setRestMass(null));
-  }, [projectOpen, run?.id]);
+  }, [projectOpen, run?.id, record?.outputDir]);
 
-  const live = useMemo<EnvelopeCurves | null>(
-    () => (episode && episode.rows.z.length ? { ...episode.rows, losses: episode.losses } : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [episode, version],
-  );
-  const track = useMemo<Track | null>(
-    () =>
-      !run?.running && episode && episode.rows.z.length > 1
-        ? { ...episode.rows, losses: episode.losses, particles0: episode.particles0 ?? episode.rows.alive[0] }
-        : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [run?.running, episode, version],
-  );
+  const setCompare = (v: boolean) => {
+    setCompareState(v);
+    try {
+      localStorage.setItem(COMPARE_KEY, v ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  };
 
-  if (!run) return null;
+  const live = useMemo<EnvelopeCurves | null>(() => {
+    if (showRecord) return record!.rows.z.length ? { ...record!.rows, losses: record!.losses } : null;
+    return episode && episode.rows.z.length ? { ...episode.rows, losses: episode.losses } : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRecord, record, episode, version]);
+  const track = useMemo<Track | null>(() => {
+    if (showRecord) {
+      const r = record!;
+      return r.rows.z.length > 1 ? { ...r.rows, losses: r.losses, particles0: r.particles0 ?? r.rows.alive[0] } : null;
+    }
+    return !run?.running && episode && episode.rows.z.length > 1
+      ? { ...episode.rows, losses: episode.losses, particles0: episode.particles0 ?? episode.rows.alive[0] }
+      : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRecord, record, run?.running, episode, version]);
+
+  // a record opened from the list starts playing at once (the button in the list is the request)
+  const replayId = showRecord ? `record:${record!.outputDir}:${record!.started ?? ""}` : `live:${run?.id ?? ""}:${episode?.id ?? ""}`;
+  const kind = showRecord ? (record!.kind === "segment" ? "segment" : "project") : run?.kind ?? "project";
+  useEffect(() => {
+    if (!showRecord || !track) return;
+    if (usePlayer.getState().replay?.id === replayId) return;
+    startReplay(replayId, recordLabel(record!, t), track, { restMass, kind });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRecord, record?.outputDir]);
+
+  if (!run && !showRecord && !recordLoading) return null;
 
   const total = doc?.doc.totalLength ?? NaN;
-  let task = run.kind === "segment" ? t("Segment {label}", { label: run.label }) : run.kind === "assistant" ? t("Assistant: {task}", { task: t(run.label) }) : run.kind === "scan" ? t("Parameter scan: {task}", { task: run.label }) : t("Full lattice");
-  if (episode?.stageLabel && run.kind === "segment") task += ` · ${t("stage {i} of {n}: {label}", { i: episode.index ?? "?", n: episode.total ?? "?", label: t(episode.stageLabel) })}`;
-  else if ((run.kind === "assistant" || run.kind === "scan") && episode?.index) task += ` · ${t("simulation {i} of {n}", { i: episode.index, n: episode.total ?? "?" })}`;
-  else if (run.mode && run.mode !== "basic" && episode?.index) task += ` · ${t("error seed {i} of {n}", { i: episode.index, n: episode.total ?? "?" })}`;
+  let task = "";
+  if (showRecord) task = recordLabel(record!, t);
+  else if (run) {
+    task = run.kind === "segment" ? t("Segment {label}", { label: run.label }) : run.kind === "assistant" ? t("Assistant: {task}", { task: t(run.label) }) : run.kind === "scan" ? t("Parameter scan: {task}", { task: run.label }) : t("Full lattice");
+    if (episode?.stageLabel && run.kind === "segment") task += ` · ${t("stage {i} of {n}: {label}", { i: episode.index ?? "?", n: episode.total ?? "?", label: t(episode.stageLabel) })}`;
+    else if ((run.kind === "assistant" || run.kind === "scan") && episode?.index) task += ` · ${t("simulation {i} of {n}", { i: episode.index, n: episode.total ?? "?" })}`;
+    else if (run.mode && run.mode !== "basic" && episode?.index) task += ` · ${t("error seed {i} of {n}", { i: episode.index, n: episode.total ?? "?" })}`;
+  }
 
-  const particles0 = frame?.particles0 ?? episode?.particles0 ?? NaN;
-  const alive = frame ? frame.alive : appRun.alive ?? NaN;
+  const running = !showRecord && !!run?.running;
+  const particles0 = frame?.particles0 ?? (showRecord ? record!.particles0 : episode?.particles0) ?? NaN;
+  const alive = frame ? frame.alive : showRecord ? lastFinite(record!.rows.alive) : appRun.alive ?? NaN;
   const transmission = particles0 > 0 && Number.isFinite(alive) ? (100 * alive) / particles0 : NaN;
-  const segmentRange: [number, number] | null = episode && episode.zOffset > 0 && live ? [episode.zOffset, Math.max(episode.zOffset, live.z[live.z.length - 1] ?? episode.zOffset)] : null;
+  const zOffset = showRecord ? record!.zOffset : episode?.zOffset ?? 0;
+  const segmentRange: [number, number] | null = zOffset > 0 && live ? [zOffset, Math.max(zOffset, live.z[live.z.length - 1] ?? zOffset)] : null;
+  const canCompare = !showRecord && run?.kind === "project" && !!previous;
+  const noLattice = lattice === null && !running;
+  const restMassFor = !showRecord && (run?.kind === "assistant" || run?.kind === "scan") ? null : restMass;
 
   return (
     <div className="live-beam">
       <div className="live-beam-head">
         <span className="live-beam-title">
-          {run.running ? <span className="live-dot" /> : <Icon name="history" />}
-          {run.running ? t("Live beam") : t("Beam of the finished run")}
+          {running ? <span className="live-dot" /> : <Icon name="history" />}
+          {showRecord ? t("Replay of a run record") : running ? t("Live beam") : t("Beam of the finished run")}
         </span>
-        <span className="muted ellipsis grow">{task}</span>
+        <span className="muted ellipsis grow">{recordLoading && !showRecord ? t("Loading the record…") : task}</span>
         {parseError && (
           <span className="warning-text" data-tip={parseError}>
             <Icon name="warning" /> {t("lattice not parsed")}
           </span>
         )}
+        {canCompare && (
+          <Checkbox checked={compare} onChange={setCompare} label={t("Compare with the run before")} tip={t("Show the run before as a grey reference while this one runs")} />
+        )}
         <span className="soft" data-tip={t("The bunch and its particles are drawn from the rms envelope written so far; they are not the simulated particle distribution.")}>
           <Icon name="info" /> {t("schematic")}
         </span>
-        {!run.running && (
-          <PlayerBar id={`live:${run.id}:${episode?.id ?? ""}`} label={task} track={track} restMass={run.kind === "assistant" || run.kind === "scan" ? null : restMass} kind={run.kind} />
+        {!running && (
+          <PlayerBar id={replayId} label={task} track={track} restMass={restMassFor} kind={kind} />
         )}
+        {showRecord && <IconButton icon="close" tip={t("Back to the last run")} onClick={closeRecordReplay} />}
       </div>
       <div className="live-beam-view">
         {schema && doc ? (
@@ -120,18 +173,18 @@ export function LiveBeamPanel() {
             preview={null}
             show={SHOW}
             live={live}
-            liveLabel={run.running ? t("this run (running)") : t("this run")}
+            liveLabel={showRecord ? task : running ? t("this run (running)") : t("this run")}
             liveVersion={version}
-            previous={run.kind === "project" && previous ? (previous as EnvelopeCurves) : null}
+            previous={canCompare && compare ? (previous as EnvelopeCurves) : null}
             previousLabel={t("run of {date}", { date: previous?.started ?? "?" })}
-            band={run.kind === "project" ? band : undefined}
+            band={!showRecord && run?.kind === "project" ? band : undefined}
             bunchKinds={ALL_KINDS}
             bunchWhenDone
             compact
             range={segmentRange}
           />
         ) : (
-          <div className="empty-state">{lattice === null && !run.running ? <span className="muted">{t("No lattice information for this run.")}</span> : <Spinner size={20} />}</div>
+          <div className="empty-state">{noLattice ? <span className="muted">{t("No lattice information for this run.")}</span> : <Spinner size={20} />}</div>
         )}
       </div>
       <div className="stats live-beam-stats">
@@ -161,4 +214,9 @@ export function LiveBeamPanel() {
       </div>
     </div>
   );
+}
+
+function recordLabel(r: { kind: string; label: string; started: string | null }, t: (s: string, a?: Record<string, string | number>) => string): string {
+  const label = r.kind === "segment" ? t("Segment {label}", { label: r.label }) : r.kind === "project" ? `${t("Full lattice")} (OutputFile)` : r.label;
+  return r.started ? t("record {label} · {date}", { label, date: r.started }) : t("record {label}", { label });
 }

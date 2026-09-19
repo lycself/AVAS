@@ -213,6 +213,13 @@ def test_project_overview(project):
 def test_visual_editor_data(project):
     env = resolve_blobs(ok("lattice.runEnvelope"))
     assert env["rows"] > 10 and len(env["z"]) == len(env["rmsX"]) and env["rmsX"][0] == pytest.approx(0.94, abs=0.05)
+    # the same run as a record for the replay on the Run page: the inputs snapshot's lattice and the envelope
+    from avas.gui import context
+    rec = resolve_blobs(ok("run.replay", outputDir=context.project().output_dir))
+    assert rec["kind"] == "project" and rec["zOffset"] == 0 and rec["lattice"]["name"] == "lattice_mulp.txt"
+    assert len(rec["rows"]["z"]) == len(env["z"]) and rec["rows"]["alive"][0] == rec["particles0"] == 5260
+    assert rpc("run.replay", outputDir=ROOT)["ok"] is False                     # not part of the project
+    assert rpc("run.replay", outputDir=os.path.join(WORK, "project", "InputFile"))["ok"] is False   # no DataSet.txt
     prof = ok("lattice.fieldProfile", name="efield")["components"]
     assert {"edx", "edy", "edz"} <= set(prof) and len(prof["edz"]["z"]) == 106 and "gradient" in prof["edx"]
     assert rpc("lattice.fieldProfile", name="no_such_map")["ok"] is False
@@ -414,6 +421,7 @@ def test_delete_run_records(project, monkeypatch):
         ok("project.open", path=work)
         assert [s["kind"] for s in ok("results.sources")] == ["project", "segment"]
         seg_out = os.path.join(seg, "OutputFile")
+        assert rpc("run.replay", outputDir=seg_out)["ok"] is False      # its DataSet.txt holds no rows
         r = runner.runner()
         r.job = object()                                   # a simulation is running: nothing may be deleted
         try:
