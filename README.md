@@ -19,7 +19,7 @@ AVAS 是一个直线加速器束流动力学模拟程序：C++ 计算内核（`a
 注意事项：
 
 * 必须是 **64 位** Python，计算内核 `avas/engine/AVAS.dll` 是 64 位库，32 位解释器加载会失败。
-* 不要把系统里现成的 Anaconda base 环境当作运行环境：它自带的 numpy / numba 等版本经常互相不匹配，请按下面的方法建立项目自己的 `.venv`。
+* 请为 AVAS 创建独立的 `.venv` 环境，并在其中安装项目依赖，避免直接使用 Anaconda base 等已有环境运行。创建 `.venv` 时可以使用 Anaconda 提供的 Python 3.11；后续安装依赖和运行 AVAS 均使用 `.venv` 中的 Python。
 * Linux 上使用 `avas/engine/libAVAS.so`，其余要求相同。
 * 图形界面用 Windows 自带的 **Microsoft Edge WebView2** 显示（Windows 11 已内置，Windows 10 通常随 Edge 更新安装）。
   缺少时 AVAS 会提示安装：打包版附带微软的安装程序，源码运行时会打开微软下载页面。
@@ -239,7 +239,7 @@ AVAS is a linear-accelerator beam-dynamics code: a C++ engine (`avas/engine/`), 
 | 3.12 / 3.13 | supported |
 | ≤ 3.10 | not supported (`pyproject.toml` requires `>=3.11`) |
 
-A **64-bit** interpreter is required because the engine `avas/engine/AVAS.dll` (`libAVAS.so` on Linux) is a 64-bit library. Avoid running from an Anaconda *base* environment, whose bundled numpy / numba versions are often inconsistent; create the project `.venv` instead. The GUI is rendered by Microsoft Edge WebView2 (built into Windows 11); when it is missing AVAS offers to install it.
+A **64-bit** interpreter is required because the engine `avas/engine/AVAS.dll` (`libAVAS.so` on Linux) is a 64-bit library. Create a dedicated `.venv` for AVAS and install the project dependencies there to avoid running directly in an existing environment such as Anaconda *base*. You can use Python 3.11 provided by Anaconda to create `.venv`; use the Python interpreter inside `.venv` for subsequent dependency installation and running AVAS. The GUI is rendered by Microsoft Edge WebView2 (built into Windows 11); when it is missing AVAS offers to install it.
 
 ### Install: create `.venv` in the project directory
 
