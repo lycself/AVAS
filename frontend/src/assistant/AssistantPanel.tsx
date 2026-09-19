@@ -37,6 +37,7 @@ const TOOL_LABELS: Record<string, [string, string]> = {
   get_settings: ["Reading the simulation settings", "settings-gear"],
   results_summary: ["Reading the results", "graph-line"],
   result_series: ["Reading results along z", "graph-line"],
+  segment_results: ["Reading segment results", "graph-line"],
   read_log: ["Reading the log", "output"],
   read_input_file: ["Reading an input file", "file"],
   preview_envelope: ["Linear envelope preview", "pulse"],
