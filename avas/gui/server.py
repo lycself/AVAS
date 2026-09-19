@@ -16,6 +16,9 @@ The token is generated at start and put in the page URL; without it any web
 page open in the user's browser could call the RPC and read or write local
 files.  The server binds to 127.0.0.1 unless told otherwise.  Handlers are
 blocking Python (they may open native dialogs), so they run in a thread pool.
+
+The app is a :class:`fastapi.FastAPI`; the interactive API description is at
+``/api/docs`` (the token is a header, so use "Authorize" there first).
 """
 import asyncio
 import logging
@@ -27,13 +30,12 @@ import threading
 import time
 import urllib.parse
 
-from starlette.applications import Starlette
-from starlette.concurrency import run_in_threadpool
-from starlette.middleware import Middleware
-from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import FileResponse, PlainTextResponse, Response
-from starlette.routing import Route, WebSocketRoute
-from starlette.websockets import WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
+from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, PlainTextResponse, Response
+from pydantic import BaseModel, ConfigDict
 
 from avas.gui import bridge
 
@@ -56,6 +58,15 @@ MIME = {
     ".woff2": "font/woff2",
     ".map": "application/json",
 }
+
+
+class RpcRequest(BaseModel):
+    """Body of ``POST /api/rpc``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    method: str
+    params: dict | None = None
 
 
 class _QuietConnectionResets(logging.Filter):
@@ -84,39 +95,36 @@ class GuiServer:
 
     # ------------------------------------------------------------------ app
     def _build_app(self, cors_origins):
-        middleware = []
+        app = FastAPI(title="AVAS GUI", docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
         if cors_origins:                       # Vite dev server on another port
-            middleware.append(Middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_methods=["*"],
-                                         allow_headers=["*"]))
-        routes = [
-            Route("/api/rpc", self._rpc, methods=["POST"]),
-            WebSocketRoute("/api/events", self._events),
-            Route("/blob/{key}", self._blob, methods=["GET"]),
-            Route("/download", self._download, methods=["GET"]),
-            Route("/{path:path}", self._static, methods=["GET"]),
-        ]
-        return Starlette(routes=routes, middleware=middleware)
+            app.add_middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_methods=["*"],
+                               allow_headers=["*"])
+        guarded = [Depends(self._require_token)]        # 401 is decided before the body is parsed
+        app.post("/api/rpc", dependencies=guarded)(self._rpc)
+        app.websocket("/api/events")(self._events)
+        app.get("/blob/{key}", dependencies=guarded)(self._blob)
+        app.get("/download", dependencies=guarded)(self._download)
+        app.get("/{path:path}", include_in_schema=False)(self._static)
+
+        @app.exception_handler(RequestValidationError)
+        async def bad_request(request, exc):    # noqa: ARG001 - the page only looks at the status
+            return PlainTextResponse("bad request", status_code=400)
+
+        return app
 
     def _authorized(self, request):
         given = request.headers.get(TOKEN_HEADER) or request.query_params.get("token") or ""
         return self.token is None or secrets.compare_digest(given, self.token)
 
-    async def _rpc(self, request):
+    def _require_token(self, request: Request):
         if not self._authorized(request):
-            return PlainTextResponse("missing or wrong access token", status_code=401)
-        try:
-            req = await request.json()
-        except ValueError:
-            return PlainTextResponse("bad request", status_code=400)
-        if not isinstance(req, dict) or not isinstance(req.get("method"), str):
-            return PlainTextResponse("bad request", status_code=400)
-        params = req.get("params") or {}
-        if not isinstance(params, dict):
-            return PlainTextResponse("bad request", status_code=400)
-        body = await run_in_threadpool(bridge.dispatch, req["method"], params)
+            raise HTTPException(status_code=401, detail="missing or wrong access token")
+
+    async def _rpc(self, req: RpcRequest):
+        body = await run_in_threadpool(bridge.dispatch, req.method, req.params or {})
         return Response(body, media_type="application/json; charset=utf-8", headers={"Cache-Control": "no-store"})
 
-    async def _events(self, websocket):
+    async def _events(self, websocket: WebSocket):
         if not self._authorized(websocket):
             await websocket.close(code=4401)
             return
@@ -144,33 +152,27 @@ class GuiServer:
             bridge.unsubscribe(deliver)
             task.cancel()
 
-    async def _blob(self, request):
-        if not self._authorized(request):
-            return PlainTextResponse("missing or wrong access token", status_code=401)
-        arr = bridge.take_blob(request.path_params["key"])
+    async def _blob(self, key: str):
+        arr = bridge.take_blob(key)
         if arr is None:
-            return PlainTextResponse("gone", status_code=404)
+            raise HTTPException(status_code=404, detail="gone")
         return Response(arr.tobytes(), media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
 
-    async def _download(self, request):
+    async def _download(self, path: str = "", inline: str = "0"):
         """Browser mode: a local file the page cannot open with the system shell."""
-        if not self._authorized(request):
-            return PlainTextResponse("missing or wrong access token", status_code=401)
-        path = request.query_params.get("path") or ""
         if not path or not os.path.isfile(path):
-            return PlainTextResponse("not found", status_code=404)
-        inline = request.query_params.get("inline") == "1"
-        return FileResponse(path, filename=None if inline else os.path.basename(path),
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path, filename=None if inline == "1" else os.path.basename(path),
                             media_type=MIME.get(os.path.splitext(path)[1].lower(), "application/octet-stream"),
                             headers={"Cache-Control": "no-store"})
 
-    async def _static(self, request):
-        rel = posixpath.normpath(urllib.parse.unquote(request.path_params["path"] or "")).lstrip("/")
+    async def _static(self, path: str = ""):
+        rel = posixpath.normpath(urllib.parse.unquote(path or "")).lstrip("/")
         if rel in ("", "."):
             rel = "index.html"
         full = os.path.abspath(os.path.join(self.web_root, *rel.split("/")))
         if not full.startswith(self.web_root + os.sep) or not os.path.isfile(full):
-            return PlainTextResponse("not found", status_code=404)
+            raise HTTPException(status_code=404, detail="not found")
         ext = os.path.splitext(full)[1].lower()
         cache = "no-cache" if ext == ".html" else "max-age=3600"
         return FileResponse(full, media_type=MIME.get(ext, "application/octet-stream"), headers={"Cache-Control": cache})

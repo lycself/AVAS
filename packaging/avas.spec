@@ -54,7 +54,8 @@ hiddenimports = (
     + collect_submodules("webview.platforms")
     + collect_submodules("uvicorn")             # protocol / loop implementations are chosen by name at run time
     + collect_submodules("websockets")
-    + collect_submodules("anyio")               # starlette's thread pool picks its backend by name
+    + collect_submodules("anyio")               # FastAPI/Starlette's thread pool picks its backend by name
+    + collect_submodules("pydantic")            # FastAPI request models; pydantic-core is loaded by name
 )
 
 common = dict(pathex=[ROOT], binaries=binaries, datas=datas, hiddenimports=hiddenimports, hookspath=[],

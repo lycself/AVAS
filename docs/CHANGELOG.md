@@ -2,6 +2,9 @@
 
 ## 2026-09-20  解析器与配置类统一、误差研究重构、3D 视图拆分
 
+- GUI 服务端从 Starlette 改为 **FastAPI**（`avas/gui/server.py`）：路由、令牌校验和 400/401/404 行为不变，`POST /api/rpc`
+  的请求体改为 pydantic 模型，非法请求体仍返回 400；新增 `/api/docs`（OpenAPI）。依赖 `starlette` 换成 `fastapi`。
+
 - `read_lattice_mulp*` 改为 `LatticeDocument` 之上的适配层（逐字节金标准测试），`BeamConfig` / `InputConfig` 的键表与类型来自 `schema.py`
   （`utils/keywordconfig.py`），`constants.py` 的关键字集合派生自 schema。类型按 schema 修正：`numofcharge`、`spacechargelong` 为浮点，
   `randomseed`、`initpos` 等为数值，`distribution` 只接受 KV / GS / PB / WB，`scanphase`、`beamtype` 等按枚举校验。

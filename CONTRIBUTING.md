@@ -93,7 +93,7 @@ The front end lives in `frontend/` (React + TypeScript + Vite); its build output
 cd frontend && npm install && npm run build
 ```
 
-Front end and back end talk only over HTTP (`avas/gui/server.py`, Starlette + uvicorn: `POST /api/rpc` for calls, a WebSocket
+Front end and back end talk only over HTTP (`avas/gui/server.py`, FastAPI + uvicorn: `POST /api/rpc` for calls, a WebSocket
 `/api/events` for events, `/blob/` for binary arrays); the desktop window and a browser use the same transport, pywebview only
 provides the window and the native dialogs. To debug the interface:
 

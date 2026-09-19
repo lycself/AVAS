@@ -77,7 +77,7 @@ packaging/        PyInstaller + Inno Setup 打包
 
 ### 5.1 界面技术与风格
 
-- 技术栈固定：React 19 + TypeScript + Vite + zustand 前端，Starlette + uvicorn 后端服务，桌面窗口用 pywebview；文本编辑用 Monaco，图用 Plotly，3D 用 three.js。不要引入其他 UI 框架或组件库。
+- 技术栈固定：React 19 + TypeScript + Vite + zustand 前端，FastAPI + uvicorn 后端服务，桌面窗口用 pywebview；文本编辑用 Monaco，图用 Plotly，3D 用 three.js。不要引入其他 UI 框架或组件库。
 - **桌面与浏览器两种宿主**：页面地址里的 `host=webview|browser` 决定（`bridge.ts` 的 `isDesktop()`）。所有依赖宿主的操作
   （文件对话框、打开文件 / 文件夹、外部链接、退出、缩放）只写在 `host.ts` 里，页面调用 `pickFolder` / `pickFile` / `openPath` 等，
   **不要在页面里直接调 `dialog.*` / `shell.*` / `app.quit` / `app.zoom`**。浏览器里用 `components/FileDialog.tsx`（后端 `fs.list`）、下载链接 `/download?path=`。
