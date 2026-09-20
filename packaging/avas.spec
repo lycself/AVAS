@@ -29,7 +29,7 @@ datas += collect_data_files("avas", subdir="engine")
 datas += collect_data_files("avas", subdir="static")
 datas += [(os.path.join(ROOT, "avas", "gui", "web"), os.path.join("avas", "gui", "web"))]
 datas += collect_data_files("webview")                  # pywebview's JavaScript glue
-manual = os.path.join(ROOT, "docs", "使用说明20260427.docx")   # Help > User manual
+manual = os.path.join(ROOT, "docs", "使用说明20260427.docx")   # Original physics reference; the floating manual is bundled in gui/web
 if os.path.isfile(manual):
     datas += [(manual, "docs")]
 stamp = os.path.join(ROOT, "avas", "_build.json")        # written by packaging/build.py

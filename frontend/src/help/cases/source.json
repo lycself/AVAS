@@ -1,0 +1,12 @@
+{
+  "source": "docs/案例.docx",
+  "cases": [
+    "superpose",
+    "errors",
+    "correction",
+    "legacy-envelope",
+    "legacy-matching",
+    "legacy-periodic"
+  ],
+  "sha256": "a373c8a3a41943d47e85d9d8d437f66a211cf064dba904c2fba24fd569d2a86e"
+}

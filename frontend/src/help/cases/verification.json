@@ -1,0 +1,228 @@
+{
+  "superpose": {
+    "exit_code": 0,
+    "inputs_unchanged": true,
+    "datasets": {
+      "OutputFile\\DataSet.txt": {
+        "rows": 305,
+        "columns": 41,
+        "energy": "1.87937",
+        "survivors": "300",
+        "rms_x": "0.0025185",
+        "rms_y": "0.00215877"
+      }
+    }
+  },
+  "errors": {
+    "exit_code": 0,
+    "inputs_unchanged": true,
+    "datasets": {
+      "OutputFile\\error_output\\output_0_0\\DataSet.txt": {
+        "rows": 4,
+        "columns": 41,
+        "energy": "1.52704",
+        "survivors": "300",
+        "rms_x": "0.000938151",
+        "rms_y": "0.00105222"
+      },
+      "OutputFile\\error_output\\output_1_1\\DataSet.txt": {
+        "rows": 4,
+        "columns": 41,
+        "energy": "1.52704",
+        "survivors": "300",
+        "rms_x": "0.000938151",
+        "rms_y": "0.00105222"
+      },
+      "OutputFile\\error_output\\output_1_2\\DataSet.txt": {
+        "rows": 4,
+        "columns": 41,
+        "energy": "1.52704",
+        "survivors": "300",
+        "rms_x": "0.000938151",
+        "rms_y": "0.00105222"
+      },
+      "OutputFile\\error_output\\output_2_1\\DataSet.txt": {
+        "rows": 4,
+        "columns": 41,
+        "energy": "1.52704",
+        "survivors": "300",
+        "rms_x": "0.000938151",
+        "rms_y": "0.00105222"
+      },
+      "OutputFile\\error_output\\output_2_2\\DataSet.txt": {
+        "rows": 4,
+        "columns": 41,
+        "energy": "1.52704",
+        "survivors": "300",
+        "rms_x": "0.000938151",
+        "rms_y": "0.00105222"
+      }
+    }
+  },
+  "correction": {
+    "exit_code": 0,
+    "inputs_unchanged": true,
+    "datasets": {
+      "OutputFile\\error_adjust\\output_0\\DataSet.txt": {
+        "rows": 219,
+        "columns": 41,
+        "energy": "2.28948",
+        "survivors": "300",
+        "rms_x": "0.0042922",
+        "rms_y": "0.0045498"
+      },
+      "OutputFile\\error_output\\output_0_0\\DataSet.txt": {
+        "rows": 219,
+        "columns": 41,
+        "energy": "2.3127",
+        "survivors": "300",
+        "rms_x": "0.00438301",
+        "rms_y": "0.00464194"
+      },
+      "OutputFile\\error_output\\output_1_1\\DataSet.txt": {
+        "rows": 219,
+        "columns": 41,
+        "energy": "2.3127",
+        "survivors": "300",
+        "rms_x": "0.00438301",
+        "rms_y": "0.00464194"
+      }
+    }
+  },
+  "errors-current": {
+    "output_0_0": {
+      "rows": 353,
+      "columns": 41,
+      "energy_MeV": 2.36356,
+      "survivors": 287,
+      "z_m": 0.7879295000000001
+    },
+    "output_1_1": {
+      "rows": 353,
+      "columns": 41,
+      "energy_MeV": 2.36477,
+      "survivors": 285,
+      "z_m": 0.7879144100000001
+    },
+    "output_1_2": {
+      "rows": 353,
+      "columns": 41,
+      "energy_MeV": 2.36336,
+      "survivors": 287,
+      "z_m": 0.78788382
+    },
+    "output_2_1": {
+      "rows": 353,
+      "columns": 41,
+      "energy_MeV": 2.36545,
+      "survivors": 283,
+      "z_m": 0.7879597700000001
+    },
+    "output_2_2": {
+      "rows": 353,
+      "columns": 41,
+      "energy_MeV": 2.36582,
+      "survivors": 283,
+      "z_m": 0.78794821
+    }
+  },
+  "verification_conditions": {
+    "date": "2026-09-20",
+    "beam": "examples/hwr010/InputFile/beam.txt with particlenumber 300",
+    "input": "examples/hwr010/InputFile/input.txt with randomseed 12345",
+    "python_seed": 7,
+    "scope": "One run per case, not a physics accuracy or convergence certification"
+  },
+  "prepared_input_sha256": {
+    "superpose": {
+      "beam.txt": "dab4fee68a30b2745aa7f6d4d1c57e4ff2ccff79baf95e890aab95a094616b1b",
+      "bfield.bsx": "eb3fbd6b5fab777a4fb2b0ab66802978c2bbe35607223324df13cf5986cf6cc9",
+      "bfield.bsy": "a7f52012a82b8986bdc7f62bf1d713ca65537520b5f888c9b327398cc4d1a6e1",
+      "bfield.bsz": "3c2a655ee754ebdc47911b57198fc56050b3f22cad07f65b0014757baa0f9e23",
+      "efield.bdx": "2a7b790e06d00a0b325e9a4f94f134c8557218fb3235698b115de8312efbec0d",
+      "efield.bdy": "37c1062de43c174398e56e3502f3bc5138215afb44a8c2157a23366ebae2d754",
+      "efield.bdz": "49649737a8fec518dcaa46cee56948ca9bca96875295eb78bae73430cacffb60",
+      "efield.edx": "de6b555a1ab839eec8a4ee3b560eb7b5787c4dd1918e07d1fdfe986ed7869a2e",
+      "efield.edy": "f2f4963d53fb4b1077587fed26bcadc7515e3daacfe9f98b840cb0f7d7ccbe79",
+      "efield.edz": "951343c6c71a8bc1e5fcacc9e1c9d6b39a569cf787f330da2e462804ba598212",
+      "hwr010.bdx": "2a7b790e06d00a0b325e9a4f94f134c8557218fb3235698b115de8312efbec0d",
+      "hwr010.bdy": "37c1062de43c174398e56e3502f3bc5138215afb44a8c2157a23366ebae2d754",
+      "hwr010.bdz": "49649737a8fec518dcaa46cee56948ca9bca96875295eb78bae73430cacffb60",
+      "hwr010.edx": "de6b555a1ab839eec8a4ee3b560eb7b5787c4dd1918e07d1fdfe986ed7869a2e",
+      "hwr010.edy": "f2f4963d53fb4b1077587fed26bcadc7515e3daacfe9f98b840cb0f7d7ccbe79",
+      "hwr010.edz": "951343c6c71a8bc1e5fcacc9e1c9d6b39a569cf787f330da2e462804ba598212",
+      "ini.ini": "dfdd7513f1eb35c4fbc0ccb1bfb5a22c2f0cbb0bebc9b3d1457eb1643fa24294",
+      "input.txt": "65b071613630ea1c451f77de522903acce6faa8aa8b5736ef7a3f75ad2d27ff6",
+      "lattice.txt": "80fbd70c55692c22a6843608a2151e870514123a19a80aaa84442cca7c1951e2",
+      "lattice_env.txt": "548c87ccfb8455495562d784440819750f003f07de0a5f95a638567809191da4",
+      "lattice_mulp.txt": "a618e8fc7ea7fdb80e481e74cb03612440f296736d4962b31b43eb1a9163fae8",
+      "manual_case.txt": "a0dc140dc663c334968f32bf226a13779b971dedf2ba562ae719a9140a2836b9",
+      "match_no_command.txt": "046206fb66b4a8febf08639e90a481358638e1ef0768399f92bacde0091791d5",
+      "part_rfq.dst": "c53f1f5375ea55bc28679a9a6a95bd5f7fd15410dffd07185523c8cb58548951",
+      "scanData.txt": "555755e7b1a245d68b24c7e96bcd5050c466f642e99dbc4b421a2027354b8111",
+      "sol.bsx": "eb3fbd6b5fab777a4fb2b0ab66802978c2bbe35607223324df13cf5986cf6cc9",
+      "sol.bsy": "a7f52012a82b8986bdc7f62bf1d713ca65537520b5f888c9b327398cc4d1a6e1",
+      "sol.bsz": "3c2a655ee754ebdc47911b57198fc56050b3f22cad07f65b0014757baa0f9e23"
+    },
+    "errors": {
+      "beam.txt": "dab4fee68a30b2745aa7f6d4d1c57e4ff2ccff79baf95e890aab95a094616b1b",
+      "bfield.bsx": "eb3fbd6b5fab777a4fb2b0ab66802978c2bbe35607223324df13cf5986cf6cc9",
+      "bfield.bsy": "a7f52012a82b8986bdc7f62bf1d713ca65537520b5f888c9b327398cc4d1a6e1",
+      "bfield.bsz": "3c2a655ee754ebdc47911b57198fc56050b3f22cad07f65b0014757baa0f9e23",
+      "efield.bdx": "2a7b790e06d00a0b325e9a4f94f134c8557218fb3235698b115de8312efbec0d",
+      "efield.bdy": "37c1062de43c174398e56e3502f3bc5138215afb44a8c2157a23366ebae2d754",
+      "efield.bdz": "49649737a8fec518dcaa46cee56948ca9bca96875295eb78bae73430cacffb60",
+      "efield.edx": "de6b555a1ab839eec8a4ee3b560eb7b5787c4dd1918e07d1fdfe986ed7869a2e",
+      "efield.edy": "f2f4963d53fb4b1077587fed26bcadc7515e3daacfe9f98b840cb0f7d7ccbe79",
+      "efield.edz": "951343c6c71a8bc1e5fcacc9e1c9d6b39a569cf787f330da2e462804ba598212",
+      "hwr010.bdx": "2a7b790e06d00a0b325e9a4f94f134c8557218fb3235698b115de8312efbec0d",
+      "hwr010.bdy": "37c1062de43c174398e56e3502f3bc5138215afb44a8c2157a23366ebae2d754",
+      "hwr010.bdz": "49649737a8fec518dcaa46cee56948ca9bca96875295eb78bae73430cacffb60",
+      "hwr010.edx": "de6b555a1ab839eec8a4ee3b560eb7b5787c4dd1918e07d1fdfe986ed7869a2e",
+      "hwr010.edy": "f2f4963d53fb4b1077587fed26bcadc7515e3daacfe9f98b840cb0f7d7ccbe79",
+      "hwr010.edz": "951343c6c71a8bc1e5fcacc9e1c9d6b39a569cf787f330da2e462804ba598212",
+      "ini.ini": "dfdd7513f1eb35c4fbc0ccb1bfb5a22c2f0cbb0bebc9b3d1457eb1643fa24294",
+      "input.txt": "65b071613630ea1c451f77de522903acce6faa8aa8b5736ef7a3f75ad2d27ff6",
+      "lattice.txt": "80fbd70c55692c22a6843608a2151e870514123a19a80aaa84442cca7c1951e2",
+      "lattice_env.txt": "548c87ccfb8455495562d784440819750f003f07de0a5f95a638567809191da4",
+      "lattice_mulp.txt": "a618e8fc7ea7fdb80e481e74cb03612440f296736d4962b31b43eb1a9163fae8",
+      "manual_case.txt": "359341fc90a6dd70f230a12c46d7d35a0de546b344f6d3dccbfb6ec57085c2ad",
+      "match_no_command.txt": "046206fb66b4a8febf08639e90a481358638e1ef0768399f92bacde0091791d5",
+      "part_rfq.dst": "c53f1f5375ea55bc28679a9a6a95bd5f7fd15410dffd07185523c8cb58548951",
+      "scanData.txt": "555755e7b1a245d68b24c7e96bcd5050c466f642e99dbc4b421a2027354b8111",
+      "sol.bsx": "eb3fbd6b5fab777a4fb2b0ab66802978c2bbe35607223324df13cf5986cf6cc9",
+      "sol.bsy": "a7f52012a82b8986bdc7f62bf1d713ca65537520b5f888c9b327398cc4d1a6e1",
+      "sol.bsz": "3c2a655ee754ebdc47911b57198fc56050b3f22cad07f65b0014757baa0f9e23"
+    },
+    "correction": {
+      "beam.txt": "dab4fee68a30b2745aa7f6d4d1c57e4ff2ccff79baf95e890aab95a094616b1b",
+      "bfield.bsx": "eb3fbd6b5fab777a4fb2b0ab66802978c2bbe35607223324df13cf5986cf6cc9",
+      "bfield.bsy": "a7f52012a82b8986bdc7f62bf1d713ca65537520b5f888c9b327398cc4d1a6e1",
+      "bfield.bsz": "3c2a655ee754ebdc47911b57198fc56050b3f22cad07f65b0014757baa0f9e23",
+      "efield.bdx": "2a7b790e06d00a0b325e9a4f94f134c8557218fb3235698b115de8312efbec0d",
+      "efield.bdy": "37c1062de43c174398e56e3502f3bc5138215afb44a8c2157a23366ebae2d754",
+      "efield.bdz": "49649737a8fec518dcaa46cee56948ca9bca96875295eb78bae73430cacffb60",
+      "efield.edx": "de6b555a1ab839eec8a4ee3b560eb7b5787c4dd1918e07d1fdfe986ed7869a2e",
+      "efield.edy": "f2f4963d53fb4b1077587fed26bcadc7515e3daacfe9f98b840cb0f7d7ccbe79",
+      "efield.edz": "951343c6c71a8bc1e5fcacc9e1c9d6b39a569cf787f330da2e462804ba598212",
+      "hwr010.bdx": "2a7b790e06d00a0b325e9a4f94f134c8557218fb3235698b115de8312efbec0d",
+      "hwr010.bdy": "37c1062de43c174398e56e3502f3bc5138215afb44a8c2157a23366ebae2d754",
+      "hwr010.bdz": "49649737a8fec518dcaa46cee56948ca9bca96875295eb78bae73430cacffb60",
+      "hwr010.edx": "de6b555a1ab839eec8a4ee3b560eb7b5787c4dd1918e07d1fdfe986ed7869a2e",
+      "hwr010.edy": "f2f4963d53fb4b1077587fed26bcadc7515e3daacfe9f98b840cb0f7d7ccbe79",
+      "hwr010.edz": "951343c6c71a8bc1e5fcacc9e1c9d6b39a569cf787f330da2e462804ba598212",
+      "ini.ini": "dfdd7513f1eb35c4fbc0ccb1bfb5a22c2f0cbb0bebc9b3d1457eb1643fa24294",
+      "input.txt": "65b071613630ea1c451f77de522903acce6faa8aa8b5736ef7a3f75ad2d27ff6",
+      "lattice.txt": "80fbd70c55692c22a6843608a2151e870514123a19a80aaa84442cca7c1951e2",
+      "lattice_env.txt": "548c87ccfb8455495562d784440819750f003f07de0a5f95a638567809191da4",
+      "lattice_mulp.txt": "a618e8fc7ea7fdb80e481e74cb03612440f296736d4962b31b43eb1a9163fae8",
+      "manual_case.txt": "86851f901b4def6d12bf43df5246f1cce70f14d7d8558c99e3c836c4b72a685c",
+      "match_no_command.txt": "046206fb66b4a8febf08639e90a481358638e1ef0768399f92bacde0091791d5",
+      "part_rfq.dst": "c53f1f5375ea55bc28679a9a6a95bd5f7fd15410dffd07185523c8cb58548951",
+      "scanData.txt": "555755e7b1a245d68b24c7e96bcd5050c466f642e99dbc4b421a2027354b8111",
+      "sol.bsx": "eb3fbd6b5fab777a4fb2b0ab66802978c2bbe35607223324df13cf5986cf6cc9",
+      "sol.bsy": "a7f52012a82b8986bdc7f62bf1d713ca65537520b5f888c9b327398cc4d1a6e1",
+      "sol.bsz": "3c2a655ee754ebdc47911b57198fc56050b3f22cad07f65b0014757baa0f9e23"
+    }
+  }
+}

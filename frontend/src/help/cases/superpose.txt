@@ -1,0 +1,8 @@
+start
+drift      0.085  0.02   0
+superpose  0 0 0 0 0 0
+field      0.35   0.02     0   3   0   0   1    0.531  sol
+superpose  0.345 0 0 0 0 0 0
+field      0.21   0.02     0   1   162.5e6   -33   1.36    -1.36   hwr010
+superposeend
+end

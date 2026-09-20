@@ -77,6 +77,8 @@ packaging/        PyInstaller + Inno Setup 打包
 
 ### 5.1 界面技术与风格
 
+- 使用说明在当前窗口内以非模态浮动页面显示，不遮罩、不阻挡工作区操作；支持拖动、边缘缩放、最大化和还原。每次关闭再打开恢复默认位置和大小，不持久化几何状态。中英文操作指南在 `frontend/src/help/manual.*.md`，随前端构建离线打包；参数参考读取 `schema.all`，不另写参数表。Word 保留为物理原始参考。浮动页分“操作指南／案例教程／参数与文件参考”三栏；搜索跨栏并显示来源，Markdown 用稳定章节 ID 互链。`cases.*.md` 和 `reference.*.md` 保留来源与核对状态，原案例片段在 `help/cases/`，迁移清单与验证条件随源代码保留；未复现的旧包络／匹配流程不得标为当前可运行功能。
+
 - 技术栈固定：React 19 + TypeScript + Vite + zustand 前端，FastAPI + uvicorn 后端服务，桌面窗口用 pywebview；文本编辑用 Monaco，图用 Plotly，3D 用 three.js。不要引入其他 UI 框架或组件库。
 - **桌面与浏览器两种宿主**：页面地址里的 `host=webview|browser` 决定（`bridge.ts` 的 `isDesktop()`）。所有依赖宿主的操作
   （文件对话框、打开文件 / 文件夹、外部链接、退出、缩放）只写在 `host.ts` 里，页面调用 `pickFolder` / `pickFile` / `openPath` 等，

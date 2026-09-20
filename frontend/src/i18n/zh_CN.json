@@ -1025,5 +1025,15 @@
  "Show this curve": "显示这条曲线",
  "Show all curves": "显示全部曲线",
  "Click: highlight the curve · double-click: show only this curve · ×: hide it · Esc: clear": "单击：高亮曲线 · 双击：只看这条 · ×：隐藏 · Esc：清除",
- "Show the run before as a grey reference while this one runs": "运行时把上一次运行的包络画成灰色参考线"
+ "Show the run before as a grey reference while this one runs": "运行时把上一次运行的包络画成灰色参考线",
+ "Restore window": "还原窗口",
+ "Maximize window": "最大化窗口",
+ "Contents": "目录",
+ "Search manual": "搜索使用说明",
+ "Unable to load parameter reference": "无法载入参数参考",
+ "Loading parameter reference...": "正在载入参数参考……",
+ "Operation guide": "操作指南",
+ "Case tutorials": "案例教程",
+ "Parameters and files": "参数与文件参考",
+ "Manual categories": "使用说明栏目"
 }

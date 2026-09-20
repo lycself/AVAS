@@ -1,0 +1,246 @@
+{
+  "source": "docs/使用说明20260427.docx",
+  "sha256": "e9c5b2bb7ab6293156239406de164b0bc6b83e11b4536cbedb327f034e609486",
+  "chapters": [
+    {
+      "id": "ref-field",
+      "source_body_range": [
+        35,
+        50
+      ],
+      "title": "场模型元件与射频相位",
+      "review": "与当前 schema 对照；补充已核实的场强和相位约定。"
+    },
+    {
+      "id": "ref-matrix",
+      "source_body_range": [
+        53,
+        70
+      ],
+      "title": "矩阵模型元件与端部限制",
+      "review": "元件参数以实时参考为准；首末矩阵元件限制来自原手册，本次未做独立内核验证。"
+    },
+    {
+      "id": "ref-errors",
+      "source_body_range": [
+        75,
+        153
+      ],
+      "title": "误差分析与分布编号",
+      "review": "已对照当前误差生成代码，修正原文中高斯分布与等步长的编号颠倒。"
+    },
+    {
+      "id": "ref-correction",
+      "source_body_range": [
+        157,
+        200
+      ],
+      "title": "静态误差校正与束诊",
+      "review": "与当前校正流程对照；示例使用的场图名称需对应项目文件。"
+    },
+    {
+      "id": "ref-superpose",
+      "source_body_range": [
+        204,
+        222
+      ],
+      "title": "叠加场规则",
+      "review": "与当前 schema 对照。"
+    },
+    {
+      "id": "ref-lattice",
+      "source_body_range": [
+        225,
+        248
+      ],
+      "title": "结构分组与折叠",
+      "review": "与当前结构解析规则配合使用；原拼写 sction 保留。"
+    },
+    {
+      "id": "ref-planes",
+      "source_body_range": [
+        250,
+        251
+      ],
+      "title": "输出平面",
+      "review": "补充已核实的末端限制。"
+    },
+    {
+      "id": "ref-inputs",
+      "source_body_range": [
+        254,
+        266
+      ],
+      "title": "输入文件组织与模拟设置",
+      "review": "当前输入快照和路径机制已更新；关键字表统一读取 schema。"
+    },
+    {
+      "id": "ref-beam",
+      "source_body_range": [
+        270,
+        275
+      ],
+      "title": "束流文件与 Twiss 约定",
+      "review": "补充已核实的归一化 rms 发射度及单位；二次粒子模式有例外。"
+    },
+    {
+      "id": "ref-source",
+      "source_body_range": [
+        277,
+        277
+      ],
+      "title": "运行结构文件",
+      "review": "运行文件不限定为 lattice_mulp.txt。"
+    },
+    {
+      "id": "ref-scan-data",
+      "source_body_range": [
+        280,
+        280
+      ],
+      "title": "scanData.txt 射频扫相文件",
+      "review": "来自原手册；与参数扫描产生的 scan.csv 不同。"
+    },
+    {
+      "id": "ref-secondary",
+      "source_body_range": [
+        282,
+        288
+      ],
+      "title": "SeParticle.txt 二次粒子",
+      "review": "来自原手册及 schema 文件列定义；本次未运行二次粒子案例。"
+    },
+    {
+      "id": "ref-boundary",
+      "source_body_range": [
+        292,
+        297
+      ],
+      "title": "Boundary.txt 独立边界",
+      "review": "来自原手册；本次未运行独立边界案例。"
+    },
+    {
+      "id": "ref-edst",
+      "source_body_range": [
+        301,
+        308
+      ],
+      "title": "edst 混合束团格式",
+      "review": "保留原手册的格式定义并修正 esdt 拼写；本次未逐字节验证混合束团格式。"
+    },
+    {
+      "id": "ref-dst",
+      "source_body_range": [
+        312,
+        314
+      ],
+      "title": "inData.dst 与 outData_x.dst",
+      "review": "来自原手册，结合当前输出快照说明。"
+    },
+    {
+      "id": "ref-dataset",
+      "source_body_range": [
+        316,
+        322
+      ],
+      "title": "DataSet.txt 束团参数",
+      "review": "列索引从 0 开始；已结合当前 41 列约定补充位置、单位及不完整行处理。"
+    },
+    {
+      "id": "ref-phase",
+      "source_body_range": [
+        326,
+        328
+      ],
+      "title": "Phase.txt 射频腔出入口",
+      "review": "来自原手册；文件名大小写按实际输出确认。"
+    },
+    {
+      "id": "ref-syn-particle",
+      "source_body_range": [
+        332,
+        334
+      ],
+      "title": "synParticle.txt 同步粒子轨迹",
+      "review": "来自原手册。"
+    },
+    {
+      "id": "ref-dynamic-errors",
+      "source_body_range": [
+        338,
+        338
+      ],
+      "title": "DynamicErrorData.txt 误差记录",
+      "review": "原手册命名保留；当前 Python 误差抽样还会生成 Error_Datas_<组>_<次>.txt。"
+    },
+    {
+      "id": "ref-beamset",
+      "source_body_range": [
+        341,
+        391
+      ],
+      "title": "BeamSet.plt 逐步粒子记录",
+      "review": "保留单束与双束两套格式；单位、记录标志不可混用，双束格式本次未做二进制验证。"
+    },
+    {
+      "id": "ref-density",
+      "source_body_range": [
+        394,
+        415
+      ],
+      "title": "density 密度数据",
+      "review": "原手册格式；max/min 字段文字存在歧义，下面明确保留待核实标记。"
+    },
+    {
+      "id": "ref-syn-data",
+      "source_body_range": [
+        418,
+        422
+      ],
+      "title": "synData.txt 元件入口参数",
+      "review": "补充已核实的 RF 相位换算；原文的字段序号不一致，不直接据此编写读取器。"
+    },
+    {
+      "id": "ref-histogram",
+      "source_body_range": [
+        425,
+        427
+      ],
+      "title": "pchistogram.dat 粒子直方图",
+      "review": "原手册二进制格式；本次未逐字节验证。"
+    },
+    {
+      "id": "ref-single",
+      "source_body_range": [
+        431,
+        437
+      ],
+      "title": "SingleParticle.txt 单粒子输出",
+      "review": "修正 displacepos 的单位为 mm，保留原文说明并标出差异。"
+    },
+    {
+      "id": "ref-error-summary",
+      "source_body_range": [
+        441,
+        463
+      ],
+      "title": "errors_par.txt 误差统计",
+      "review": "字段顺序保留；与逐次结果表区分。"
+    },
+    {
+      "id": "ref-error-detail",
+      "source_body_range": [
+        466,
+        485
+      ],
+      "title": "errors_par_tot.txt 逐次误差结果",
+      "review": "字段顺序保留。"
+    }
+  ],
+  "omissions": {
+    "0-32": "目录及旧界面操作：当前操作指南替代",
+    "63,67,260,271": "重复参数表：实时 schema 替代；错误步长公式明确待核实",
+    "487-505": "接受度：当前案例教程替代；三张旧截图不作为当前界面展示"
+  },
+  "math": "70 个 OMML 对象仅含文本、下标和重音；转换为文本下标/mean() 上横线，不包含分式。"
+}

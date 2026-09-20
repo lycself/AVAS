@@ -1,3 +1,5 @@
+import { ManualLayer } from "./help/ManualWindow";
+import "./styles/manual.css";
 import { useEffect, useState } from "react";
 import { DialogLayer, MenuLayer, ToastLayer, TooltipLayer } from "./components/overlays";
 import { Spinner } from "./components/ui";
@@ -40,6 +42,7 @@ export function App() {
   return (
     <>
       {ready ? <Shell /> : <div className="boot"><Spinner size={28} /></div>}
+      <ManualLayer />
       <DialogLayer />
       <MenuLayer />
       <ToastLayer />

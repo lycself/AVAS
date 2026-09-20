@@ -1,3 +1,4 @@
+import { useManual } from "./help/store";
 // Commands shared by the menu bar, tool bar, shortcuts and pages.
 import { call, isDesktop, on } from "./bridge";
 import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, promptDialog, reportError, toast, type MenuItem } from "./components/overlays";
@@ -272,9 +273,9 @@ export function runPauseResume() {
   else pauseSimulation();
 }
 
-/** Open the user manual with the system viewer (the back end raises a UserError when it is missing). */
+/** Open the non-modal, in-app manual. */
 export function openManual() {
-  call("app.openManual").catch((e) => reportError(e, t("User manual")));
+  useManual.getState().show();
 }
 
 export async function showAbout() {

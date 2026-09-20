@@ -1,0 +1,12 @@
+start
+err_step 1 1
+err_cav_stat_on 1 0 0 0 0 0 0
+err_cav_ncpl_stat 1 0 1.0 0 0.0 0.0 0.0 0.0 0.0
+drift 0.0835 0.02 0
+field 0.1 0.02 0 3 0 0 1 0.677098 sol
+ADJUST 1 7 5 0 3 0
+field      0.21  0.02     0   1   162.5e6   -33  3    -1.36   hwr010
+drift 0.0835 0.02 0
+DIAG_ENERGY 1 5 0
+drift 0.000001 0.02 0
+end

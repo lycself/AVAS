@@ -439,7 +439,7 @@ ${t("Click to switch project")}` : t("Open or create a project")}
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (blockedByDialog()) return;
+      if (blockedByDialog() || (e.target instanceof Element && e.target.closest(".manual-window"))) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const app = useApp.getState();
       const key = e.key.toLowerCase();
