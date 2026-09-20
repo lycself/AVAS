@@ -137,6 +137,8 @@ avas gui
    * **元件视图**：选中元件后显示其示意图（四极铁截面与受力方向、螺线管线圈、射频腔 Ez(z) 与相位刻度盘、二极铁弧形、
      校正铁偏转方向、场图分布曲线），拖动手柄改长度 / 孔径 / 相位 / 偏转角，滑块改梯度、磁场、Ke、Kb。
      拖动过程中线性预览实时更新（约几十毫秒），松开后写入文本。
+   * 点击 2D / 3D 图中元件，左下列表会自动展开所在分组、高亮并滚动到对应行；再次点击同一元件也可重新定位。阻挡该元件的搜索 / 筛选条件会自动清除。
+   * 元件列表的类型区分射频腔、静电场、静磁场，以及根据场文件名推测的螺线管、四极铁等；场图类型带“场图”标记，推测类型另标“推测”。搜索支持中英文类型名称，结构编辑器共用此行为。
    * **浏览 / 编辑**：可视化编辑器打开时处于浏览状态（可以选中、缩放、查看数值，但不会改动 lattice），点工具栏「编辑」后才出现元件面板、
      手柄和参数输入；点「完成」时如有未保存修改，询问「保存 / 放弃本次编辑 / 继续编辑」。
    * **曲线高亮与隐藏**：单击布局图中的曲线或图例项高亮该曲线（其余变淡），双击图例项只显示这一条，Esc 取消；
@@ -338,6 +340,10 @@ In the beamline layout on the Run and Lattice pages, the mouse wheel zooms the p
 Both the 2D layout and the compact structure schematic show overlapping elements in separate display lanes at their true z extents. Each lane can be selected independently; hovering lists all elements at that z, and brackets identify superpose groups. Lanes are schematic only and do not represent transverse offsets. Many lanes can be viewed by scrolling.
 
 Both 2D and 3D views provide **Zoom in / Zoom out / Fit all** together at the top left, without requiring wheel or touchpad gestures. Double-click empty space to fit the whole view. In 3D, double-clicking an element focuses it; in 2D, double-clicking the view still fits all, and double-clicking a legend entry still shows only that curve.
+
+Clicking an element in the 2D / 3D diagram expands its outline ancestors and scrolls to the highlighted row, including repeated clicks on the same element. Search or filter conditions that hide it are cleared.
+
+Element lists show RF cavities, static electric/magnetic fields, and magnet types inferred from field-map names. Field-map types are marked as such; inferred types are explicitly labelled. Search accepts English and Chinese type names in both the visual and structure editors.
 
 In a short window, the visual editor shrinks its 2D / 3D view to keep the element list and parameter panel accessible. If there is still too little room, the editor scrolls. Enlarging the window restores the preferred view height; the divider can also be dragged to adjust it.
 

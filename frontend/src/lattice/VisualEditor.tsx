@@ -87,6 +87,11 @@ function samePath(a: string | null | undefined, b: string | null | undefined) {
 
 export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, runResults, showText, onToggleText, onUndo, onRedo, parseError }: Props) {
   const t = useT();
+  const [treeRevealRequest, setTreeRevealRequest] = useState(0);
+  const selectFromDiagram = (line: number, source: string) => {
+    onSelect(line, source);
+    setTreeRevealRequest((n) => n + 1);
+  };
   const hintAt = useRef(0);
   const browseHint = () => {
     if (editState === "edit" || Date.now() - hintAt.current < 4000) return;
@@ -521,7 +526,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             doc={doc}
             schema={schema}
             selected={selected}
-            onSelect={(l) => onSelect(l, "layout")}
+            onSelect={(l) => selectFromDiagram(l, "layout")}
             run={runOn && !projectRunning ? run.data : null}
             preview={show.preview ? pv : null}
             show={show}
@@ -538,7 +543,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
           />
         ) : (
           <Suspense fallback={<div className="empty-state"><Spinner size={24} /></div>}>
-            <Beamline3D doc={doc} selected={selected} onSelect={(l) => onSelect(l, "3d")} envelope={envelope3d} theme={theme} bunchKinds={bunchKinds} />
+            <Beamline3D doc={doc} selected={selected} onSelect={(l) => selectFromDiagram(l, "3d")} envelope={envelope3d} theme={theme} bunchKinds={bunchKinds} />
           </Suspense>
         )}
       </div>
@@ -546,6 +551,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
       <div className="ve-bottom" ref={bottomRef}>
         <div className="ve-outline" style={{ width: outlineW }}>
           <StructureTree
+            revealRequest={treeRevealRequest}
             doc={doc}
             kw={kw}
             selected={selected}

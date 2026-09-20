@@ -8,6 +8,8 @@ import { deleteUnit, duplicateUnit, moveUnit, moveUnitTo } from "./structureOps"
 import { Checkbox, CommitInput, cx, Icon, Select, Tabs } from "../components/ui";
 import { pick, t, useT } from "../i18n";
 import { Beamline } from "./Beamline";
+import { elementType, matchesStatement } from "./elementType";
+import { selectedGroups } from "./treeSelection";
 import {
   choiceLabel,
   choiceValue,
@@ -84,6 +86,7 @@ export function StructureTree({
   onMoveTo,
   onKeyCommand,
   compact,
+  revealRequest = 0,
 }: {
   doc: LatticeDoc;
   kw: Map<string, Keyword>;
@@ -95,6 +98,8 @@ export function StructureTree({
   /** Keyboard shortcuts on the selected row (Delete, Alt+Up/Down, Ctrl+D). */
   onKeyCommand?: (cmd: "delete" | "up" | "down" | "duplicate", line: number) => void;
   compact?: boolean;
+  /** Increment on diagram clicks, including a second click on the same element. */
+  revealRequest?: number;
 }) {
   const tt = useT();
   const [query, setQuery] = useState("");
@@ -104,9 +109,24 @@ export function StructureTree({
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (selected === null) return;
+    const st = doc.statements.find((s) => s.line === selected);
+    if (!st) return;
+    setCollapsed((prev) => {
+      const keys = selectedGroups(doc, selected);
+      if (!keys.some((key) => prev[key] !== false)) return prev;
+      return { ...prev, ...Object.fromEntries(keys.map((key) => [key, false])) };
+    });
+    if (!matchesStatement(st, kw, query)) setQuery("");
+    if ((filter === "elements" && !st.isElement) || (filter === "commands" && st.isElement)
+      || (filter === "issues" && !st.issues.length)) setFilter("all");
+    // Reveal on selection requests; typing a filter or manually folding a group stays possible.
+  }, [selected, revealRequest, doc]);
+
+  useEffect(() => {
     const el = listRef.current?.querySelector(".tree-row.selected") as HTMLElement | null;
     el?.scrollIntoView({ block: "nearest" });
-  }, [selected]);
+  }, [selected, revealRequest, collapsed, query, filter, doc]);
 
   const dndProps = (st: Statement) =>
     onMoveTo
@@ -135,6 +155,7 @@ export function StructureTree({
 
   const row = (st: Statement, depth: number) => {
     const spec = kw.get(st.key);
+    const typeLabel = elementType(st, kw).label;
     return (
       <div
         key={`s${st.line}`}
@@ -158,7 +179,7 @@ export function StructureTree({
       >
         <span className="tree-icon">{worstIssue(st) ? <IssueIcon st={st} /> : <Swatch st={st} />}</span>
         <span className="tree-name ellipsis">{st.name || st.keyword}</span>
-        <span className="tree-type ellipsis">{spec ? pick(spec.title) : st.keyword}</span>
+        <span className="tree-type ellipsis" title={typeLabel}>{typeLabel}</span>
         <span className="tree-params ellipsis">{statementSummary(st, spec)}</span>
         <span className="tree-z">{st.active ? fmt6(st.zStart) : ""}</span>
       </div>
@@ -173,7 +194,7 @@ export function StructureTree({
       if (filter === "elements" && !st.isElement) continue;
       if (filter === "commands" && st.isElement) continue;
       if (filter === "issues" && !st.issues.length) continue;
-      if (needle && ![st.name, st.keyword, st.params.join(" ")].join(" ").toLowerCase().includes(needle)) continue;
+      if (needle && !matchesStatement(st, kw, needle)) continue;
       rows.push(row(st, 0));
     }
   } else {
@@ -203,7 +224,7 @@ export function StructureTree({
               className="tree-icon twisty"
               onClick={(e) => {
                 e.stopPropagation();
-                setCollapsed((c) => ({ ...c, [key]: !isCollapsed }));
+                setCollapsed((c) => ({ ...c, [key]: !(c[key] ?? child.kind === "superpose") }));
               }}
             >
               <Icon name={isCollapsed ? "chevron-right" : "chevron-down"} />
@@ -248,7 +269,7 @@ export function StructureTree({
       <div className="row" style={{ gap: 6, padding: "6px 0" }}>
         <div className="search-box grow">
           <Icon name="search" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tt("Search name, keyword or field map")} spellCheck={false} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tt("Search name, type, keyword or field map")} spellCheck={false} />
           {query && (
             <span className="clear" onClick={() => setQuery("")}>
               <Icon name="close" />
