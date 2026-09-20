@@ -20,6 +20,7 @@ import { Checkbox, Icon, IconButton, cx } from "../components/ui";
 import { useT } from "../i18n";
 import { persist, useApp } from "../store/app";
 import "../styles/beamline3d.css";
+import { ViewNavigation } from "./ViewNavigation";
 import { Viewer, type Envelope3D, type PointerDevice } from "./b3dViewer";
 import { autoExaggeration, buildModel, roundNice, structureKey } from "./beamline3dModel";
 import { subscribeBunch, useMotion, type BunchFrame } from "./bunchPlayer";
@@ -165,7 +166,7 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
       {!failed && <canvas className={cx("b3d-bar", empty && "hidden")} ref={barRef} />}
       {!failed && (
         <div className="b3d-toolbar" onPointerDown={(e) => e.stopPropagation()}>
-          <IconButton icon="screen-full" tip={tr("Fit all")} onClick={() => v()?.fitAll()} disabled={empty} />
+          <ViewNavigation onZoom={(direction) => v()?.zoom(direction)} onFit={() => v()?.fitAll()} disabled={empty} />
           <div className="segmented b3d-views">
             <button type="button" data-tip={tr("Isometric view")} onClick={() => v()?.view("iso")} disabled={empty}>
               {tr("Iso")}

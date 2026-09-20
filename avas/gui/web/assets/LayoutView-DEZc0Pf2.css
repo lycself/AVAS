@@ -1,0 +1,1 @@
+.view-navigation{z-index:3;background:var(--toolbar-bg);border:1px solid var(--border);border-radius:6px;align-items:center;gap:1px;padding:2px 4px;display:flex;position:absolute;top:6px;left:6px}.view-navigation .icon-btn{width:24px;height:24px}.layout-plot{position:absolute;inset:36px 0 0}

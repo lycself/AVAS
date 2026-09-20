@@ -133,7 +133,7 @@ avas gui
      下游元件位置不变；落在叠加场范围内时自动生成对应 z0 的 superpose。删除叠加场的第一个元件时自动重设 z0 并在前面补漂移段，位置不变。
    * **布局图**：元件按类型绘制（聚焦四极铁在轴上方、散焦在下方），下方同一 z 轴上叠加 x（上）/ y（下）包络：
      上次运行的 rms / 最大值（DataSet.txt）、**线性包络预览**（虚线）、管道孔径、粒子损失位置、能量（右轴）。
-     悬停显示该位置的全部数值。**3D** 视图可旋转缩放、沿束线漫游，并显示包络管。
+     悬停显示该位置的全部数值。**3D** 视图可旋转缩放、沿束线漫游，并显示包络管。2D / 3D 视图区左上角统一提供「放大 / 缩小 / 显示全部」按钮，无需鼠标滚轮或触控板手势即可缩放。双击空白处恢复全景；3D 双击元件聚焦该元件，2D 双击视图仍恢复全景，双击图例仍只显示该曲线。
    * **元件视图**：选中元件后显示其示意图（四极铁截面与受力方向、螺线管线圈、射频腔 Ez(z) 与相位刻度盘、二极铁弧形、
      校正铁偏转方向、场图分布曲线），拖动手柄改长度 / 孔径 / 相位 / 偏转角，滑块改梯度、磁场、Ke、Kb。
      拖动过程中线性预览实时更新（约几十毫秒），松开后写入文本。
@@ -319,6 +319,8 @@ The Lattice page also has a **visual editor** on the same text model (one undo h
 **Run page and input lock.** Below the progress, *Live beam* draws the lattice the run uses with the envelope written so far, the moving bunch and the losses, and shows the bunch position, macro-particles alive, transmission, energy and rms sizes (segment stages, error seeds and the assistant's sandbox evaluations included); after the run it keeps the final state and offers a replay; during a project run *Compare with the run before* (off by default) overlays the previous envelope in grey. Every finished record in the *Run records* list below (OutputFile, kept runs, segment runs) has a **Replay** button: the panel switches to that record (drawn on the lattice of its `inputs/` snapshot; a segment run at its entry z) and starts the replay, × returns to the last run, and a new run takes the panel back (`run.replay` reads the envelope from the record's DataSet.txt). While a project run, error study or segment run is running or paused, all input files are read-only (Lattice, Beam, Settings and Files pages, the run-lattice selection; the back end refuses writes too, and the assistant's change proposals are refused with an explanation), because segment runs copy InputFile at the start of every stage and the run record's input snapshot and the live display describe the inputs the run started with; editing in between would mix two configurations. The assistant's scans and the Scan page work on copies and do not lock. **View → Motion** chooses full (the default) / reduced / off / automatic (follows Windows' animation effects).
 
 In the beamline layout on the Run and Lattice pages, the mouse wheel zooms the plot without scrolling the page. Move the pointer outside the plot to scroll the page normally.
+
+Both 2D and 3D views provide **Zoom in / Zoom out / Fit all** together at the top left, without requiring wheel or touchpad gestures. Double-click empty space to fit the whole view. In 3D, double-clicking an element focuses it; in 2D, double-clicking the view still fits all, and double-clicking a legend entry still shows only that curve.
 
 In a short window, the visual editor shrinks its 2D / 3D view to keep the element list and parameter panel accessible. If there is still too little room, the editor scrolls. Enlarging the window restores the preferred view height; the divider can also be dragged to adjust it.
 

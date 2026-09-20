@@ -10,6 +10,7 @@
 // clears both; the × on the left of an entry hides that curve (remembered in
 // localStorage).  Palette items can be dropped onto the beamline.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ViewNavigation } from "./ViewNavigation";
 import { cx, Icon } from "../components/ui";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
@@ -83,7 +84,6 @@ type Props = {
   bunchWhenDone?: boolean;
   onDropElement?: (z: number, kind: NewElementKind) => void;
   readOnly?: boolean;
-  fitSignal?: number;
   compact?: boolean;
   /** z range to emphasise (a segment on the Run page) */
   range?: [number, number] | null;
@@ -143,7 +143,6 @@ export function LayoutView({
   bunchWhenDone,
   onDropElement,
   readOnly,
-  fitSignal,
   compact,
   range,
 }: Props) {
@@ -261,6 +260,15 @@ export function LayoutView({
     fitted.current = true;
     follow.current = true;
   };
+  const zoom = (direction: 1 | -1) => {
+    setView(([start, end]) => {
+      const center = (start + end) / 2;
+      const span = Math.min(Math.max((end - start) * Math.pow(1.25, -direction), 1e-4), total * 1.2);
+      return [center - span / 2, center + span / 2];
+    });
+    fitted.current = false;
+    follow.current = false;
+  };
   useEffect(() => {
     if (Math.abs(total - lastTotal.current) > 1e-9) {
       lastTotal.current = total;
@@ -268,10 +276,6 @@ export function LayoutView({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [total]);
-  useEffect(() => {
-    if (fitSignal) fit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitSignal]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -814,8 +818,12 @@ export function LayoutView({
   const hoverInfo = hover && hover.x >= plot.left ? readout(hover.z, hover.y) : null;
 
   return (
+    <div className={cx("layout-view", compact && "compact")}>
+      <div className="view-navigation" onPointerDown={(e) => e.stopPropagation()}>
+        <ViewNavigation onZoom={zoom} onFit={fit} />
+      </div>
     <div
-      className={cx("layout-view", compact && "compact")}
+      className="layout-plot"
       ref={wrapRef}
       tabIndex={-1}
       onKeyDown={(e) => {
@@ -945,6 +953,7 @@ export function LayoutView({
           )}
         </div>
       )}
+    </div>
     </div>
   );
 }

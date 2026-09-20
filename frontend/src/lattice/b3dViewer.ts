@@ -372,6 +372,22 @@ export class Viewer {
     this.lastWheel = null;
   }
 
+  /** Toolbar zoom around the current view target, independent of pointer detection. */
+  zoom(direction: 1 | -1) {
+    if (!this.model?.elems.length) return;
+    this.onControlStart();
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const distance = THREE.MathUtils.clamp(
+      offset.length() * Math.pow(1.25, -direction),
+      this.controls.minDistance,
+      this.controls.maxDistance,
+    );
+    offset.setLength(distance);
+    this.camera.position.copy(this.controls.target).add(offset);
+    this.controls.update();
+    this.invalidate();
+  }
+
   /** Move the view along the beamline so that it looks at arc length *s*, keeping the viewing direction. */
   moveToS(s: number, ms = 250) {
     const m = this.model;
@@ -1403,6 +1419,7 @@ export class Viewer {
     const hits = this.pick(ev.clientX, ev.clientY);
     const line = hits.find((h) => h.line === this.selected)?.line ?? hits[0]?.line;
     if (line != null) this.focus(line);
+    else this.fitAll();
   };
 
   private onKeyDown = (ev: KeyboardEvent) => {

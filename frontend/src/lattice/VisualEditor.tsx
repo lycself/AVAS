@@ -101,7 +101,6 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   const [spaceCharge, setSpaceCharge] = useState<boolean>(() => localStorage.getItem("avas.visual.sc") !== "0");
   const [layoutH, setLayoutH] = useState(() => Number(localStorage.getItem("avas.visual.layoutH")) || 380);
   const [outlineW, setOutlineW] = useState(() => Number(localStorage.getItem("avas.visual.outlineW")) || 380);
-  const [fitSignal, setFitSignal] = useState(0);
   const [frequency, setFrequency] = useState<number | undefined>(undefined);
   const hostRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -437,7 +436,6 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
         >
           {t("Overlays")}
         </Button>
-        <IconButton icon="screen-full" tip={t("Fit the whole lattice (double-click the view)")} onClick={() => setFitSignal((n) => n + 1)} />
         <IconButton icon={showText ? "layout-sidebar-right" : "layout-sidebar-right-off"} tip={showText ? t("Hide the text") : t("Show the text next to the visual editor")} active={showText} onClick={onToggleText} />
       </div>
       <div className="ve-status soft">
@@ -537,7 +535,6 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             bunchKinds={bunchKinds}
             onDropElement={dropElement}
             readOnly={readOnly}
-            fitSignal={fitSignal}
           />
         ) : (
           <Suspense fallback={<div className="empty-state"><Spinner size={24} /></div>}>
