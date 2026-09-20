@@ -37,6 +37,8 @@ def build_parser(prog="avas serve"):
 
 
 def main(argv=None, args=None, parser=None):
+    from avas.installation_lock import acquire
+    acquire()
     if args is None:
         args = (parser or build_parser()).parse_args(argv)
     if args.settings:

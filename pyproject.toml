@@ -21,6 +21,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
+    "packaging>=23",
     "numpy>=1.24",
     "scipy>=1.10",
     "pandas>=2.0",

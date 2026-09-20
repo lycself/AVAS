@@ -1,0 +1,11 @@
+.update-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--panel-bg);
+  color: var(--fg);
+  border-top: 1px solid var(--border);
+}
+.update-notice > span { flex: 1; }

@@ -1,6 +1,7 @@
 # Runtime dependencies (see pyproject.toml for the authoritative list).
 # Install everything with:  pip install -r requirements.txt
 numpy>=1.24
+packaging>=23
 scipy>=1.10
 pandas>=2.0
 matplotlib>=3.7

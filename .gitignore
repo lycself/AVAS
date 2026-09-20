@@ -42,6 +42,7 @@ tests/_output_server/
 tests/_output_scan/
 # build stamp written by packaging/build.py
 avas/_build.json
+.avas-install.json
 # assistant work folders inside projects (sandbox runs, backups)
 .avas_ai/
 

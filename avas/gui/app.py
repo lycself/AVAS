@@ -113,6 +113,9 @@ def _on_closing():
     win = _state["window"]
     if _state["force_close"] or win is None:
         return True
+    from avas.gui import maintenance
+    if maintenance.updating:
+        return False
     from avas.gui.services import runner
     if _state.get("unsaved") or runner.any_active():
         bridge.emit("app.closeRequested")
@@ -140,6 +143,8 @@ def request_close(force=True):
 
 # --------------------------------------------------------------------------- main
 def main(argv=None, language=None):
+    from avas.installation_lock import acquire
+    acquire()
     multiprocessing.freeze_support()
     from avas.gui import logbridge
     logbridge.install()

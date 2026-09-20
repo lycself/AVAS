@@ -17,6 +17,7 @@ Steps:
 import argparse
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -87,6 +88,18 @@ def main(argv=None):
     finally:
         os.remove(STAMP)            # only the bundle carries the stamp; source runs read git instead
     dist = os.path.join(ROOT, "dist", "AVAS")
+    # This executable must remain independent of the installed _internal directory.
+    run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--name", "AVASUpdate",
+         "--distpath", dist, "--workpath", os.path.join(ROOT, "build", "updater"),
+         "--specpath", os.path.join(ROOT, "build", "updater"),
+         os.path.join(ROOT, "avas", "update_worker.py")], cwd=ROOT)
+    from update_release import manifest
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        marker = Path(ROOT) / ".avas-source.json"
+        commit = json.loads(marker.read_text(encoding="utf-8")).get("commit", "") if marker.is_file() else ""
+    manifest(Path(dist), commit, "frozen")
     print(f"built {dist}")
 
     if args.no_installer:

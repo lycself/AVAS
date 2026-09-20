@@ -1,4 +1,5 @@
 // Window chrome: menu bar, tool bar, side bar, page area, log panel, status bar.
+import { checkUpdates, UpdateNotice } from "../updates";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   closeProject,
@@ -227,6 +228,7 @@ function MenuBar() {
         { label: t("Keyboard shortcuts"), icon: "keyboard", onClick: () => void showShortcuts() },
         { type: "separator" },
         { label: t("About AVAS"), icon: "info", onClick: showAbout },
+        { label: t("Check for updates"), icon: "refresh", onClick: checkUpdates },
       ],
     },
   ];
@@ -600,6 +602,7 @@ export function Shell() {
           </>
         )}
       </div>
+      <UpdateNotice />
       <StatusBar />
     </div>
   );

@@ -79,6 +79,12 @@ export function canQuit(): boolean {
   return isDesktop();
 }
 
+/** Restart belongs to the desktop host; browser sessions only inspect updates. */
+export async function installPreparedUpdate() {
+  if (!isDesktop()) throw new Error(t("Update the server installation locally, then restart avas serve."));
+  await call("updates.install");
+}
+
 /** Page zoom: the WebView2 zoom factor in the window, CSS zoom in a browser. */
 export function applyZoom(factor: number) {
   if (isDesktop()) call("app.zoom", { factor }).catch(() => undefined);

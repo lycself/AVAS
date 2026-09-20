@@ -510,6 +510,8 @@ def _normalize_argv(argv):
 
 
 def main(argv=None):
+    from avas.installation_lock import acquire
+    acquire()
     argv = sys.argv[1:] if argv is None else list(argv)
     parser = build_parser()
     args = parser.parse_args(_normalize_argv(argv))

@@ -24,7 +24,7 @@ jobs:
           python -m pytest -q
           tests/test_design_rules.py tests/test_lattice_doc.py tests/test_run_diagnostics.py
           tests/test_live.py tests/test_ai.py tests/test_server.py tests/test_linear_optics.py
-          tests/test_scan.py tests/test_smoke.py
+          tests/test_scan.py tests/test_smoke.py tests/test_updates.py
 
   frontend:
     runs-on: ubuntu-latest
@@ -42,3 +42,33 @@ jobs:
       - run: npm test
       - name: Type check and build
         run: npm run build
+
+  publish-update:
+    if: github.event_name == 'push' && github.repository == 'lycself/AVAS' && github.ref == 'refs/heads/main'
+    needs: [python, frontend]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: avas-update-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -e .[build]
+      - run: python packaging/build.py --no-installer
+      - name: Verify packaged startup and update helper
+        shell: pwsh
+        run: |
+          & dist/AVAS/AVAS.exe info
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged startup failed' }
+          python packaging/test_update_helper.py
+      - name: Publish fixed packages, then latest pointer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python packaging/update_release.py --publish

@@ -41,6 +41,7 @@ import time
 from avas import __version__
 from avas.paths import PACKAGE_DIR
 from avas.gui import bridge, context, proctree
+from avas.gui import maintenance
 from avas.gui.bridge import UserError, rpc
 
 log = logging.getLogger("avas.gui")
@@ -229,7 +230,8 @@ class Runner:
 
     def start_job(self, job):
         from avas.ai import sandbox
-        with self.lock:
+        with maintenance.lock, self.lock:
+            maintenance.require_idle_update()
             if self.job is not None:
                 raise UserError("A simulation is already running.")
             if sandbox.active():

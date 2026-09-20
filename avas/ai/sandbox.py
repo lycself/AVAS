@@ -167,7 +167,9 @@ class Sandbox:
         """Report the following runs as one study on the Run page (*source*: assistant | scan)."""
         global _activity
         from avas.gui.services import runner
-        with _lock:
+        from avas.gui import maintenance
+        with maintenance.lock, _lock:
+            maintenance.require_idle_update()
             if runner.is_running():
                 raise SandboxError("Another simulation is running; wait for it to finish.")
             if _activity is not None and _activity["job"] != self.job_id:
@@ -239,7 +241,9 @@ class Sandbox:
             if act is None or act["paused_since"] is None:
                 break
             time.sleep(0.2)
-        with _lock:
+        from avas.gui import maintenance
+        with maintenance.lock, _lock:
+            maintenance.require_idle_update()
             if runner.is_running() or busy():
                 raise SandboxError("Another simulation is running; wait for it to finish.")
             proc = subprocess.Popen(cmd, cwd=self.root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
