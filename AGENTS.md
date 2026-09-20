@@ -168,6 +168,7 @@ packaging/        PyInstaller + Inno Setup 打包
 
 ### 5.6 软件更新
 
+- 安装包简体中文翻译随仓库保存在 `packaging/languages/`，保留上游固定提交、校验值和许可证；不依赖 Inno Setup 安装目录自带中文文件，也不在构建时下载翻译。调用编译器的构建在 PyInstaller 开始前检查该文件。
 - 官方源固定为 `lycself/AVAS`。main 通过 CI 后生成源码包与 Windows 程序包并验证，再发布 `avas-latest/update.json`；固定提交的包放 `avas-<完整 SHA>` 发布中，不覆盖。发布时检查祖先关系，较旧流水线不得覆盖较新的指针。
 - 后端 `services/updates.py` 统一检测与准备，`avas/updates.py` 下载校验，标准库独立程序 `avas/update_worker.py` 在主进程退出后安装；Windows 打包成独立的 `AVASUpdate.exe`，不能依赖将被替换的 `_internal`。
 - 自动检测缓存 6 小时，帮助菜单可强制检查；用户确认前重新检查，目标变化要重新确认。确认后所有获取与安装锁定 SHA，禁止裸 `git pull` 或下载可变分支压缩包。忽略版本按 SHA 保存，弹窗明确提醒仍可从帮助菜单获取更新。

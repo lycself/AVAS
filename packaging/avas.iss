@@ -43,7 +43,7 @@ CloseApplications=yes
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
-Name: "zh"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "zh"; MessagesFile: "languages\ChineseSimplified.isl"
 
 [CustomMessages]
 en.DesktopIcon=Create a desktop shortcut

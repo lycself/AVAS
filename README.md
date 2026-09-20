@@ -198,6 +198,8 @@ avas serve --open
 
 ### 软件更新
 
+Windows 安装包支持英文和简体中文；简体中文安装翻译随源码提供，构建时无需另外下载语言包。
+
 启动界面后会在后台检查 `lycself/AVAS` 的官方更新，检查结果缓存 6 小时；**帮助 → 检查更新** 可立即重查。网络失败不影响使用。点击提示查看版本和更新摘要，再选择**更新并重启**；确认时若发现更新的版本，会重新展示并要求确认。确认后锁定提交，下载期间的新发布不会改变此次安装目标。「忽略此版本」只忽略该提交，弹窗会提醒仍可从帮助菜单获取更新。
 
 AI / 开发者提交前主动维护 [变更记录](docs/changes/README.md)，CI 检查新增条目。发布时自动汇总上次成功发布之后的说明，生成 `docs/update-notes.md` 发布产物并用于更新弹窗和 Release；不直接使用 Git 提交标题，也不调用模型临时撰写文案。
@@ -356,6 +358,8 @@ avas serve --open
 `avas serve` runs the back end without a window and prints a URL (with a random access token) to open in any modern browser; `--open` opens it, `--port` / `--host` choose the address (the default binds to this machine only; `--host 0.0.0.0` exposes it to the network, where the token is the only protection because there is no user management yet). In a browser the native file dialogs are replaced by the page's own folder / file chooser, "open folder" shows the folder with download buttons, "open file" and plot export download the file, and links open in a new tab; the Exit entry is absent (close the tab). Everything else, including the live run display and the assistant, is identical.
 
 ### Software updates
+
+The Windows installer supports English and Simplified Chinese. The Chinese installer translation ships with the source, so builds need no separate language-pack download.
 
 The interface checks official updates from `lycself/AVAS` in the background and caches checks for six hours. **Help → Check for updates** checks immediately. Network errors do not block normal use. Review the update and choose **Update and restart**. If a newer version appeared before confirmation, review it again; after confirmation the exact commit is pinned. Ignoring a version affects only that commit; the dialog reminds you that updates remain available from Help.
 

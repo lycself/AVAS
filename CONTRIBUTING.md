@@ -55,6 +55,8 @@ WebView2 安装程序），如果安装了 [Inno Setup 6](https://jrsoftware.org
 可选把 `AVAS.exe` 加入 PATH，缺少 WebView2 时自动安装。界面源码有改动时加 `--frontend` 先重新编译前端。
 **exe 不会随源码自动更新**，修改代码后需要重新运行 `build.py`。安装后可运行 `AVAS.exe doctor` 自检。
 
+安装包中文翻译固定保存在 `packaging/languages/`（来源、版本与许可证见该目录），不依赖编译器附带中文文件。打包脚本在 PyInstaller 开始前检查翻译文件；更新翻译后须验证中英文安装脚本编译。
+
 ### 目录结构
 
 完整的目录地图（含每个模块的作用）见 [AGENTS.md 第 2 节](AGENTS.md#2-目录地图)，两处不重复维护。
@@ -121,6 +123,8 @@ python packaging/build.py
 installed, compiles `dist/installer/AVAS-<version>-setup.exe` (per-user install without admin rights, shortcuts, optional PATH
 entry, WebView2 installed when missing). Add `--frontend` to rebuild the web page first. The exe does not follow source changes:
 rebuild after editing. `AVAS.exe doctor` checks an installation.
+
+The pinned Chinese installer translation is in `packaging/languages/`, with its provenance and license. It does not depend on a compiler-supplied Chinese file. The build checks it before PyInstaller starts; compile the bilingual installer after updating the translation.
 
 ### Directory layout
 

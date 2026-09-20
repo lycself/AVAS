@@ -22,4 +22,5 @@
 *.png binary
 *.qm binary
 avas/gui/web/** -text
+packaging/languages/ChineseSimplified.isl -text
 .avas-source.json export-subst

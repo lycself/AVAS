@@ -52,6 +52,16 @@ def run(cmd, **kw):
     subprocess.run(cmd, check=True, **kw)
 
 
+def check_installer_inputs():
+    language = Path(ROOT, "packaging", "languages", "ChineseSimplified.isl")
+    try:
+        text = language.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(f"Cannot read bundled installer language file: {language}") from exc
+    if not all(section in text for section in ("[LangOptions]", "[Messages]")):
+        raise RuntimeError(f"Invalid bundled installer language file: {language}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--frontend", action="store_true", help="rebuild the web front end first (npm run build)")
@@ -61,8 +71,11 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.no_installer and args.require_installer:
         ap.error("--no-installer and --require-installer cannot be combined")
-    if args.require_installer and not find_iscc(args.iscc):
+    iscc = None if args.no_installer else find_iscc(args.iscc)
+    if args.require_installer and not iscc:
         raise RuntimeError("Inno Setup is required to publish the Windows installer")
+    if iscc:
+        check_installer_inputs()
 
     from avas import __version__
     from avas.buildinfo import STAMP, git_stamp
@@ -109,7 +122,6 @@ def main(argv=None):
 
     if args.no_installer:
         return 0
-    iscc = find_iscc(args.iscc)
     if not iscc:
         print("Inno Setup (ISCC.exe) not found: the installer was not built. Install Inno Setup 6 "
               "(https://jrsoftware.org/isinfo.php, or 'winget install JRSoftware.InnoSetup') and run again.")
