@@ -4,6 +4,7 @@
 
 以上规则全部适用；下面只是 Claude Code 在本机工作时的实际经验。
 
+- **提交署名必须遵守 [AGENTS.md 第 7 节](AGENTS.md#7-协作习惯)**：Claude 不得把自己列为作者、提交者或共同作者；提交前检查并移除工具自动追加的 Claude / AI 署名（包括 `Co-Authored-By: Claude ...`），沿用用户的 Git 身份。
 - 编辑代码用 Write / Edit 工具。通过 bash heredoc 写含正则或反斜杠的 Python / TypeScript 会被破坏（`\b`、`\\n` 等），大文件也不要用 sed 批量改。
 - 浏览器面板检查界面：先启动 `avas serve --token dev`（见 AGENTS.md 第 3 节；`.claude/launch.json` 的 `avas-dev` / `devserver-fake`），
   打开 `http://127.0.0.1:8765/index.html?host=browser&token=dev`。

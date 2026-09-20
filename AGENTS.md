@@ -221,6 +221,7 @@ packaging/        PyInstaller + Inno Setup 打包
 
 ## 7. 协作习惯
 
+- **Git 提交不添加 AI 署名**：Claude、Codex 等 AI 助手不得把自己或模型名称写入提交的作者、提交者或共同作者，不得自动添加 `Co-Authored-By`、`Signed-off-by` 或 `Generated with` 等 AI 署名。沿用用户现有的 Git 身份，不修改 Git 身份配置；提交前检查最终提交说明，删除自动生成的 AI 署名，保留真实人类贡献者的署名。此规则同样适用于提交模板和工具自动追加的文字。
 - 用户希望先看诊断和方案、讨论确定后再一次性完整实施；方案里的决策点要明确列出。
 - 命令行保持简短好用：`avas run --input DIR --output DIR`、`avas plot 类型 --output DIR`、`avas scan --input DIR --target 元件 --param 参数 --values 1,2,3`。
 - 旧代码、历史 DLL 和日志已移到仓库外的 `AVAS_NEW/archive/`，不要搬回仓库。
