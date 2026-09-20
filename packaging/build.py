@@ -56,8 +56,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--frontend", action="store_true", help="rebuild the web front end first (npm run build)")
     ap.add_argument("--no-installer", action="store_true", help="skip Inno Setup")
+    ap.add_argument("--require-installer", action="store_true", help="fail if Inno Setup is unavailable (CI)")
     ap.add_argument("--iscc", help="path of ISCC.exe")
     args = ap.parse_args(argv)
+    if args.no_installer and args.require_installer:
+        ap.error("--no-installer and --require-installer cannot be combined")
+    if args.require_installer and not find_iscc(args.iscc):
+        raise RuntimeError("Inno Setup is required to publish the Windows installer")
 
     from avas import __version__
     from avas.buildinfo import STAMP, git_stamp
@@ -111,6 +116,8 @@ def main(argv=None):
         return 0
     run([iscc, f"/DAppVersion={__version__}", f"/DSourceDir={dist}", f"/DOutputDir={os.path.join(ROOT, 'dist', 'installer')}",
          os.path.join(ROOT, "packaging", "avas.iss")])
+    if not Path(ROOT, "dist", "installer", f"AVAS-{__version__}-setup.exe").is_file():
+        raise RuntimeError("Inno Setup did not produce the expected installer")
     print("installer:", os.path.join(ROOT, "dist", "installer", f"AVAS-{__version__}-setup.exe"))
     return 0
 

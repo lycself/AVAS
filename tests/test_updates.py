@@ -341,22 +341,48 @@ def load_publisher():
     return module
 
 
-def test_publisher_preserves_custom_notes(tmp_path):
+def test_publisher_explains_downloads_without_polluting_dialog_notes():
     publisher = load_publisher()
-    (tmp_path / "docs").mkdir()
-    notes = "• 修复启动问题。\n• Improved update detection."
-    (tmp_path / "docs/update-notes.md").write_text("\ufeff" + notes + "\n", encoding="utf-8")
-    assert publisher.release_notes(tmp_path) == notes
+    data = release()
+    body = publisher.release_body(data)
+    assert data["notes"] in body
+    for name in ("AVAS-2.0.0-setup.exe", "avas-windows.zip", "avas-source.zip", "update.json", "Source code"):
+        assert name in body
+    assert data["notes"] == "Changes"
 
 
-def test_publisher_requires_release_notes(tmp_path):
+def test_release_build_contains_installer_and_generated_notes(tmp_path, monkeypatch):
     publisher = load_publisher()
-    with pytest.raises(FileNotFoundError):
-        publisher.release_notes(tmp_path)
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs/update-notes.md").write_text(" \n", encoding="utf-8")
-    with pytest.raises(ValueError, match="short release summary"):
-        publisher.release_notes(tmp_path)
+    root = tmp_path / "repo"
+    root.mkdir()
+    worker.git(root, "init", "-b", "main")
+    worker.git(root, "config", "user.name", "Test")
+    worker.git(root, "config", "user.email", "test@example.invalid")
+    (root / "docs/changes").mkdir(parents=True)
+    notes = "• Windows 用户可以双击安装。"
+    (root / "docs/changes/install.md").write_text(notes, encoding="utf-8")
+    (root / "pyproject.toml").write_text('[project]\nversion="2.0.0"\nrequires-python=">=3.11"\n')
+    (root / ".gitignore").write_text("dist/\n")
+    worker.git(root, "add", ".")
+    worker.git(root, "commit", "-m", "test")
+    commit = worker.git(root, "rev-parse", "HEAD")
+    frozen = root / "dist/AVAS"
+    (frozen / "_internal/avas").mkdir(parents=True)
+    (frozen / "_internal/avas/_build.json").write_text(json.dumps({"commit": commit, "dirty": False}))
+    installer = root / "dist/installer/AVAS-2.0.0-setup.exe"
+    installer.parent.mkdir()
+    installer.write_bytes(b"test installer fixture")
+    monkeypatch.setattr(publisher, "ROOT", root)
+    output = root / "dist/updates"
+    data = publisher.build(output)
+    assert data["notes"] == notes
+    assert (output / installer.name).read_bytes() == installer.read_bytes()
+    assert data["installer"]["sha256"] == worker.digest(installer)
+    assert (output / "docs/update-notes.md").read_text(encoding="utf-8").strip() == notes
+    extracted = tmp_path / "extract"
+    worker.unpack(output / "avas-source.zip", extracted)
+    assert (extracted / "docs/update-notes.md").read_text(encoding="utf-8").strip() == notes
+    assert worker.git(root, "status", "--porcelain") == ""
 
 
 def test_old_publisher_cannot_replace_new_pointer(tmp_path, monkeypatch):

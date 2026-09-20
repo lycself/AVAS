@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +12,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from release_notes import collect  # noqa: E402
 from avas import update_worker as worker  # noqa: E402
 from avas.updates import BASE, REPOSITORY  # noqa: E402
 
@@ -30,25 +33,51 @@ def pack(root, dest):
                 zf.write(p, p.relative_to(root).as_posix())
 
 
-def release_notes(root):
-    path = root / "docs" / "update-notes.md"
-    notes = path.read_text(encoding="utf-8-sig").strip()
-    if not notes:
-        raise ValueError("Write a short release summary in docs/update-notes.md before publishing")
-    return notes
+def release_body(data):
+    return f"""## 本次更新 / Changes
+
+{data['notes']}
+
+## 下载与安装 / Downloads
+
+| 文件 / Asset | 用途 / Purpose |
+| --- | --- |
+| AVAS-{data['version']}-setup.exe | **Windows 用户推荐**：双击安装，无需 Python、Git 或 GitHub 账户。Recommended Windows installer; no Python, Git or GitHub account required. |
+| avas-windows.zip | Windows 免安装版：完整解压，运行 AVASGui.exe；也供自动更新使用。Portable bundle: extract all files and run AVASGui.exe; also used by the updater. |
+| avas-source.zip | 源码版，需配置 Python 和依赖。Source distribution; requires Python and dependencies. |
+| update.json | 程序读取的更新信息，无需手动下载。Update metadata; not a user download. |
+| Source code (zip / tar.gz) | GitHub 自动生成的源码归档，不是 Windows 程序。GitHub source archives, not Windows applications. |
+
+请保留程序目录中的全部文件。缺少 WebView2 时安装程序会联网安装它。
+Keep all application files together. Setup downloads WebView2 if the runtime is missing.
+"""
 
 
-def build(output):
+def previous_commit():
+    if release_info("avas-latest") is None:
+        return None
+    with tempfile.TemporaryDirectory() as temp:
+        gh("release", "download", "avas-latest", "--pattern", "update.json", "--dir", temp)
+        commit = json.loads((Path(temp) / "update.json").read_text(encoding="utf-8"))["commit"]
+    worker.git(ROOT, "fetch", "origin", commit)
+    return commit
+
+
+def build(output, base=None):
     output.mkdir(parents=True, exist_ok=True)
     commit = worker.git(ROOT, "rev-parse", "HEAD")
     if worker.git(ROOT, "status", "--porcelain", "--untracked-files=all"):
         raise ValueError("Publish updates only from a clean, committed checkout")
-    notes = release_notes(ROOT)
+    notes = collect(ROOT, base)
     frozen = ROOT / "dist" / "AVAS"
     stamp = json.loads((frozen / "_internal/avas/_build.json").read_text(encoding="utf-8"))
     if stamp.get("dirty") or not stamp.get("commit") or not commit.startswith(stamp["commit"]):
         raise ValueError("Rebuild the Windows bundle from this clean commit before publishing")
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    installer = ROOT / "dist" / "installer" / f"AVAS-{config['version']}-setup.exe"
+    if not installer.is_file():
+        raise ValueError("Windows installer is missing; build with --require-installer")
+    shutil.copy2(installer, output / installer.name)
     with tempfile.TemporaryDirectory() as temp:
         temp = Path(temp)
         archive = temp / "source.zip"
@@ -56,6 +85,7 @@ def build(output):
         source = temp / "source"
         with zipfile.ZipFile(archive) as zf:
             zf.extractall(source)  # archive was created from this trusted checkout
+        (source / "docs/update-notes.md").write_text(notes + "\n", encoding="utf-8")
         manifest(source, commit, "source")
         pack(source, output / "avas-source.zip")
     manifest(frozen, commit, "frozen")
@@ -67,12 +97,16 @@ def build(output):
     data = {"schema": 1, "repository": REPOSITORY, "commit": commit, "version": config["version"],
             "requires_python": config["requires-python"], "published": datetime.now(timezone.utc).isoformat(),
             "notes": notes, "assets": assets}
+    data["installer"] = {"name": installer.name, "sha256": worker.digest(installer)}
     (output / "update.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "docs").mkdir(exist_ok=True)
+    (output / "docs/update-notes.md").write_text(notes + "\n", encoding="utf-8")
+    (output / "notes.txt").write_text(release_body(data), encoding="utf-8")
     return data
 
 
 def gh(*args, check=True):
-    return subprocess.run(["gh", *args, "--repo", REPOSITORY], check=check, capture_output=True, text=True)
+    return subprocess.run(["gh", *args, "--repo", REPOSITORY], check=check, capture_output=True, encoding="utf-8")
 
 
 def release_info(tag):
@@ -103,7 +137,10 @@ def publish(output):
                     return
     existing = release_info(tag)
     if existing is not None and not existing["isDraft"]:
-        if not {"update.json", "avas-source.zip", "avas-windows.zip"}.issubset({a["name"] for a in existing["assets"]}):
+        required = {"update.json", "avas-source.zip", "avas-windows.zip"}
+        if data.get("installer"):
+            required.add(data["installer"]["name"])
+        if not required.issubset({a["name"] for a in existing["assets"]}):
             raise RuntimeError("Published fixed-version release is incomplete; refusing to advertise it")
         # Never overwrite a fixed-version asset, even on a rebuild of the same SHA.
         with tempfile.TemporaryDirectory() as temp:
@@ -115,21 +152,35 @@ def publish(output):
             gh("release", "create", tag, "--target", commit, "--title", f"AVAS {data['version']} · {commit[:8]}",
                "--notes-file", str(output / "notes.txt"), "--latest=false", "--draft")
         gh("release", "upload", tag, str(output / "avas-source.zip"), str(output / "avas-windows.zip"),
+           str(output / f"AVAS-{data['version']}-setup.exe"),
            str(output / "update.json"), "--clobber")  # only unpublished drafts may be repaired
         gh("release", "edit", tag, "--draft=false")
     if pointer is None:
         gh("release", "create", "avas-latest", "--target", commit, "--title", "AVAS automatic updates",
-           "--notes", "Latest tested AVAS update metadata.", "--prerelease", "--latest=false")
+           "--notes", "供 AVAS 自动更新使用，普通用户无需下载。请到正式版本下载 Windows 安装包。 / Update metadata for AVAS. Download applications from a versioned release: https://github.com/lycself/AVAS/releases", "--prerelease", "--latest=false")
+    gh("release", "edit", "avas-latest", "--notes",
+       f"供程序自动更新使用，无需手动下载。 / For automatic updates only.\n\n下载程序 / Download: https://github.com/{REPOSITORY}/releases/tag/{tag}")
     gh("release", "upload", "avas-latest", str(output / "update.json"), "--clobber")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--publish", action="store_true")
+    ap.add_argument("--base", help="previous published commit for an offline build")
     args = ap.parse_args()
     output = ROOT / "dist" / "updates"
-    data = build(output)
-    (output / "notes.txt").write_text(data["notes"], encoding="utf-8")
+    base = previous_commit() if args.publish else args.base
+    head = worker.git(ROOT, "rev-parse", "HEAD")
+    if base == head:
+        print("This commit is already published; leaving its immutable assets unchanged.")
+        return
+    if base:
+        try:
+            worker.git(ROOT, "merge-base", "--is-ancestor", base, head)
+        except subprocess.CalledProcessError:
+            print("A newer or unrelated release is already published; skipping this build.")
+            return
+    build(output, base)
     if args.publish:
         publish(output)
 

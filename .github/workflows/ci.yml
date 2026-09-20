@@ -11,12 +11,25 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: pip install -e .[dev]
+      - name: Check reviewed change records
+        shell: pwsh
+        env:
+          CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if ($env:CHANGE_BASE -and $env:CHANGE_BASE -notmatch '^0+$') {
+            python packaging/release_notes.py --base $env:CHANGE_BASE
+          } else {
+            python packaging/release_notes.py
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Add a reviewed change record before committing' }
       - name: Lint (ruff, defect rules only)
         run: python -m ruff check avas tests packaging
       - name: Fast tests
@@ -24,7 +37,7 @@ jobs:
           python -m pytest -q
           tests/test_design_rules.py tests/test_lattice_doc.py tests/test_run_diagnostics.py
           tests/test_live.py tests/test_ai.py tests/test_server.py tests/test_linear_optics.py
-          tests/test_scan.py tests/test_smoke.py tests/test_updates.py
+          tests/test_scan.py tests/test_smoke.py tests/test_updates.py tests/test_release_notes.py
 
   frontend:
     runs-on: ubuntu-latest
@@ -61,7 +74,10 @@ jobs:
           python-version: '3.11'
           cache: pip
       - run: python -m pip install -e .[build]
-      - run: python packaging/build.py --no-installer
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+      - run: python packaging/fetch_webview2.py
+      - run: python packaging/build.py --require-installer
       - name: Verify packaged startup and update helper
         shell: pwsh
         run: |

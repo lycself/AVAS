@@ -200,13 +200,13 @@ avas serve --open
 
 启动界面后会在后台检查 `lycself/AVAS` 的官方更新，检查结果缓存 6 小时；**帮助 → 检查更新** 可立即重查。网络失败不影响使用。点击提示查看版本和更新摘要，再选择**更新并重启**；确认时若发现更新的版本，会重新展示并要求确认。确认后锁定提交，下载期间的新发布不会改变此次安装目标。「忽略此版本」只忽略该提交，弹窗会提醒仍可从帮助菜单获取更新。
 
-发布者每次发布前编辑 [docs/update-notes.md](docs/update-notes.md)，填写本次简短更新说明（支持中文、英文和换行，弹窗按纯文本展示）。发布流程将其写入该版本的更新弹窗和 GitHub Release；不再用 Git 提交标题充当面向用户的说明。
+AI / 开发者提交前主动维护 [变更记录](docs/changes/README.md)，CI 检查新增条目。发布时自动汇总上次成功发布之后的说明，生成 `docs/update-notes.md` 发布产物并用于更新弹窗和 Release；不直接使用 Git 提交标题，也不调用模型临时撰写文案。
 
 官方更新在 main 的 Python / 前端 CI、Windows 打包及基本启动检查全部通过后发布。Git 版仅对官方 origin、main 分支、干净且可快进的工作区自动更新；源码压缩包版按文件清单校验和替换；Windows 打包版由独立更新器替换程序并重启。用户项目、结果、个人设置及 `.venv` 保留，待替换文件有本地修改或覆盖冲突时停止。源码版必须从安装目录的 `.venv` 启动，更新会安装所需依赖；Python 版本不兼容时需先手动处理。
 
 运行、暂停、参数扫描及 AI 试算期间不能安装。下载准备期间禁止启动新模拟；退出前询问未保存的编辑。同一用户仍有其他 AVAS 进程使用该安装目录时停止安装，请先关闭这些进程。刷新页面可恢复已准备好的更新，重启后显示更新结果。浏览器模式只提供检测与下载入口，需要在后端机器更新并重启 `avas serve`。
 
-首次使用此功能需手动拉取一次新版，或下载包含更新信息的官方包。推荐使用每个发布页的 `avas-source.zip` / `avas-windows.zip`；GitHub 的 Download ZIP 在包含版本标记时也可识别。即使所下载的中间提交没有发布更新包，也会读取该提交的官方归档作为文件基准。旧包缺少版本标记时会提示重新下载。不要删除 `.avas-install.json` / `.avas-source.json`。
+首次使用此功能需手动拉取一次新版，或下载包含更新信息的官方包。Windows 用户推荐下载发布页的 `AVAS-版本-setup.exe`，双击安装，无需 Python、Git 或 GitHub 账户；缺少 WebView2 时安装程序会联网安装。免安装用户下载 `avas-windows.zip`，完整解压后运行 `AVASGui.exe`，不能单独拷贝 exe。源码用户使用 `avas-source.zip` 并配置 Python 依赖。`update.json` 供程序读取，无需手动下载；GitHub 自动附带的 Source code 是源码，不是 Windows 程序。GitHub 的 Download ZIP 在包含版本标记时也可识别。即使所下载的中间提交没有发布更新包，也会读取该提交的官方归档作为文件基准。旧包缺少版本标记时会提示重新下载。不要删除 `.avas-install.json` / `.avas-source.json`。
 
 更新日志、结果和程序备份位于 `%LOCALAPPDATA%\AVAS\updates\update-*\`。文件替换失败尝试恢复备份；打包版启动检查失败也恢复旧程序。源码版依赖安装失败会明确报错，保留源码和备份，不保证 Python 环境回退；可在安装目录执行 `.venv\Scripts\python.exe -m pip install -e .` 和 `.venv\Scripts\python.exe -m pip check` 修复，再重新启动。中断安装时请保留备份及 `journal.json`，不要手动混合两个版本的程序文件。
 
@@ -359,13 +359,13 @@ avas serve --open
 
 The interface checks official updates from `lycself/AVAS` in the background and caches checks for six hours. **Help → Check for updates** checks immediately. Network errors do not block normal use. Review the update and choose **Update and restart**. If a newer version appeared before confirmation, review it again; after confirmation the exact commit is pinned. Ignoring a version affects only that commit; the dialog reminds you that updates remain available from Help.
 
-Before each release, edit [docs/update-notes.md](docs/update-notes.md) with a short summary (Chinese, English and line breaks are supported; the dialog displays plain text). Publishing includes this text in the version's update dialog and GitHub Release instead of using Git commit titles.
+Before committing, the AI or developer adds a reviewed [change fragment](docs/changes/README.md). CI checks for new entries. Publishing collects entries since the last successful release into the generated `docs/update-notes.md` artifact, update dialog and Release. It neither uses commit titles nor calls a model to write release prose.
 
 Updates are published only after main passes Python/frontend CI, Windows packaging and startup checks. Git installations require the official origin, a clean main branch and a fast-forward update. Source archives use a verified file manifest; Windows bundles use an independent updater. Projects, results, settings and `.venv` are retained; local edits and file collisions stop the update. Source installations must run inside their own `.venv`; required dependencies are installed during updating. Incompatible Python versions require manual intervention.
 
 Finish all simulations (including paused runs), scans and AI studies first. Preparing an update prevents new simulations; unsaved edits are handled before exit. Close other AVAS processes using the same installation under your account before installation. Prepared updates survive page refresh, and results are shown after restart. Browser mode provides checks and a download link; update the backend machine locally and restart `avas serve`.
 
-Existing users need one manual pull or a new official package to obtain the updater. Prefer the release assets `avas-source.zip` / `avas-windows.zip`. GitHub Download ZIP is also recognized when it contains the revision marker; an intermediate commit without published assets uses its exact official GitHub archive as the file baseline. Older unstamped archives require a fresh download. Keep `.avas-install.json` / `.avas-source.json`.
+Existing users need one manual pull or a new official package to obtain the updater. Windows users should download `AVAS-<version>-setup.exe`; no Python, Git or GitHub account is required. Setup downloads WebView2 if missing. For portable use, extract all of `avas-windows.zip` and run `AVASGui.exe`; do not copy the executable alone. Developers can use `avas-source.zip` with Python dependencies. `update.json` is machine-readable metadata, and GitHub’s Source code assets are source archives, not Windows applications. GitHub Download ZIP is also recognized when it contains the revision marker; an intermediate commit without published assets uses its exact official GitHub archive as the file baseline. Older unstamped archives require a fresh download. Keep `.avas-install.json` / `.avas-source.json`.
 
 Logs, results and program backups are under `%LOCALAPPDATA%\AVAS\updates\update-*\`. Failed file replacement attempts backup restoration; a failed packaged startup check also restores the old bundle. Python dependency changes cannot be fully rolled back. For a dependency failure, retain the backup and log, repair using `.venv\Scripts\python.exe -m pip install -e .` and `.venv\Scripts\python.exe -m pip check`, then restart. Keep `journal.json` after an interrupted installation; do not mix program files from different versions.
 

@@ -171,7 +171,8 @@ packaging/        PyInstaller + Inno Setup 打包
 - 官方源固定为 `lycself/AVAS`。main 通过 CI 后生成源码包与 Windows 程序包并验证，再发布 `avas-latest/update.json`；固定提交的包放 `avas-<完整 SHA>` 发布中，不覆盖。发布时检查祖先关系，较旧流水线不得覆盖较新的指针。
 - 后端 `services/updates.py` 统一检测与准备，`avas/updates.py` 下载校验，标准库独立程序 `avas/update_worker.py` 在主进程退出后安装；Windows 打包成独立的 `AVASUpdate.exe`，不能依赖将被替换的 `_internal`。
 - 自动检测缓存 6 小时，帮助菜单可强制检查；用户确认前重新检查，目标变化要重新确认。确认后所有获取与安装锁定 SHA，禁止裸 `git pull` 或下载可变分支压缩包。忽略版本按 SHA 保存，弹窗明确提醒仍可从帮助菜单获取更新。
-- 每次发布的简短说明由发布者维护 `docs/update-notes.md`，不能为空；发布脚本将同一份文字固定写入该版本的 `update.json` 和 GitHub Release。弹窗按纯文本展示，不执行 HTML，也不从 Git 提交标题生成说明；新版本重新确认时同时展示新版本说明。
+- 每次提交前，AI / 开发者必须主动新增 `docs/changes/*.md` 简短变更条目，用用户能理解的语言说明变化；内部维护也须明确说明范围。尚未提交的本次条目可编辑，已提交条目不可修改或删除，纠正时另增条目。CI 检查提交范围内新增非空条目。发布脚本按 `avas-latest/update.json` 的上次成功提交汇总新条目，生成 `dist/updates/docs/update-notes.md`（源码包内为 `docs/update-notes.md`），不回写提交；同一份文字固定写入该版本的 `update.json` 和 GitHub Release。弹窗按纯文本展示，不执行 HTML，也不从 Git 提交标题生成说明；新版本重新确认时同时展示新版本说明。
+- 正式发布同时包含 Windows Inno Setup 安装包 `AVAS-版本-setup.exe`、`avas-windows.zip`、`avas-source.zip` 和 `update.json`。首次安装推荐 setup.exe，自动更新继续使用 ZIP；CI 缺少安装编译器必须失败，不能静默跳过。Release 正文统一解释所有附件（含 GitHub 自动源码归档），自动更新入口注明供程序使用并链接正式版本。
 - Git 更新仅支持官方 origin 的干净 main，快进到确认的提交，不 stash/reset/clean；源码与打包版按 `.avas-install.json` 哈希验证本地改动，备份后替换并处理移除的程序文件，不覆盖用户新增文件。GitHub 源码 ZIP 用 `.avas-source.json` 的 export-subst 标记读取基准版本；中间提交无发布包时取该 SHA 的官方源码归档，不能以现有文件冒充基准。源码/打包版用 GitHub 提交比较防止降级。
 - 更新准备通过 `gui/maintenance.py` 与 runner、sandbox 启动共享锁；模拟、暂停、扫描或 AI 试算活跃时拒绝，准备期间不允许新模拟。安装退出由 `host.ts` 触发，保存/放弃编辑仍须询问。浏览器模式仅检测与下载入口，服务器需本机维护。
 - `.venv`、项目与结果、个人设置保留。替换失败尝试恢复备份；打包启动检查失败恢复旧程序。源码依赖失败保留日志与修复入口，不能声称环境已完整回退。回归测试只用临时安装目录和本地临时 Git 仓库。

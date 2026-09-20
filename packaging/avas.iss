@@ -72,7 +72,7 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
   Tasks: addtopath; Check: NeedsAddPath(ExpandConstant('{app}'))
 
 [Run]
-Filename: "{app}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "{cm:WebView2}"; \
+Filename: "{app}\_internal\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "{cm:WebView2}"; \
   Flags: waituntilterminated skipifdoesntexist; Check: WebView2Missing
 Filename: "{app}\AVASGui.exe"; Description: "{cm:RunAvas}"; Flags: nowait postinstall skipifsilent
 
