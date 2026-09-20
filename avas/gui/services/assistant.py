@@ -554,7 +554,7 @@ class Host:
         if isinstance(r, dict) and r.get("applied"):
             projects.notify()
             return {"where": "editor", "saved": bool(r.get("saved"))}
-        write_text(path, text)
+        write_text(path, text, source="assistant")
         self.front("pages.reload", {"paths": [path]}, timeout=5)
         projects.notify()
         return {"where": "file"}
@@ -574,7 +574,7 @@ class Host:
             return {**info, "file": proposal["file"]}
         if kind == "file":
             before = self._backup(pid, proposal["file"] + ".before", proposal["old_text"])
-            write_text(proposal["path"], proposal["new_text"])
+            write_text(proposal["path"], proposal["new_text"], source="assistant")
             self.front("pages.reload", {"paths": [proposal["path"]], "pages": [proposal.get("page"), "files"]}, timeout=5)
             projects.notify()
             proposal["backup"] = before
@@ -648,7 +648,7 @@ class Host:
                 self._write_lattice(rec["file"], path, old)
             else:
                 path = rec.get("path") or p.input_file(rec["file"])
-                write_text(path, old)
+                write_text(path, old, source="assistant")
                 self.front("pages.reload", {"paths": [path], "pages": [rec.get("page"), "files"]}, timeout=5)
                 projects.notify()
             return True

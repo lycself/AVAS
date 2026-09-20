@@ -1,3 +1,4 @@
+import { pointerDevice } from "../components/pointer";
 // Window chrome: menu bar, tool bar, side bar, page area, log panel, status bar.
 import { checkUpdates, UpdateNotice } from "../updates";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
@@ -75,6 +76,11 @@ const MIN_WIDTH = 160;
 const MAX_WIDTH = 480;
 const SNAP_WIDTH = 110;
 
+function toggleSidebar() {
+  setSidebarCollapsed(!useApp.getState().sidebarCollapsed);
+}
+
+
 /* ------------------------------------------------------------------ menu bar */
 /** Help ▸ Keyboard shortcuts: the table comes from the same list the menus and handlers use. */
 function showShortcuts() {
@@ -134,6 +140,7 @@ function MenuBar() {
   const logVisible = useApp((s) => s.logVisible);
   const theme = useApp((s) => s.theme);
   const scale = useApp((s) => s.scale);
+  const pointer = useApp((s) => pointerDevice(s.settings));
   const motion = useApp((s) => s.settings["ui/motion"] ?? "full");
   const anyDirty = useDirty((s) => Object.values(s.dirty).some(Boolean));
 
@@ -177,7 +184,7 @@ function MenuBar() {
       items: () => [
         ...PAGES.map((p, i) => ({ label: t(PAGE_META[p].label), shortcut: `Ctrl+${i + 1}`, checked: page === p, onClick: () => setPage(p) })),
         { type: "separator" as const },
-        { label: t("Collapse sidebar"), shortcut: SHORTCUT.sidebar.keys, checked: sidebarCollapsed, onClick: () => setSidebarCollapsed(!sidebarCollapsed) },
+        { label: t("Collapse sidebar"), shortcut: SHORTCUT.sidebar.keys, checked: sidebarCollapsed, onClick: toggleSidebar },
         { label: t("Show log panel"), shortcut: SHORTCUT.log.keys, checked: logVisible, onClick: () => setLogVisible(!logVisible) },
         { label: t("AI assistant"), shortcut: SHORTCUT.assistant.keys, checked: useAssistant.getState().open, onClick: () => setAssistantOpen(!useAssistant.getState().open) },
         { type: "separator" as const },
@@ -218,6 +225,14 @@ function MenuBar() {
         {
           label: t("Language"),
           submenu: (Object.keys(LANGUAGES) as Language[]).map((code) => ({ label: LANGUAGES[code], checked: lang === code, onClick: () => setLanguage(code) })),
+        },
+        {
+          label: t("Pointer device (all plots)"),
+          submenu: [
+            { label: t("Detect automatically"), checked: pointer === "auto", onClick: () => persist({ "ui/pointerDevice": "auto" }) },
+            { label: t("Mouse: the wheel zooms"), checked: pointer === "mouse", onClick: () => persist({ "ui/pointerDevice": "mouse" }) },
+            { label: t("Touchpad: two-finger swipe pans"), checked: pointer === "touchpad", onClick: () => persist({ "ui/pointerDevice": "touchpad" }) },
+          ],
         },
       ],
     },
@@ -297,7 +312,7 @@ function MenuBar() {
         <IconButton
           icon={sidebarCollapsed ? "layout-sidebar-left-off" : "layout-sidebar-left"}
           tip={t("Toggle sidebar (Ctrl+B)")}
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onClick={toggleSidebar}
         />
         <IconButton icon={logVisible ? "layout-panel" : "layout-panel-off"} tip={t("Toggle log panel (Ctrl+J)")} onClick={() => setLogVisible(!logVisible)} />
         <div className="divider-v" />
@@ -340,6 +355,7 @@ function Sidebar() {
         return (
           <button
             key={p}
+            aria-label={t(meta.label)}
             className={cx("nav-item", page === p && "active", needsProject && !projectOpen && "dim")}
             data-tip={collapsed ? t(meta.label) : undefined}
             onClick={() => {
@@ -453,7 +469,7 @@ function useShortcuts() {
       else if (is("openProject")) openProject();
       else if (is("newProject")) newProject();
       else if (is("quit")) quit();
-      else if (is("sidebar")) setSidebarCollapsed(!app.sidebarCollapsed);
+      else if (is("sidebar")) toggleSidebar();
       else if (is("log")) setLogVisible(!app.logVisible);
       else if (is("assistant")) setAssistantOpen(!useAssistant.getState().open);
       else if (is("zoomIn")) stepScale(1);
@@ -476,6 +492,7 @@ function useShortcuts() {
 
 /* ------------------------------------------------------------------ shell */
 export function Shell() {
+
   useShortcuts();
   const page = useApp((s) => s.page);
   const collapsed = useApp((s) => s.sidebarCollapsed);

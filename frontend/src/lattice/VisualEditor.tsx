@@ -1,3 +1,4 @@
+import { HorizontalStrip } from "../components/HorizontalStrip";
 // Visual lattice editor: component palette, large layout (or 3D) view with the
 // beam envelope, outline tree and the component inspector.  It edits the same
 // text model as the text editor (kept mounted by LatticeEditor), so undo,
@@ -18,6 +19,7 @@ import { applyResult, elementOptions, PALETTE, structureMenu, type ApplyRange } 
 import { defaultLength, deleteUnit, duplicateUnit, insertAfter, insertAtZ, moveUnit, newElementText, type NewElementKind } from "./structureOps";
 import { formatStatement, type Edit, type LatticeDoc, type Schema, type Statement } from "./types";
 import { listSegmentResults, replaceLine, textFingerprint, useLinearPreview, useRunEnvelope, useSegmentEnvelope, type SegmentSource } from "./usePreview";
+import type { HistoryState } from "./editorHistory";
 
 const Beamline3D = lazy(() => import("./Beamline3D"));
 
@@ -44,6 +46,10 @@ type Props = {
   onToggleText: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  history: HistoryState;
+  canRestore: boolean;
+  onRestore: () => void;
+  selectionRequest: number;
   /** The last parse failed with this message; *doc* is the previous good one. */
   parseError?: string | null;
 };
@@ -85,7 +91,7 @@ function samePath(a: string | null | undefined, b: string | null | undefined) {
   return !!a && !!b && a.replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
 }
 
-export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, runResults, showText, onToggleText, onUndo, onRedo, parseError }: Props) {
+export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getText, fieldDirs, fieldmaps, readOnly, editState, dirty, onStartEdit, onFinishEdit, onSave, runResults, showText, onToggleText, onUndo, onRedo, history, canRestore, onRestore, selectionRequest, parseError }: Props) {
   const t = useT();
   const [treeRevealRequest, setTreeRevealRequest] = useState(0);
   const selectFromDiagram = (line: number, source: string) => {
@@ -346,14 +352,15 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             </Button>
             {dirty && <Icon name="circle-filled" className="ve-unsaved" title={t("Unsaved changes")} />}
             <div className="divider-v" />
-            <IconButton icon="discard" tip={t("Undo (Ctrl+Z)")} onClick={onUndo} />
-            <IconButton icon="redo" tip={t("Redo (Ctrl+Y)")} onClick={onRedo} />
+            <Button small icon="discard" tip={t("Undo (Ctrl+Z)")} disabled={!history.canUndo} onClick={onUndo}>{t("Undo")}</Button>
+            <Button small icon="redo" tip={t("Redo (Ctrl+Y)")} disabled={!history.canRedo} onClick={onRedo}>{t("Redo")}</Button>
+            <Button small icon="history" tip={t("Restore the text from when you entered Edit. Stay in Edit; undo can recover these changes. Save separately to update the file.")} disabled={!canRestore} onClick={onRestore}>{t("Revert all session changes")}</Button>
             <div className="divider-v" />
           </>
         )}
         {editState === "edit" && (
-        <div className="ve-palette" data-tip={t("Drag a component onto the beamline, or click to insert it after the selection")}>
-          {PALETTE.slice(0, 8).map((p) => (
+        <HorizontalStrip>
+          {PALETTE.map((p) => (
             <button
               key={p.kind}
               className="ve-chip"
@@ -370,13 +377,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
               <span className="ve-chip-label">{t(p.label)}</span>
             </button>
           ))}
-          <IconButton
-            icon="ellipsis"
-            tip={t("More components")}
-            disabled={readOnly}
-            onClick={(e) => openMenuBelow(e.currentTarget, PALETTE.slice(8).map((p) => ({ label: t(p.label), onClick: () => insertKind(p.kind) })))}
-          />
-        </div>
+        </HorizontalStrip>
         )}
         <div className="grow" />
         <Segmented
@@ -508,7 +509,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
           {t("{n} elements", { n: doc.elementCount })} · {t("total length {v} m", { v: Number(doc.totalLength.toPrecision(6)) })}
         </span>
         <span className="grow" />
-        {runResults !== false && !liveRunning && replayTrack && (
+        {runResults !== false && !liveRunning && (
           <PlayerBar
             id={`lastrun:${run.data?.started ?? ""}`}
             label={t("last run")}
@@ -516,6 +517,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             restMass={restMass}
             kind="project"
             compact
+            followKinds={["project", "segment"]}
             onStart={() => !show.run && setShow({ run: true })}
           />
         )}
@@ -551,7 +553,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
       <div className="ve-bottom" ref={bottomRef}>
         <div className="ve-outline" style={{ width: outlineW }}>
           <StructureTree
-            revealRequest={treeRevealRequest}
+            revealRequest={treeRevealRequest + selectionRequest}
             doc={doc}
             kw={kw}
             selected={selected}

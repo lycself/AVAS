@@ -4,8 +4,11 @@ Location: ``gui.json`` in :data:`avas.paths.USER_DATA_DIR` (``%LOCALAPPDATA%\\AV
 on Windows); ``AVAS_GUI_SETTINGS`` overrides the path (tests use this so the
 user's real preferences are never touched).
 """
+import configparser
 import json
 import os
+from pathlib import Path
+import sys
 import threading
 
 from avas.paths import USER_DATA_DIR
@@ -38,6 +41,17 @@ class Settings:
         self._lock = threading.RLock()
         self._data = {}
         self._load()
+        if "ui/language" not in self._data and getattr(sys, "frozen", False):
+            initial = configparser.ConfigParser()
+            try:
+                raw = Path(sys.executable).with_name("avas-install.ini").read_bytes()
+                encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"
+                initial.read_string(raw.decode(encoding))
+                language = initial.get("UI", "Language", fallback="")
+            except (OSError, UnicodeError, configparser.Error):
+                language = ""
+            if language in ("en", "zh_CN"):
+                self.set("ui/language", language)
 
     def _load(self):
         try:

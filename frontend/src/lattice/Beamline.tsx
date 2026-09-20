@@ -2,8 +2,9 @@
 // click = select, double-click = fit.
 import { assignLanes, drawGroups, laneCenter, LANE_HEIGHT, LANE_TOP } from "./layoutLanes";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pick, useT } from "../i18n";
+import { useT } from "../i18n";
 import { useApp } from "../store/app";
+import { elementType } from "./elementType";
 import { cssColor, niceStep } from "../util";
 import { drawGlyph, elementShape, polarity, type Shape } from "./glyphs";
 import { elementColorVar, fmt6, worstIssue, type LatticeDoc, type Schema } from "./types";
@@ -37,7 +38,7 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
   const lastTotal = useRef(-1);
   const drag = useRef<{ x: number; v0: number; v1: number; moved: boolean } | null>(null);
 
-  const titles = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k.title])), [schema]);
+  const titles = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k])), [schema]);
 
   const items = useMemo<Item[]>(() => {
     if (!doc) return [];
@@ -47,7 +48,7 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
         const z0 = s.zStart!;
         const z1 = s.zEnd ?? z0;
         const label = s.name || (s.key === "field" ? s.params[8] : "") || s.keyword;
-        const title = titles.get(s.key);
+        const typeLabel = elementType(s, titles).label;
         const shape = elementShape(s);
         return {
           line: s.line,
@@ -60,7 +61,7 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
           shape,
           pol: polarity(s),
           label,
-          title: `${label} · ${title ? pick(title) : s.keyword}\nz = ${fmt6(z0)} … ${fmt6(z1)} m`,
+          title: `${label} · ${typeLabel}\nz = ${fmt6(z0)} … ${fmt6(z1)} m`,
           issue: worstIssue(s),
         } as Item;
       }));
@@ -273,6 +274,7 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
           {items.filter((it) => it.line !== hover.item.line && zOf(hover.x) >= it.z0 && zOf(hover.x) <= it.z1).map((it) => `\n${t("Overlapping element")}: ${it.label} (${t("Line")} ${it.line + 1})`).join("")}
         </div>
       )}
+      {items.some((it) => it.shape === "steerer") && <div className="glyph-key">{t("▼│ Corrector symbol · field-map type may be inferred from its filename")}</div>}
       {!items.length && <div className="beamline-empty">{t("No active elements between start and end")}</div>}
     </div>
   );

@@ -45,6 +45,7 @@ avas/_build.json
 .avas-install.json
 # assistant work folders inside projects (sandbox runs, backups)
 .avas_ai/
+.avas_history/
 
 # Claude Code dev-server config
 .claude/

@@ -8,7 +8,7 @@ build and compiles the installer):
     pyinstaller packaging/avas.spec
 
 The result is dist/AVAS/ with
-* AVAS.exe     - console program, same sub-commands as the ``avas`` CLI (``AVAS.exe run ...``)
+* AVAS.exe     - opens the GUI without arguments, otherwise runs the ``avas`` CLI
 * AVASGui.exe  - the graphical interface without a console window
 * MicrosoftEdgeWebview2Setup.exe (if fetched) - offered when WebView2 is missing
 """
@@ -62,7 +62,7 @@ common = dict(pathex=[ROOT], binaries=binaries, datas=datas, hiddenimports=hidde
               hooksconfig={}, runtime_hooks=[], excludes=["avas.gpu", "PyQt5", "PySide6", "tkinter"],
               noarchive=False)
 
-cli = Analysis([os.path.join(ROOT, "run_avas.py")], **common)
+cli = Analysis([os.path.join(ROOT, "packaging", "avas_cli.py")], **common)
 gui = Analysis([os.path.join(ROOT, "packaging", "avas_gui.py")], **common)
 
 cli_pyz = PYZ(cli.pure, cli.zipped_data)

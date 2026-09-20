@@ -1,3 +1,4 @@
+import { createWheelClassifier, pointerDevice, wheelPixels, moveRange, zoomFactor } from "../components/pointer";
 // Beamline layout of the visual editor (and, compact, of the Run page): element
 // glyphs on top, the beam envelope below on the same z axis (x above the axis, y
 // mirrored below, as in TraceWin), pipe apertures and particle losses, with the
@@ -10,10 +11,11 @@
 // clears both; the × on the left of an entry hides that curve (remembered in
 // localStorage).  Palette items can be dropped onto the beamline.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { elementType } from "./elementType";
 import { assignLanes, drawGroups, laneAt, laneCenter, LANE_HEIGHT, LANE_TOP } from "./layoutLanes";
 import { ViewNavigation } from "./ViewNavigation";
 import { cx, Icon } from "../components/ui";
-import { pick, useT } from "../i18n";
+import { useT } from "../i18n";
 import { useApp } from "../store/app";
 import type { LiveBandItem } from "../store/live";
 import { subscribeBunch, useMotion, type BunchFrame } from "./bunchPlayer";
@@ -86,6 +88,8 @@ type Props = {
   onDropElement?: (z: number, kind: NewElementKind) => void;
   readOnly?: boolean;
   compact?: boolean;
+  /** Suggested height including all display lanes and a readable envelope. */
+  onPreferredHeight?: (height: number) => void;
   /** z range to emphasise (a segment on the Run page) */
   range?: [number, number] | null;
 };
@@ -145,9 +149,11 @@ export function LayoutView({
   onDropElement,
   readOnly,
   compact,
+  onPreferredHeight,
   range,
 }: Props) {
   const t = useT();
+  const device = useApp((s) => pointerDevice(s.settings));
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const markerRef = useRef<HTMLCanvasElement>(null);
@@ -176,7 +182,7 @@ export function LayoutView({
   const lastTotal = useRef(-1);
   const drag = useRef<{ x: number; v0: number; v1: number; moved: boolean } | null>(null);
   const lastFrame = useRef<BunchFrame | null>(null);
-  const titles = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k.title])), [schema]);
+  const titles = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k])), [schema]);
 
   const items = useMemo<Item[]>(() => {
     const blockOrder = new Map<number, number>();
@@ -189,7 +195,7 @@ export function LayoutView({
           blockOrder.set(s.block, n + 1);
           lane = n;
         }
-        const title = titles.get(s.key);
+        const typeLabel = elementType(s, titles).label;
         return {
           line: s.line,
           z0: s.zStart!,
@@ -198,7 +204,7 @@ export function LayoutView({
           shape: elementShape(s),
           pol: polarity(s),
           label: s.name || (s.key === "field" ? s.params[8] : "") || s.keyword,
-          typeTitle: title ? pick(title) : s.keyword,
+          typeTitle: typeLabel,
           lane,
           block: s.block,
           apertureBase: lane === 0,
@@ -212,6 +218,10 @@ export function LayoutView({
   const GLYPH_H = layered ? LANE_TOP + laneCount * LANE_HEIGHT + 18 : compact ? 46 : 76;
   const itemCy = (it: Item) => layered ? laneCenter(it.lane) : GLYPH_H / 2 + 4;
   const itemH = layered ? 12 : GLYPH_H / 2 - 6;
+
+  useEffect(() => {
+    onPreferredHeight?.(Math.max(320, GLYPH_H + 240));
+  }, [GLYPH_H, onPreferredHeight]);
 
   // ---- the curves, back to front
   const series = useMemo<Series[]>(() => {
@@ -325,12 +335,16 @@ export function LayoutView({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const classify = createWheelClassifier();
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const x = e.clientX - canvas.getBoundingClientRect().left;
       const frac = (x - plot.left) / pw;
-      const f = e.deltaY < 0 ? 0.8 : 1.25;
+      const pixels = wheelPixels(e, canvas.clientHeight);
+      const pan = classify(e, device) === "pan";
+      const f = zoomFactor(pixels.y);
       setView(([start, end]) => {
+        if (pan) return moveRange([start, end], (pixels.x || pixels.y) / pw);
         const zc = start + frac * (end - start);
         const span = Math.min(Math.max((end - start) * f, 1e-4), total * 1.2);
         return [zc - frac * span, zc - frac * span + span];
@@ -341,7 +355,7 @@ export function LayoutView({
     // A non-passive native listener lets zoom cancel the page's default scroll.
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
-  }, [plot.left, pw, total]);
+  }, [plot.left, pw, total, device]);
 
   // vertical scale (mm) from what is visible
   const yMax = useMemo(() => {
@@ -925,6 +939,7 @@ export function LayoutView({
         }}
         onDoubleClick={fit}
       />
+      {items.some((it) => it.shape === "steerer") && <div className="glyph-key">{t("▼│ Corrector symbol · field-map type may be inferred from its filename")}</div>}
       <canvas ref={markerRef} className="layout-overlay" />
       <canvas ref={overlayRef} className="layout-overlay" />
       {hover && hoverInfo && (

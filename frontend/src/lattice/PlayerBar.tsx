@@ -1,7 +1,7 @@
 // Replay controls for a finished envelope: play / pause, position, speed and
 // whether the bunch moves at uniform speed in z or with the beam's time of flight.
 // One replay runs at a time (bunchPlayer); every view showing the bunch follows it.
-import { Button, cx, IconButton, Segmented, Select } from "../components/ui";
+import { Button, cx, Segmented, Select } from "../components/ui";
 import { useT } from "../i18n";
 import { REPLAY_SPEEDS, setReplay, startReplay, stopReplay, usePlayer, type BunchFrame, type Track } from "./bunchPlayer";
 
@@ -13,15 +13,16 @@ type Props = {
   restMass?: number | null;
   kind?: BunchFrame["kind"];
   compact?: boolean;
+  followKinds?: BunchFrame["kind"][];
   className?: string;
   /** called when the replay is started from this bar */
   onStart?: () => void;
 };
 
-export function PlayerBar({ id, label, track, restMass, kind, compact, className, onStart }: Props) {
+export function PlayerBar({ id, label, track, restMass, kind, compact, className, onStart, followKinds }: Props) {
   const t = useT();
   const replay = usePlayer((s) => s.replay);
-  const mine = replay?.id === id;
+  const mine = replay != null && (replay.id === id || !!followKinds?.includes(replay.kind));
   const usable = !!track && track.z.length > 1;
 
   if (!mine) {
@@ -46,11 +47,12 @@ export function PlayerBar({ id, label, track, restMass, kind, compact, className
 
   return (
     <div className={cx("player-bar", compact && "compact", className)}>
-      <IconButton
+      <span className="player-source ellipsis" title={replay.label}>{t("Replay of {label}", { label: replay.label })}</span>
+      <Button small variant="ghost"
         icon={replay.playing ? "debug-pause" : "debug-start"}
-        tip={replay.playing ? t("Pause") : t("Play")}
+        tip={replay.playing ? t("Pause replay") : t("Continue replay")}
         onClick={() => setReplay({ playing: !replay.playing })}
-      />
+      >{replay.playing ? t("Pause replay") : t("Continue replay")}</Button>
       <input
         className="player-progress"
         type="range"
@@ -75,7 +77,7 @@ export function PlayerBar({ id, label, track, restMass, kind, compact, className
           ]}
         />
       )}
-      <IconButton icon="close" tip={t("End the replay")} onClick={stopReplay} />
+      <Button small variant="ghost" className="replay-stop" icon="debug-stop" tip={t("End the replay")} onClick={stopReplay}>{t("End replay")}</Button>
     </div>
   );
 }

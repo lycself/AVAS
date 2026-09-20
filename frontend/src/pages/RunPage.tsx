@@ -79,6 +79,7 @@ export default function RunPage() {
   else if (last && !last.ok && !last.stopped) engineLine = last.message ?? "";
 
   return (
+    <div className="run-page-shell">
     <div className="page">
       <div className="page-inner">
         <PageHeader
@@ -173,6 +174,7 @@ export default function RunPage() {
 
         <RunRecords running={running} />
       </div>
+    </div>
     </div>
   );
 }

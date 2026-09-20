@@ -1,3 +1,4 @@
+import { createWheelClassifier, type PointerDevice } from "../components/pointer";
 // The three.js viewer behind Beamline3D.tsx: scene construction from the model,
 // on-demand rendering, camera animation (fit, focus, fly-through, follow the
 // bunch), picking and pointer / keyboard navigation.  The HTML labels and the
@@ -25,7 +26,7 @@ import type { BunchFrame, MotionMode } from "./bunchPlayer";
 import { fmt6, schemaNow, statementSummary } from "./types";
 
 export type Envelope3D = { z: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; label: string } | null; // z in m, rms sizes in mm
-export type PointerDevice = "auto" | "mouse" | "touchpad";
+export type { PointerDevice } from "../components/pointer";
 
 /* ================================================================== constants & helpers */
 const LOSS_MS = 1500;
@@ -205,7 +206,7 @@ export class Viewer {
   private ro: ResizeObserver;
   private mo: MutationObserver;
   private device: PointerDevice = "auto";
-  private lastWheel: { kind: "mouse" | "touchpad"; time: number } | null = null;
+  private classifyWheel = createWheelClassifier();
   private sPts: { s: number; p: THREE.Vector3 }[] = []; // orbit samples for the position bar
   private posBar: PositionBar | null = null;
   private keyS: number | null = null;
@@ -369,7 +370,7 @@ export class Viewer {
 
   setPointerDevice(device: PointerDevice) {
     this.device = device;
-    this.lastWheel = null;
+    this.classifyWheel = createWheelClassifier();
   }
 
   /** Toolbar zoom around the current view target, independent of pointer detection. */
@@ -1442,25 +1443,9 @@ export class Viewer {
   };
 
   /** Mouse wheel or touchpad swipe?  Two-finger swipes pan; the wheel and pinches (ctrl + wheel) zoom. */
-  private wheelKind(ev: WheelEvent): "mouse" | "touchpad" {
-    if (this.device !== "auto") return this.device;
-    const now = performance.now();
-    if (this.lastWheel && now - this.lastWheel.time < 300) {
-      this.lastWheel.time = now; // one gesture keeps its kind
-      return this.lastWheel.kind;
-    }
-    // wheel notches come in multiples of 120 (wheelDelta) without horizontal part; touchpads send small, uneven steps
-    const legacy = (ev as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
-    let kind: "mouse" | "touchpad" = "touchpad";
-    if (ev.deltaMode !== 0) kind = "mouse";
-    else if (ev.deltaX === 0 && legacy != null && legacy !== 0 && Math.abs(legacy) % 120 === 0) kind = "mouse";
-    this.lastWheel = { kind, time: now };
-    return kind;
-  }
-
   private onWheel = (ev: WheelEvent) => {
     if (ev.target !== this.renderer.domElement || ev.ctrlKey || !this.model) return;
-    if (this.wheelKind(ev) !== "touchpad") return; // OrbitControls zooms
+    if (this.classifyWheel(ev, this.device) !== "pan") return; // OrbitControls zooms
     ev.preventDefault();
     ev.stopPropagation();
     this.tween = null;

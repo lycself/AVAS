@@ -1,3 +1,4 @@
+import { PointerSettings } from "../components/PointerSettings";
 import { call } from "../bridge";
 import { Button, Checkbox, Icon, IconButton, Radio, Section, Spinner, TextInput } from "../components/ui";
 import { fileSaved } from "../store/pages";
@@ -69,7 +70,7 @@ export default function SettingsPage() {
     files: (d) => (d ? [d.meta.inputPath, d.meta.iniPath] : []),
   });
 
-  if (!open) return <NoProject />;
+  if (!open) return <div className="page"><div className="page-inner"><PointerSettings /><NoProject /></div></div>;
   if (!ed.value) return <div className="empty-state">{ed.error ? <span className="danger-text">{ed.error}</span> : <Spinner size={24} />}</div>;
 
   const f = ed.value.form;
@@ -109,6 +110,7 @@ export default function SettingsPage() {
             </>
           }
         />
+        <Section title={tt("Plot interaction")} icon="settings-gear"><PointerSettings /></Section>
         <RunLockBanner />
         <fieldset className="lockable columns" disabled={locked}>
           <div>

@@ -12,8 +12,9 @@ import { fileSaved, getPage, markDirty, onFileSaved, registerPage } from "../sto
 import { BOUNDARY_COLUMNS, IniTable, KeywordTable, scanDataColumns, TokenTable, TraceWinTable } from "../files/tables";
 import { FieldMapView, ParticlesView, PlainEditor, type PlainEditorHandle } from "../files/views";
 import { NoProject, PageHeader, RunLockBanner } from "./common";
+import { FileHistoryDock, FileHistoryWorkspace } from "../files/FileHistory";
 
-type FileEntry = { name: string; path: string; kind: string; group: string; role: string; accent: boolean; editable: boolean; size: number; mtime: number };
+type FileEntry = { name: string; path: string; kind: string; group: string; role: string; accent: boolean; editable: boolean; size: number; mtime: number; historyAvailable?: boolean };
 type Listing = { dir: string; files: FileEntry[]; latticeName: string; latticePath: string; fieldDirs: string[] };
 type Opened = FileEntry & { view: "text" | "info"; text?: string; tooLarge?: boolean; modified?: string };
 
@@ -91,6 +92,7 @@ function tableTitle(kind: string) {
 }
 
 export default function FilesPage() {
+  const [historyHost, setHistoryHost] = useState<HTMLDivElement | null>(null);
   const tt = useT();
   const projectPath = useApp((s) => (s.project.open ? s.project.path : null));
   const page = useApp((s) => s.page);
@@ -109,6 +111,7 @@ export default function FilesPage() {
   const openedRef = useRef(opened);
   openedRef.current = opened;
   const plainRef = useRef<PlainEditorHandle>(null);
+  const historySource = useRef("file");
   const latticeRef = useRef<LatticeEditorHandle>(null);
 
   const isDirty = () => !!openedRef.current && openedRef.current.view === "text" && textRef.current !== saved.current;
@@ -130,6 +133,7 @@ export default function FilesPage() {
     try {
       const f = await call<Opened>("files.open", { path });
       saved.current = f.text ?? "";
+      historySource.current = "file";
       setText(f.text ?? "");
       setOpened(f);
       setOpenKey((k) => k + 1);
@@ -164,7 +168,11 @@ export default function FilesPage() {
     const f = openedRef.current;
     if (!f || !isDirty()) return;
     const content = textRef.current;
-    await call("files.save", { path: f.path, text: content });
+    const editor = f.kind === "lattice" ? latticeRef.current : plainRef.current;
+    const restoration = editor?.getRestoration() ?? null;
+    await call("files.save", { path: f.path, text: content, source: historySource.current, restored_from: restoration?.revision });
+    editor?.finishHistorySave(restoration);
+    historySource.current = "file";
     saved.current = content;
     setText(content + ""); // re-render
     markDirty("files", false);
@@ -491,6 +499,7 @@ export default function FilesPage() {
               );
             })}
           </div>
+          <FileHistoryDock setHost={setHistoryHost} available={!!(opened?.view === "text" && opened.editable && opened.historyAvailable)} />
         </div>
         <div className="files-content">
           {opened && (
@@ -520,7 +529,15 @@ export default function FilesPage() {
             </div>
           )}
           {opened && <p className="muted" style={{ margin: "0 0 8px" }}>{roleDescription(opened, listing.latticeName)}</p>}
-          {renderContent()}
+          <FileHistoryWorkspace listHost={historyHost} path={opened?.view === "text" && opened.editable && opened.historyAvailable ? opened.path : ""}
+            getText={() => textRef.current} onRestore={(next, revision) => {
+              if (locked || !opened) return;
+              historySource.current = "file";
+              if (opened.kind === "lattice") latticeRef.current?.restoreText(next, revision);
+              else { plainRef.current?.setText(next, revision); edit(next, "text"); }
+            }}>
+            {renderContent()}
+          </FileHistoryWorkspace>
         </div>
       </div>
     </div>

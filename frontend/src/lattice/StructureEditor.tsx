@@ -7,6 +7,7 @@ import { applyResult, structureMenu, type ApplyRange } from "./structureMenu";
 import { deleteUnit, duplicateUnit, moveUnit, moveUnitTo } from "./structureOps";
 import { Checkbox, CommitInput, cx, Icon, Select, Tabs } from "../components/ui";
 import { pick, t, useT } from "../i18n";
+import { ComponentView } from "./ComponentView";
 import { Beamline } from "./Beamline";
 import { elementType, matchesStatement } from "./elementType";
 import { selectedGroups } from "./treeSelection";
@@ -32,6 +33,7 @@ type Props = {
   doc: LatticeDoc | null;
   schema: Schema;
   selected: number | null;
+  selectionRequest?: number;
   onSelect: (line: number, source: "tree" | "beamline" | "grid") => void;
   onEdits: (edits: Edit[]) => void;
   /** Structural edits (insert / move / delete); absent = no structure menu. */
@@ -40,6 +42,7 @@ type Props = {
   frequency?: number;
   readOnly?: boolean;
   fieldmaps: Record<string, string[]>;
+  fieldDirs?: string[];
   /** The last parse failed with this message; *doc* is the previous good one. */
   parseError?: string | null;
 };
@@ -633,11 +636,12 @@ function ParamGrid({ doc, kw, selected, readOnly, onSelect, onEdits }: { doc: La
 }
 
 /* ------------------------------------------------------------------ editor */
-export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRangeEdits, getLines, frequency, readOnly, fieldmaps, parseError }: Props) {
+export function StructureEditor({ doc, schema, selected, selectionRequest = 0, onSelect, onEdits, onRangeEdits, getLines, frequency, readOnly, fieldmaps, fieldDirs, parseError }: Props) {
   const tt = useT();
   const kw = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k])), [schema]);
   const [tab, setTab] = useState<"structure" | "table">("structure");
   const [split, setSplit] = useState(0.52);
+  const [revealRequest, setRevealRequest] = useState(0);
   const bodyRef = useRef<HTMLDivElement>(null);
   const st = doc && selected != null ? doc.statements.find((s) => s.line === selected) ?? null : null;
 
@@ -659,7 +663,7 @@ export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRa
 
   return (
     <div className="structure-editor">
-      <Beamline doc={doc} schema={schema} selected={selected} onSelect={(l) => onSelect(l, "beamline")} />
+      <Beamline doc={doc} schema={schema} selected={selected} onSelect={(l) => { setRevealRequest((n) => n + 1); onSelect(l, "beamline"); }} />
       {parseError && (
         <div className="parse-warning warning-text" role="status" data-tip={parseError}>
           <Icon name="warning" /> {tt("The lattice could not be parsed: {error}", { error: parseError })} {tt("The last good structure is shown.")}
@@ -682,6 +686,7 @@ export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRa
                 doc={doc}
                 kw={kw}
                 selected={selected}
+                revealRequest={revealRequest + selectionRequest}
                 onSelect={(l) => onSelect(l, "tree")}
                 {...(onRangeEdits && getLines ? structureTreeHandlers(doc, getLines, onRangeEdits, { readOnly, frequency }) : {})}
               />
@@ -702,7 +707,17 @@ export function StructureEditor({ doc, schema, selected, onSelect, onEdits, onRa
                 e.preventDefault();
               }}
             />
-            <div className="pane grow property-scroll">
+            <div className="pane grow property-scroll structure-inspector">
+              {st?.isElement && <ComponentView key={st.line} st={st} kw={kw.get(st.key)} fieldDirs={fieldDirs ?? null} readOnly={readOnly}
+                onDraft={() => {}}
+                onCommit={(line, values) => {
+                  if (readOnly) return;
+                  const current = doc.statements.find((s) => s.line === line);
+                  if (!current) return;
+                  const params = Array.from({ length: Math.max(current.params.length, ...Object.keys(values).map((k) => Number(k) + 1)) }, (_, i) => values[i] ?? current.params[i] ?? "0");
+                  const text = formatStatement(current, { params });
+                  if (text !== current.raw) onEdits([[line, text]]);
+                }} />}
               <PropertyPanel st={st} kw={kw} readOnly={readOnly} fieldmaps={fieldmaps} onEdits={onEdits} />
             </div>
           </div>

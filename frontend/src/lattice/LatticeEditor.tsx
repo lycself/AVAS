@@ -1,3 +1,4 @@
+import type { RestorationHandle } from "../files/restorationOrigin";
 // Text editor and structure editor (or the visual editor) on one lattice text.
 // The Monaco model is the single source of truth: every structured or visual
 // edit is applied to it as one undo step, then re-parsed.
@@ -13,8 +14,9 @@ import type { RangeEdit } from "./structureOps";
 import { TextEditor, type TextEditorHandle } from "./TextEditor";
 import { loadSchema, type Edit, type LatticeDoc, type Schema } from "./types";
 import { VisualEditor } from "./VisualEditor";
+import type { HistoryState } from "./editorHistory";
 
-export type LatticeEditorHandle = {
+export type LatticeEditorHandle = RestorationHandle & {
   getText: () => string;
   setText: (text: string) => void;
   /** Whole-line replacements as one undo step (used by the assistant). */
@@ -22,6 +24,8 @@ export type LatticeEditorHandle = {
   applyRangeEdits: (edits: RangeEdit[], select?: number) => void;
   /** Replace the whole text as one undoable edit (assistant changes). */
   replaceText: (text: string) => void;
+  /** Restore a history snapshot, opening visual editing when necessary. */
+  restoreText: (text: string, revision?: string) => void;
   select: (line: number) => void;
   selection: () => { line: number; keyword: string; name: string } | null;
 };
@@ -46,6 +50,8 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
   /** Why the last parse failed (the previous good doc stays in use). */
   const [parseError, setParseError] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  const [selectionRequest, setSelectionRequest] = useState(0);
+  const [history, setHistory] = useState<HistoryState>({ canUndo: false, canRedo: false });
   const [fieldmaps, setFieldmaps] = useState<Record<string, string[]>>({});
   const [split, setSplit] = useState(() => Number(localStorage.getItem("avas.latticeSplit")) || 0.4);
   const [showText, setShowText] = useState(() => localStorage.getItem("avas.visual.text") === "1");
@@ -87,8 +93,8 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
   const parse = useCallback(
     (text: string, delay: number) => {
       window.clearTimeout(timer.current);
+      const my = ++seq.current;
       timer.current = window.setTimeout(() => {
-        const my = ++seq.current;
         call<LatticeDoc>("lattice.parse", { text, fieldDirs: fieldDirs ?? null })
           .then((d) => {
             if (my !== seq.current) return;
@@ -144,6 +150,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
   );
 
   const selectLine = useCallback((line: number) => {
+    setSelectionRequest((n) => n + 1);
     const d = docRef.current;
     if (d && d.statements.some((s) => s.line === line)) {
       setSelected(line);
@@ -159,7 +166,11 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
 
   useImperativeHandle(ref, () => ({
     getText: () => textRef.current?.getText() ?? initialText,
+    getRestoration: () => textRef.current?.getRestoration() ?? null,
+    finishHistorySave: (origin) => textRef.current?.finishHistorySave(origin),
     setText: (text) => {
+      editBase.current = null;
+      setVisualEditing(false);
       textRef.current?.setText(text, true);
       parse(text, 0);
     },
@@ -168,6 +179,18 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
     replaceText: (text) => {
       if (!textRef.current) return;
       textRef.current.setText(text, false);
+      onChangeRef.current?.(text);
+      parse(text, 0);
+    },
+    restoreText: (text, revision) => {
+      if (!textRef.current || readOnly) return;
+      if (layout === "visual" && !editing) {
+        editBase.current = textRef.current.getText();
+        setVisualEditing(true);
+      }
+      pendingSelect.current = null;
+      setSelected(null);
+      textRef.current.setText(text, false, revision);
       onChangeRef.current?.(text);
       parse(text, 0);
     },
@@ -182,6 +205,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
   if (!schema) return <div className="empty-state"><Spinner size={24} /></div>;
 
   const select = (line: number, source: string) => {
+    setSelectionRequest((n) => n + 1);
     setSelected(line);
     if (source !== "text") textRef.current?.revealLine(line);
   };
@@ -220,6 +244,14 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
     setVisualEditing(true);
   };
 
+  const restoreSession = () => {
+    const base = editBase.current;
+    if (readOnly || !editing || base == null || !textRef.current || base === getText()) return;
+    textRef.current.setText(base, false);
+    onChangeRef.current?.(base);
+    parse(base, 0);
+  };
+
   const finishEditing = async () => {
     if (!dirty) {
       setVisualEditing(false);
@@ -242,12 +274,7 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
         reportError(e);
       }
     } else if (choice === "discard") {
-      const base = editBase.current;
-      if (base != null && textRef.current && base !== getText()) {
-        textRef.current.setText(base, false); // one undoable step
-        onChangeRef.current?.(base);
-        parse(base, 0);
-      }
+      restoreSession();
       setVisualEditing(false);
     }
   };
@@ -259,13 +286,15 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
       initialText={initialText}
       readOnly={layout === "visual" ? visualReadOnly : readOnly}
       doc={doc}
+      onHistoryChange={setHistory}
       onChange={(t) => {
         onChangeRef.current?.(t);
         parse(t, 350);
       }}
       onCursorLine={(line) => {
         const d = docRef.current;
-        if (d && d.statements.some((s) => s.line === line)) setSelected(line);
+        setSelected(d && d.statements.some((s) => s.line === line) ? line : null);
+        setSelectionRequest((n) => n + 1);
       }}
     />
   );
@@ -314,6 +343,10 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
             onToggleText={toggleText}
             onUndo={() => textRef.current?.undo()}
             onRedo={() => textRef.current?.redo()}
+            history={history}
+            canRestore={editBase.current != null && editBase.current !== getText()}
+            onRestore={restoreSession}
+            selectionRequest={selectionRequest}
             parseError={parseError}
           />
         ) : (
@@ -321,11 +354,13 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
             doc={doc}
             schema={schema}
             selected={selected}
+            selectionRequest={selectionRequest}
             readOnly={readOnly}
             fieldmaps={fieldmaps}
             onSelect={select}
             onEdits={applyEdits}
             onRangeEdits={applyRangeEdits}
+            fieldDirs={fieldDirs}
             getLines={getLines}
             parseError={parseError}
           />
@@ -344,11 +379,13 @@ export const LatticeEditor = forwardRef<LatticeEditorHandle, Props>(function Lat
       doc={doc}
       schema={schema}
       selected={selected}
+      selectionRequest={selectionRequest}
       readOnly={readOnly}
       fieldmaps={fieldmaps}
       onSelect={select}
       onEdits={applyEdits}
       onRangeEdits={applyRangeEdits}
+      fieldDirs={fieldDirs}
       getLines={getLines}
       parseError={parseError}
     />

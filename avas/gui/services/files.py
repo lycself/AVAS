@@ -11,6 +11,7 @@ from avas.data.fieldmap import EXT_MEANING, FieldMap, components
 from avas.data.lattice_doc import LatticeDocument
 from avas.data.particles import read_dst, read_edst
 from avas.gui import bridge, context
+from avas.gui.filehistory import supported as history_supported
 from avas.gui.bridge import UserError, rpc
 from avas.gui.locks import require_unlocked
 from avas.gui.textio import read_text, write_text
@@ -60,6 +61,7 @@ def _entry(project, path):
     group, role, accent, editable = describe(project, path, kind)
     st = os.stat(path)
     return {"name": os.path.basename(path), "path": path, "kind": kind, "group": group, "role": role,
+            "historyAvailable": history_supported(project, path),
             "accent": accent, "editable": editable, "size": st.st_size, "mtime": st.st_mtime}
 
 
@@ -107,13 +109,13 @@ def open_file(path):
 
 
 @rpc("files.save")
-def save_file(path, text):
+def save_file(path, text, source="file", restored_from=None):
     require_unlocked()
     p = _check(path)
     info = _entry(p, path) if os.path.isfile(path) else None
     if info is not None and not info["editable"]:
         raise UserError(f"{os.path.basename(path)} is generated or binary and cannot be edited here.")
-    write_text(path, text)
+    write_text(path, text, source=source, restored_from=restored_from)
     log.info("saved %s", os.path.basename(path))
     return _entry(p, path)
 

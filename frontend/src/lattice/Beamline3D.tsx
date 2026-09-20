@@ -20,6 +20,7 @@ import { Checkbox, Icon, IconButton, cx } from "../components/ui";
 import { useT } from "../i18n";
 import { persist, useApp } from "../store/app";
 import "../styles/beamline3d.css";
+import { pointerDevice } from "../components/pointer";
 import { ViewNavigation } from "./ViewNavigation";
 import { Viewer, type Envelope3D, type PointerDevice } from "./b3dViewer";
 import { autoExaggeration, buildModel, roundNice, structureKey } from "./beamline3dModel";
@@ -52,7 +53,7 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
   const tipRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLCanvasElement>(null);
   const [panMode, setPanMode] = useState(false);
-  const device = useApp((s) => (["auto", "mouse", "touchpad"].includes(s.settings["ui/b3dPointer"]) ? s.settings["ui/b3dPointer"] : "auto") as PointerDevice);
+  const device = useApp((s) => pointerDevice(s.settings));
   const viewerRef = useRef<Viewer | null>(null);
   const onSelectRef = useRef(onSelect);
   const [failed, setFailed] = useState(false);
@@ -140,9 +141,9 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
   const v = () => viewerRef.current;
 
   const helpMenu = (el: HTMLElement) => {
-    const setDevice = (d: PointerDevice) => persist({ "ui/b3dPointer": d });
+    const setDevice = (d: PointerDevice) => persist({ "ui/pointerDevice": d });
     const items: MenuItem[] = [
-      { type: "header", label: tr("Pointer device") },
+      { type: "header", label: tr("Pointer device (all plots)") },
       { label: tr("Detect automatically"), checked: device === "auto", onClick: () => setDevice("auto") },
       { label: tr("Mouse: the wheel zooms"), checked: device === "mouse", onClick: () => setDevice("mouse") },
       { label: tr("Touchpad: two-finger swipe pans"), checked: device === "touchpad", onClick: () => setDevice("touchpad") },

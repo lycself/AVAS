@@ -86,7 +86,10 @@
 .visual-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0; outline: none; overflow: auto; }
 .visual-editor > .ve-toolbar, .visual-editor > .ve-status { flex-shrink: 0; }
 .ve-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--toolbar-bg); flex-wrap: wrap; }
-.ve-palette { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ve-palette { display: flex; align-items: center; gap: 4px; width: max-content; padding: 3px 0; }
+.horizontal-strip { display: flex; align-items: center; flex: 1 1 320px; min-width: 160px; max-width: 100%; gap: 4px; }
+.horizontal-strip-scroll { flex: 1; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.ve-chip { flex: none; }
 .ve-mode-hint { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; }
 .ve-mode-hint .codicon { font-size: 13px; }
 .ve-unsaved.codicon { font-size: 10px; color: var(--accent); }
@@ -96,7 +99,7 @@
 .ve-chip:disabled { opacity: .5; cursor: default; }
 .ve-chip-swatch { width: 12px; height: 8px; border-radius: 2px; flex: none; }
 .ve-chip-label { font-size: 12px; }
-@media (max-width: 1500px) { .ve-chip-label { display: none; } .ve-chip { padding: 0 7px; } }
+
 .ve-status { display: flex; gap: 18px; align-items: center; padding: 3px 10px; font-size: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; min-height: 24px; }
 .ve-status-item { display: inline-flex; align-items: center; gap: 6px; }
 .ve-status-item .codicon { font-size: 13px; }
@@ -186,3 +189,18 @@
 .cv-orbit { fill: none; stroke: var(--accent); stroke-width: 2.5; }
 .cv-edge-face { stroke: var(--danger); stroke-width: 3; }
 .cv-target { fill: none; stroke: var(--el-diag); stroke-width: 2; }
+
+.lattice-reveal-line { background: var(--lattice-reveal); }
+.lattice-reveal-margin { border-left: 3px solid var(--accent); }
+.player-source { max-width: 160px; }
+.structure-inspector .cv-svg { min-width: 0; width: 100%; }
+
+.glyph-key { position: absolute; top: 8px; right: 12px; max-width: 55%; font-size: 11px; color: var(--fg-soft); background: var(--beamline-bg); pointer-events: none; }
+.player-bar { flex-wrap: wrap; }
+.structure-inspector .cv-controls { min-width: 0; width: 100%; }
+.structure-inspector .cv-slider { grid-template-columns: minmax(70px, 1fr) minmax(65px, 1fr) 70px 30px; gap: 4px; }
+
+.ve-status { flex-wrap: wrap; overflow: visible; }
+.ve-status .player-bar { min-width: 0; max-width: 100%; }
+
+.replay-stop .codicon::before { content: ""; display: inline-block; width: 8px; height: 8px; background: currentColor; }

@@ -62,6 +62,9 @@ Name: "addtopath"; Description: "{cm:AddToPath}"; Flags: unchecked
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[INI]
+Filename: "{app}\avas-install.ini"; Section: "UI"; Key: "Language"; String: "{code:InitialLanguage}"; Flags: uninsdeleteentry uninsdeletefileifempty
+
 [Icons]
 Name: "{group}\AVAS"; Filename: "{app}\AVASGui.exe"; WorkingDir: "{userdocs}"
 Name: "{group}\{cm:UninstallProgram,AVAS}"; Filename: "{uninstallexe}"
@@ -77,6 +80,14 @@ Filename: "{app}\_internal\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent
 Filename: "{app}\AVASGui.exe"; Description: "{cm:RunAvas}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function InitialLanguage(Param: String): String;
+begin
+  if ActiveLanguage = 'zh' then
+    Result := 'zh_CN'
+  else
+    Result := 'en';
+end;
+
 function WebView2Missing: Boolean;
 var
   Version: String;

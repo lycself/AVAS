@@ -26,11 +26,23 @@ def read_text(path):
     return raw.decode("utf-8", errors="replace")
 
 
-def write_text(path, text):
-    """UTF-8, LF line endings, exactly one trailing newline (atomic replace)."""
+def write_text(path, text, source="file", restored_from=None):
+    from avas.gui.filehistory import capture
+    with capture(path, source, restored_from):
+        _write_text(path, text)
+
+
+def normalized_write_text(text):
+    """Normalize line endings and ensure a final newline for nonempty text."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if text and not text.endswith("\n"):
         text += "\n"
+    return text
+
+
+def _write_text(path, text):
+    """UTF-8, LF line endings, final newline (atomic replace)."""
+    text = normalized_write_text(text)
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)

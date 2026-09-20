@@ -9,6 +9,7 @@ import { registerLatticeEditor } from "../assistant/front";
 import { setLatticeMode, setVisualEditing, useLatticeUi } from "../store/latticeUi";
 import { fileSaved, markDirty, onFileSaved, registerPage } from "../store/pages";
 import { NoProject, PageHeader, RunLockBanner } from "./common";
+import { FileHistoryButton } from "../files/FileHistory";
 
 type ListInfo = { active: string; activePath: string; files: { name: string; missing: boolean }[]; fieldDirs: string[]; envOverride: string | null };
 
@@ -24,6 +25,7 @@ export default function LatticePage() {
   const mode = useLatticeUi((s) => s.mode);
   const locked = useInputsLocked();
   const savedText = useRef("");
+  const historySource = useRef<string | null>(null);
   const current = useRef<{ name: string; path: string } | null>(null);
 
   /** Open a lattice file in the editor (the run lattice when no name is given). Opening never changes the run lattice. */
@@ -33,6 +35,7 @@ export default function LatticePage() {
       setInfo(list);
       const file = await call<{ name: string; path: string; text: string }>("lattice.read", { name: name ?? list.active });
       savedText.current = normalize(file.text);
+      historySource.current = null;
       current.current = { name: file.name, path: file.path };
       setVisualEditing(false); // a (re)loaded lattice opens in the browse state
       setLoaded({ ...file, key: Date.now() });
@@ -57,8 +60,12 @@ export default function LatticePage() {
   const save = useCallback(async () => {
     const cur = current.current;
     if (!cur || !editorRef.current) return;
-    const text = editorRef.current.getText();
-    await call("lattice.write", { name: cur.name, text });
+    const editor = editorRef.current;
+    const restoration = editor.getRestoration();
+    const text = editor.getText();
+    await call("lattice.write", { name: cur.name, text, restored_from: restoration?.revision, source: historySource.current ?? (useLatticeUi.getState().mode === "visual" ? "visual" : "lattice") });
+    editor.finishHistorySave(restoration);
+    historySource.current = null;
     savedText.current = normalize(text);
     setDirty(false);
     markDirty("lattice", false);
@@ -89,7 +96,7 @@ export default function LatticePage() {
         path: () => current.current?.path ?? null,
         getText: () => (editorRef.current && current.current ? editorRef.current.getText() : null),
         isDirty: () => !!editorRef.current && !!current.current && normalize(editorRef.current.getText()) !== savedText.current,
-        replaceText: (text) => editorRef.current?.replaceText(text),
+        replaceText: (text) => { historySource.current = "assistant"; editorRef.current?.replaceText(text); },
         save,
         selection: () => editorRef.current?.selection() ?? null,
       }),
@@ -198,6 +205,13 @@ export default function LatticePage() {
           }))}
           onChange={openFile}
         />
+        <FileHistoryButton path={loaded.path}
+          getText={() => editorRef.current?.getText() ?? loaded.text}
+          onRestore={(text, revision) => {
+            if (locked) return;
+            historySource.current = null;
+            editorRef.current?.restoreText(text, revision);
+          }} />
         <span className="soft ellipsis grow" data-tip={loaded.path}>
           {loaded.path}
         </span>

@@ -155,10 +155,10 @@ def read(name):
 
 
 @rpc("lattice.write")
-def write(name, text):
+def write(name, text, source="lattice", restored_from=None):
     require_unlocked()
     path = _path(name)
-    write_text(path, text)
+    write_text(path, text, source=source, restored_from=restored_from)
     log.info("lattice saved: %s", os.path.basename(path))
     return {"path": path}
 

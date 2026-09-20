@@ -7,14 +7,14 @@
 // A run record chosen in the records list (store/live: openRecordReplay) takes the
 // panel over: its lattice, its envelope and a replay, until it is closed or a new
 // run starts.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { call } from "../bridge";
 import { Checkbox, Icon, IconButton, Spinner } from "../components/ui";
 import { fmtG } from "../format";
 import { useT } from "../i18n";
 import { useApp } from "../store/app";
 import { closeRecordReplay, lastFinite, useLive, type LiveLattice } from "../store/live";
-import { startReplay, useBunchFrame, usePlayer, type Track } from "./bunchPlayer";
+import { stopReplay, startReplay, useBunchFrame, usePlayer, type Track } from "./bunchPlayer";
 import { LayoutView, type EnvelopeCurves, type LayoutShow } from "./LayoutView";
 import { PlayerBar } from "./PlayerBar";
 import { loadSchema, type LatticeDoc, type Schema } from "./types";
@@ -22,6 +22,18 @@ import { loadSchema, type LatticeDoc, type Schema } from "./types";
 const SHOW: LayoutShow = { run: false, preview: false, aperture: true, losses: true, max: false, energy: false, scale: "beam", band: true };
 const ALL_KINDS: ("project" | "segment" | "assistant" | "scan")[] = ["project", "segment", "assistant", "scan"];
 const COMPARE_KEY = "avas.live.compare";
+const HEIGHT_KEY = "avas.live.height";
+const MIN_HEIGHT = 240;
+const MAX_HEIGHT = 1200;
+
+function loadHeight(): number | null {
+  try {
+    const value = Number(localStorage.getItem(HEIGHT_KEY));
+    return Number.isFinite(value) && value >= MIN_HEIGHT && value <= MAX_HEIGHT ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 function loadCompare(): boolean {
   try {
@@ -49,6 +61,20 @@ export function LiveBeamPanel() {
   const [parseError, setParseError] = useState<string | null>(null);
   const [restMass, setRestMass] = useState<number | null>(null);
   const [compare, setCompareState] = useState<boolean>(loadCompare);
+  const [preferredHeight, setPreferredHeight] = useState(320);
+  const [height, setHeight] = useState<number | null>(loadHeight);
+  const [maximized, setMaximized] = useState(false);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ y: number; height: number } | null>(null);
+  const viewHeight = height ?? Math.min(720, preferredHeight);
+  const saveHeight = (next: number | null) => {
+    const value = next === null ? null : Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, next));
+    setHeight(value);
+    try {
+      if (value === null) localStorage.removeItem(HEIGHT_KEY);
+      else localStorage.setItem(HEIGHT_KEY, String(value));
+    } catch { /* storage unavailable */ }
+  };
   const frame = useBunchFrame(4);
 
   // a record replaces the live run in the panel (never while a run is in progress)
@@ -140,7 +166,7 @@ export function LiveBeamPanel() {
   const restMassFor = !showRecord && (run?.kind === "assistant" || run?.kind === "scan") ? null : restMass;
 
   return (
-    <div className="live-beam">
+    <div className={`live-beam${maximized ? " maximized" : ""}`}>
       <div className="live-beam-head">
         <span className="live-beam-title">
           {running ? <span className="live-dot" /> : <Icon name="history" />}
@@ -159,11 +185,13 @@ export function LiveBeamPanel() {
           <Icon name="info" /> {t("schematic")}
         </span>
         {!running && (
-          <PlayerBar id={replayId} label={task} track={track} restMass={restMassFor} kind={kind} />
+          <PlayerBar id={replayId} label={task} track={track} restMass={restMassFor} kind={kind} followKinds={ALL_KINDS} />
         )}
-        {showRecord && <IconButton icon="close" tip={t("Back to the last run")} onClick={closeRecordReplay} />}
+        {!maximized && <IconButton icon="refresh" tip={t("Automatic view height")} onClick={() => saveHeight(null)} />}
+        <IconButton icon={maximized ? "screen-normal" : "screen-full"} tip={maximized ? t("Restore view") : t("Maximize view")} onClick={() => setMaximized(!maximized)} />
+        {showRecord && <IconButton icon="arrow-left" tip={t("Back to the last run")} onClick={() => { setMaximized(false); stopReplay(); closeRecordReplay(); }} />}
       </div>
-      <div className="live-beam-view">
+      <div className="live-beam-view" ref={viewRef} style={maximized ? undefined : { height: viewHeight }}>
         {schema && doc ? (
           <LayoutView
             doc={doc.doc}
@@ -181,12 +209,42 @@ export function LiveBeamPanel() {
             bunchKinds={ALL_KINDS}
             bunchWhenDone
             compact
+            onPreferredHeight={setPreferredHeight}
             range={segmentRange}
           />
         ) : (
           <div className="empty-state">{noLattice ? <span className="muted">{t("No lattice information for this run.")}</span> : <Spinner size={20} />}</div>
         )}
       </div>
+      {!maximized && <div
+        className="live-beam-resize"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={t("Resize beam view")}
+        aria-valuemin={MIN_HEIGHT}
+        aria-valuemax={MAX_HEIGHT}
+        aria-valuenow={viewHeight}
+        tabIndex={0}
+        data-tip={t("Drag to resize; double-click for automatic height")}
+        onDoubleClick={() => saveHeight(null)}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowUp" && e.key !== "ArrowDown" && e.key !== "Home") return;
+          e.preventDefault();
+          saveHeight(e.key === "Home" ? null : viewHeight + (e.key === "ArrowUp" ? -20 : 20));
+        }}
+        onPointerDown={(e) => {
+          if (e.button !== 0 || !viewRef.current) return;
+          e.preventDefault();
+          drag.current = { y: e.clientY, height: viewRef.current.getBoundingClientRect().height };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (drag.current) saveHeight(drag.current.height + e.clientY - drag.current.y);
+        }}
+        onPointerUp={(e) => { drag.current = null; e.currentTarget.releasePointerCapture(e.pointerId); }}
+        onPointerCancel={() => { drag.current = null; }}
+        onLostPointerCapture={() => { drag.current = null; }}
+      />}
       <div className="stats live-beam-stats">
         <div className="stat">
           <span className="caption">{t("Bunch at")}</span>

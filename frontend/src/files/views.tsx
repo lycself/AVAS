@@ -1,3 +1,4 @@
+import { createRestorationTracker, type RestorationHandle } from "./restorationOrigin";
 // Read-only viewers for particle distributions and field maps, and a plain text editor.
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { call } from "../bridge";
@@ -141,9 +142,10 @@ export function FieldMapView({ path }: { path: string }) {
   );
 }
 
-export type PlainEditorHandle = { getText: () => string; setText: (t: string) => void };
+export type PlainEditorHandle = RestorationHandle & { getText: () => string; setText: (t: string, revision?: string) => void };
 
 export const PlainEditor = forwardRef<PlainEditorHandle, { initialText: string; readOnly?: boolean; onChange: (text: string) => void }>(function PlainEditor({ initialText, readOnly, onChange }, ref) {
+  const restoration = useRef(createRestorationTracker());
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const syncing = useRef(false);
@@ -164,7 +166,8 @@ export const PlainEditor = forwardRef<PlainEditorHandle, { initialText: string; 
       unicodeHighlight: { ambiguousCharacters: false },
     });
     editor.current = ed;
-    ed.onDidChangeModelContent(() => {
+    ed.onDidChangeModelContent((event) => {
+      restoration.current.change(ed.getModel()!.getAlternativeVersionId(), event);
       if (!syncing.current) cb.current(ed.getValue());
     });
     return () => {
@@ -177,13 +180,18 @@ export const PlainEditor = forwardRef<PlainEditorHandle, { initialText: string; 
   useEffect(() => editor.current?.updateOptions({ readOnly: !!readOnly }), [readOnly]);
   useImperativeHandle(ref, () => ({
     getText: () => editor.current?.getValue() ?? "",
-    setText: (text) => {
+    getRestoration: () => restoration.current.get(),
+    finishHistorySave: (origin) => restoration.current.saved(origin),
+    setText: (text, revision) => {
       const ed = editor.current;
       if (!ed || ed.getValue() === text) return;
       syncing.current = true;
       try {
         // keep undo history: replace through an edit
+        ed.pushUndoStop();
         ed.executeEdits("table", [{ range: ed.getModel()!.getFullModelRange(), text }]);
+        ed.pushUndoStop();
+        if (revision) restoration.current.restored(ed.getModel()!.getAlternativeVersionId(), revision);
       } finally {
         syncing.current = false;
       }

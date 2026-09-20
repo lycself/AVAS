@@ -6,6 +6,7 @@ from avas.utils.iniconfig import IniConfig
 from avas.gui import context
 from avas.gui.bridge import UserError, rpc
 from avas.gui.locks import require_unlocked
+from avas.gui.filehistory import capture
 
 
 def safe_int(v, default):
@@ -137,7 +138,8 @@ def save(form, meta):
     }
     ensure_ini(p)
     try:
-        res = write_to_file_input_ini(item, values)
+        with capture(p.input_file("input.txt"), "settings"):
+            res = write_to_file_input_ini(item, values)
     except Exception as exc:  # noqa: BLE001 - range/type errors from the config classes
         raise UserError(str(exc)) from exc
     if res["code"] != 0:

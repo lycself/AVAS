@@ -147,7 +147,7 @@ def save(form):
     for key in MANAGED:
         if key not in written and new[key] is not None:
             result.append(new[key])
-    write_text(path, "\n".join(result))
+    write_text(path, "\n".join(result), source="beam")
     log.info("saved %s", os.path.basename(path))
     return load()
 

@@ -167,6 +167,7 @@ avas gui
    把上一次的包络画成灰线（默认不显示）。**历史记录回放**：下方「运行记录」列表里每条完成的记录（OutputFile、已保留的运行、
    分段运行）都有「回放」按钮，点后示意面板切换到这条记录（按它 `inputs/` 快照里的 lattice 画，分段运行按分段起点对齐）并开始回放，
    × 回到本次运行；新的运行开始时自动回到实时显示。鼠标在束线布局图内时，滚轮只缩放图形，不滚动页面；移到图外后正常滚动页面（结构页布局图同样如此）。
+   示意面板按元件层数自动增高，底部保留曲线空间；拖动图下方的横条可调整并记住高度，双击横条或点「自动调整视图高度」恢复自动。右上角「最大化视图／还原视图」可在工作区内放大查看，保留回放控制和统计；极多层时仍可在图内滚动。
    **运行锁**：完整运行、误差研究和分段运行进行中（包括暂停）时，所有输入文件只读——结构、束流、设置、文件页以及运行用的 lattice
    选择都不能修改，后端同样拒绝写入，AI 助手此时提出的修改会被直接拒绝并说明原因。原因是分段运行每个阶段开始时才复制输入文件，
    而且运行记录里的输入快照和实时显示都以运行开始时的输入为准，运行中修改会让结果混入两套输入。AI 助手的参数扫描 / 优化和扫描页使用副本，不加锁。
@@ -198,7 +199,7 @@ avas serve --open
 
 ### 软件更新
 
-Windows 安装包支持英文和简体中文；简体中文安装翻译随源码提供，构建时无需另外下载语言包。
+Windows 安装包支持英文和简体中文；首次启动且尚无语言偏好时，软件跟随安装器所选语言，升级或重装保留已保存的语言设置。简体中文安装翻译随源码提供，构建时无需另外下载语言包。双击 `AVAS.exe`（不带参数）也会打开界面；带参数时仍执行命令行功能，例如 `AVAS.exe run --help`。`AVASGui.exe` 是无控制台的界面入口。
 
 启动界面后会在后台检查 `lycself/AVAS` 的官方更新，检查结果缓存 6 小时；**帮助 → 检查更新** 可立即重查。网络失败不影响使用。点击提示查看版本和更新摘要，再选择**更新并重启**；确认时若发现更新的版本，会重新展示并要求确认。确认后锁定提交，下载期间的新发布不会改变此次安装目标。「忽略此版本」只忽略该提交，弹窗会提醒仍可从帮助菜单获取更新。
 
@@ -248,6 +249,8 @@ AI / 开发者提交前主动维护 [变更记录](docs/changes/README.md)，CI 
 > C. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., *Advanced virtual accelerator software: A linear accelerator simulation code*, Phys. Rev. Accel. Beams **28**, 044602 (2025). https://doi.org/10.1103/PhysRevAccelBeams.28.044602
 
 ---
+
+输入设备在设置页、顶部「设置」菜单或 3D 快捷菜单统一选择「自动／鼠标／触控板」，重启后记忆，对 2D、3D、运行和结果图生效。鼠标滚轮缩放；触控板双指滑动平移、捏合缩放；二维束线图的纵向滑动也沿束线平移。交替使用设备建议选择「自动」（按滚轮事件特征识别）。旧 3D 选择会沿用为全局设置。可视化编辑器的所有元件放在横向滚动栏，保留名称，支持左右箭头、触控板横滑和 Shift＋滚轮，以及点击／拖拽插入。
 
 ## English
 
@@ -349,6 +352,8 @@ Element lists show RF cavities, static electric/magnetic fields, and magnet type
 
 In a short window, the visual editor shrinks its 2D / 3D view to keep the element list and parameter panel accessible. If there is still too little room, the editor scrolls. Enlarging the window restores the preferred view height; the divider can also be dragged to adjust it.
 
+The Run page beam panel grows automatically with the number of element lanes, reserving space for the curves. Drag the bar below the view to set a remembered height; double-click it or use **Automatic view height** to reset. **Maximize view / Restore view** expands the panel within the workspace while keeping playback controls and statistics. Very large lane counts can still scroll inside the view.
+
 #### Browser mode
 
 ```powershell
@@ -359,7 +364,7 @@ avas serve --open
 
 ### Software updates
 
-The Windows installer supports English and Simplified Chinese. The Chinese installer translation ships with the source, so builds need no separate language-pack download.
+The Windows installer supports English and Simplified Chinese. On first launch without a saved language preference, AVAS adopts the installer language; upgrades and reinstalls preserve the saved preference. Running `AVAS.exe` without arguments opens the GUI; arguments still invoke the CLI, for example `AVAS.exe run --help`. `AVASGui.exe` opens the GUI without a console. The Chinese installer translation ships with the source, so builds need no separate language-pack download.
 
 The interface checks official updates from `lycself/AVAS` in the background and caches checks for six hours. **Help → Check for updates** checks immediately. Network errors do not block normal use. Review the update and choose **Update and restart**. If a newer version appeared before confirmation, review it again; after confirmation the exact commit is pinned. Ignoring a version affects only that commit; the dialog reminds you that updates remain available from Help.
 
@@ -388,3 +393,21 @@ If you use this code in your research, please cite:
 使用说明分为操作指南、案例教程、参数与文件参考，搜索跨栏目并显示来源。两份 Word 的技术内容已整理迁入，旧界面步骤改写；案例保留原文及验证状态。误差案例修订了末尾 drift 缺少参数的问题，校正案例未达到原文目标，旧包络与匹配案例标为待核实。原始 Word 保留不变。
 
 The floating manual has Operation guide, Case tutorials, and Parameters and files, with cross-category search and chapter links. The Word references are migrated with provenance and verification notes. The error example fixes a missing drift parameter; the correction example did not reach its original target, and legacy envelope/matching workflows remain explicitly unverified. Original Word files are unchanged.
+
+### 回放与结构定位
+
+结构页与运行页可暂停、继续或结束所显示的回放，并显示回放来源。结束回放保留记录；运行页返回箭头退出历史记录，四角图标用于最大化／还原。元件定位使用醒目的持续整行高亮，展开折叠并居中；文本＋结构右侧也提供元件示意和场曲线，可编辑参数并一步撤销。蓝色倒三角加竖线表示校正磁铁，场图类型推测在悬停提示中注明。
+
+可视化编辑的「撤销」「重做」共用文本模型历史，无可用历史时置灰。「撤销本次所有修改」恢复到本次点击「编辑」时的文本并继续编辑，恢复操作也能撤销；如需写入文件须另行保存。文本＋结构中点击文本元件行会同步选中列表与图中元件，重复点击也能重新定位。
+
+文件页在左侧文件列表下方提供「文件历史」区，可折叠、拖动调高，文件列表与历史独立滚动，标明当前文件。选中版本在右侧对比，切换文件自动更新历史。结构页在文件选择框旁提供「历史」按钮，弹窗左侧选版本、右侧看差异、下方恢复。两处共用版本数据，关闭对比后保留编辑内容与撤销历史；主导航不再设历史入口。可以查看 lattice、beam.txt、input.txt 的保存版本，并与当前编辑内容左右对比。文本＋结构、可视化编辑、束流／设置／文件页以及已批准 AI 修改的保存都记入项目 `.avas_history/`，重启后保留。恢复前自动留存当前编辑内容，所选版本先放入编辑区，可撤销，保存后才写入文件。成功保存后追加“从版本 N 恢复”或“从版本 N 恢复后修改”的记录，保留原有后续版本；撤销恢复后普通保存不带恢复标记，相邻内容相同不重复记录。运行时可查看与对比，但不可恢复。历史从此功能启用后的保存开始，不记录每次按键；外部修改在下次保存时留存。支持不超过 2 MB 的文本文件，版本不自动清理，重命名后建立新的文件历史。日志筛选为「全部」「警告与错误」「仅程序日志」，「日志」为面板标题。
+
+### Replay and element navigation
+
+The lattice and run pages can pause, resume or end the displayed replay and show its source. Ending replay keeps the record open; the back arrow leaves a historical record, while corner icons expand or restore the view. Element navigation highlights the whole text line, unfolds it and centers it. Text + structure also includes component diagrams and field profiles with parameter editing and single-step undo. The triangle-and-stem glyph denotes a corrector; inferred field-map types are identified in tooltips.
+
+Visual editing shares the text model's Undo/Redo history; buttons are disabled when no history is available. Revert all session changes restores the text from when Edit was clicked and keeps editing active. The restoration can itself be undone; save separately to write it to the file. In Text + structure, clicking an element's text line selects it in the list and diagram, including repeated clicks on the same line.
+
+The Files page has a collapsible, vertically resizable File history section below its file list, with independent scrolling and the current filename. Selecting a version shows the comparison on the right while keeping the file tree available. The Lattice page has a History button beside the file selector; its dialog shows versions on the left, differences on the right, and restoration controls below. Both views share history and preserve the original editor and undo stack. There is no global history navigation entry. It lists saved versions of lattice files, beam.txt and input.txt and compares them with the current editor side by side. Saves from text, structure, visual, beam, settings and file editors, including approved AI changes, share persistent project-local `.avas_history/` storage. Restoration preserves the current editor text first, loads the selected version as an undoable edit, and requires saving to write the file. A successful save appends “Restored from version N” or “Modified after restoring version N” while retaining later versions. Undoing restoration clears its attribution for ordinary edits; adjacent identical contents are not duplicated. During a run, viewing and comparison remain available but restoration is disabled. History starts with saves after this feature is enabled, not individual keystrokes; external changes are captured at the next AVAS save. Text files up to 2 MB are supported, versions are not automatically removed, and renamed files start a separate history. Log filters are All, Warnings and errors, and Application logs only; Log is the panel title.
+
+Pointer mode is shared by 2D, 3D, run and result plots, and is saved across restarts. Choose Auto, Mouse or Touchpad in the Settings page, Settings menu or 3D shortcut menu. Mouse wheels zoom; touchpad swipes pan and pinches zoom. In the beamline layout, vertical swipes also pan along the beamline. Auto detects each gesture from wheel event characteristics; existing 3D preferences are retained as the global fallback. The visual editor lists every component with its name in a horizontal strip, navigable with arrows, horizontal touchpad scrolling or Shift+wheel; click and drag insertion remain available.

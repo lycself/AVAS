@@ -124,7 +124,7 @@ export function LogPanel() {
         <div className="panel-filters">
           {(["all", "problems", "gui"] as LogFilter[]).map((f) => (
             <button key={f} className={cx("chip", filter === f && "active")} onClick={() => setFilter(f)}>
-              {f === "all" ? t("All") : f === "problems" ? t("Problems") : t("Without engine output")}
+              {f === "all" ? t("All") : f === "problems" ? t("Warnings and errors") : t("Application logs only")}
             </button>
           ))}
           <div className="panel-search">

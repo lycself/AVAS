@@ -1,3 +1,4 @@
+import { createRestorationTracker, type RestorationHandle } from "../files/restorationOrigin";
 // Monaco-based text editor for lattice files.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { IconButton, Segmented } from "../components/ui";
@@ -6,11 +7,12 @@ import { useApp } from "../store/app";
 import { defineThemes, LANG, monaco, registerLattice, setMarkers } from "./monaco";
 import type { RangeEdit } from "./structureOps";
 import type { Edit, LatticeDoc, Schema } from "./types";
+import { historyState, replaceModelText, runHistory, type HistoryState } from "./editorHistory";
 
-export type TextEditorHandle = {
+export type TextEditorHandle = RestorationHandle & {
   getText: () => string;
   /** Replace the whole text; clears undo history when *resetUndo*. */
-  setText: (text: string, resetUndo?: boolean) => void;
+  setText: (text: string, resetUndo?: boolean, revision?: string) => void;
   /** Whole-line replacements as one undo step. */
   applyEdits: (edits: Edit[]) => void;
   /** Line-range replacements / insertions / deletions as one undo step. */
@@ -28,24 +30,28 @@ type Props = {
   doc: LatticeDoc | null;
   onChange: (text: string) => void;
   onCursorLine?: (line0: number) => void;
+  onHistoryChange?: (state: HistoryState) => void;
 };
 
 const NL = String.fromCharCode(10);
 const ELEMENT_KEYS = new Set(["drift", "field", "quad", "solenoid", "bend", "steerer", "edge", "diag_energy", "diag_size", "diag_position"]);
 
-export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEditor({ schema, initialText, readOnly, doc, onChange, onCursorLine }, ref) {
+export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEditor({ schema, initialText, readOnly, doc, onChange, onCursorLine, onHistoryChange }, ref) {
   const t = useT();
+  const restoration = useRef(createRestorationTracker());
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const syncing = useRef(false);
-  const cb = useRef({ onChange, onCursorLine });
-  cb.current = { onChange, onCursorLine };
+  const cb = useRef({ onChange, onCursorLine, onHistoryChange });
+  cb.current = { onChange, onCursorLine, onHistoryChange };
   const theme = useApp((s) => s.resolvedTheme);
   const [numbering, setNumbering] = useState<"element" | "line">(() => (localStorage.getItem("avas.latticeNumbering") as any) || "element");
   const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem("avas.latticeFont")) || 13);
   const elementIndex = useRef<Map<number, number>>(new Map());
   const numberingRef = useRef(numbering);
   numberingRef.current = numbering;
+  const targetDecoration = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const revealSequence = useRef(0);
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
 
   useEffect(() => {
@@ -80,14 +86,41 @@ export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEdito
     } as any);
     editorRef.current = editor;
     decorations.current = editor.createDecorationsCollection();
-    editor.onDidChangeModelContent(() => {
+    targetDecoration.current = editor.createDecorationsCollection();
+    editor.onDidChangeModelContent((event) => {
+      restoration.current.change(editor.getModel()!.getAlternativeVersionId(), event);
       if (!syncing.current) cb.current.onChange(editor.getValue());
       updateNumbers();
+      // Undo/redo finish updating their stacks after the content event.
+      queueMicrotask(() => {
+        if (editorRef.current === editor) cb.current.onHistoryChange?.(historyState(editor.getModel()!));
+      });
+    });
+    const selectTextLine = (line: number) => {
+      revealSequence.current++;
+      targetDecoration.current?.set([{ range: new monaco.Range(line, 1, line, 1), options: {
+        isWholeLine: true, className: "lattice-reveal-line", linesDecorationsClassName: "lattice-reveal-margin",
+      } }]);
+      cb.current.onCursorLine?.(line - 1);
+    };
+    editor.onMouseDown((e) => {
+      // The mouse target is the clicked model line; a selection's end can be on
+      // the following superpose line. Also handles repeated clicks at the caret.
+      if (!syncing.current && e.event.leftButton && e.target.position &&
+          (e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
+           e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY ||
+           e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS)) {
+        selectTextLine(e.target.position.lineNumber);
+      }
     });
     editor.onDidChangeCursorPosition((e) => {
-      if (!syncing.current && e.source !== "api") cb.current.onCursorLine?.(e.position.lineNumber - 1);
+      if (!syncing.current && e.source !== "api" && e.source !== "mouse" &&
+          e.reason === monaco.editor.CursorChangeReason.Explicit) {
+        selectTextLine(e.position.lineNumber);
+      }
     });
     updateNumbers();
+    cb.current.onHistoryChange?.(historyState(editor.getModel()!));
     return () => {
       editor.getModel()?.dispose();
       editor.dispose();
@@ -156,23 +189,21 @@ export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEdito
 
   useImperativeHandle(ref, () => ({
     getText: () => editorRef.current?.getValue() ?? "",
-    setText: (text, resetUndo = true) => {
+    getRestoration: () => restoration.current.get(),
+    finishHistorySave: (origin) => restoration.current.saved(origin),
+    setText: (text, resetUndo = true, revision) => {
       const editor = editorRef.current;
       if (!editor) return;
-      // Monaco refuses executeEdits on a read-only editor; whole-text replacements come from
-      // the page (revert, approved assistant changes) and must apply in the browse state too
-      const ro = !!editor.getOption(monaco.editor.EditorOption.readOnly);
+      if (!resetUndo && editor.getValue() === text) return;
+      // Page-authorized replacements also work in browse mode. Isolate them in history.
       syncing.current = true;
       try {
         if (resetUndo) editor.getModel()!.setValue(text);
-        else {
-          if (ro) editor.updateOptions({ readOnly: false });
-          editor.executeEdits("avas", [{ range: editor.getModel()!.getFullModelRange(), text }]);
-        }
+        else replaceModelText(editor.getModel()!, text);
       } finally {
-        if (ro && !resetUndo) editor.updateOptions({ readOnly: true });
         syncing.current = false;
       }
+      if (revision) restoration.current.restored(editor.getModel()!.getAlternativeVersionId(), revision);
       updateNumbers();
     },
     applyEdits: (edits) => {
@@ -218,14 +249,25 @@ export const TextEditor = forwardRef<TextEditorHandle, Props>(function TextEdito
       syncing.current = true;
       try {
         editor.setPosition({ lineNumber: line0 + 1, column: 1 });
-        editor.revealLineInCenterIfOutsideViewport(line0 + 1);
+        const line = line0 + 1;
+        targetDecoration.current?.set([{ range: new monaco.Range(line, 1, line, 1), options: {
+          isWholeLine: true, className: "lattice-reveal-line", linesDecorationsClassName: "lattice-reveal-margin",
+        } }]);
+        const request = ++revealSequence.current;
+        // Unfold the target before scrolling; a newer click supersedes this request.
+        void editor.getAction("editor.unfold")?.run().then(() => {
+          if (request !== revealSequence.current || editorRef.current !== editor) return;
+          editor.layout();
+          editor.revealLineInCenter(line, monaco.editor.ScrollType.Immediate);
+        });
+        editor.revealLineInCenter(line, monaco.editor.ScrollType.Immediate);
       } finally {
         syncing.current = false;
       }
     },
     focus: () => editorRef.current?.focus(),
-    undo: () => editorRef.current?.trigger("visual-editor", "undo", null),
-    redo: () => editorRef.current?.trigger("visual-editor", "redo", null),
+    undo: () => { const model = editorRef.current?.getModel(); if (model) void runHistory(model, "undo", !!readOnly); },
+    redo: () => { const model = editorRef.current?.getModel(); if (model) void runHistory(model, "redo", !!readOnly); },
   }));
 
   const run = (id: string) => {

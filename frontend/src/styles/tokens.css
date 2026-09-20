@@ -40,6 +40,7 @@
   --tooltip-bg: #f8f8f8;
   --tooltip-border: #c8c8c8;
   --current-line: #f3f3f3;
+  --lattice-reveal: #d5e9ff;
   --syn-default: #3b3b3b;
   --syn-field: #098658;
   --syn-magnet: #0070c1;
@@ -111,6 +112,7 @@
   --tooltip-bg: #202020;
   --tooltip-border: #454545;
   --current-line: #282828;
+  --lattice-reveal: #254b70;
   --syn-default: #cccccc;
   --syn-field: #4ec9b0;
   --syn-magnet: #569cd6;

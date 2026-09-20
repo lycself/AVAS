@@ -1,3 +1,5 @@
+import { pointerDevice } from "./pointer";
+import { bindPlotWheel } from "./plotWheel";
 // Plotly figure that follows the light/dark theme.  Figures are described
 // without colours for chrome; semantic series colours ("r", "b", ...) are
 // mapped to a palette readable on both backgrounds.
@@ -102,6 +104,7 @@ function highlighted(data: Partial<Plotly.Data>[], pinned: number | null): Parti
 
 export function Plot({ data, layout, config, className, style, onRelayout, onClick, onReady, highlight }: PlotProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const device = useApp((s) => pointerDevice(s.settings));
   const dark = useApp((s) => s.resolvedTheme === "dark");
   const [plotly, setPlotly] = useState<PlotlyModule | null>(null);
   const [pinned, setPinned] = useState<number | null>(null);
@@ -150,6 +153,12 @@ export function Plot({ data, layout, config, className, style, onRelayout, onCli
     }
     handlers.current.onReady?.(el);
   }, [plotly, data, layout, config, dark, pinned, canHighlight]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !plotly || config?.staticPlot || config?.scrollZoom === false) return;
+    return bindPlotWheel(el, device, (update) => { void plotly.relayout(el, update as any); });
+  }, [plotly, device, config?.staticPlot, config?.scrollZoom]);
 
   useEffect(() => {
     const el = ref.current;
