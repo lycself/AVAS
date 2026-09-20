@@ -6,6 +6,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { call } from "../bridge";
 import { cx, Icon, IconButton } from "../components/ui";
 import { pick, useT } from "../i18n";
+import type { FieldSource } from "../files/FieldSlice";
+import { crossSection, type ElementField } from "./analyticField";
+import { useFieldWindow } from "./FieldWindow";
 import { elementShape, fieldMapShape, polarity, type Shape } from "./glyphs";
 import { choiceLabel, fmt6, type Keyword, type Statement } from "./types";
 
@@ -249,7 +252,70 @@ function Defs() {
       <marker id="cv-force" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M 0 0 L 10 5 L 0 10 z" className="cv-forcehead" />
       </marker>
+      <marker id="cv-field" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" className="cv-fieldhead" />
+      </marker>
     </defs>
+  );
+}
+
+/* ------------------------------------------------------------------ beam direction */
+/** ⊙ on the axis: every cross-section in this view is drawn from downstream, so
+ *  the beam comes out of the screen.  Keeping one direction lets a field and the
+ *  force beside it be checked against each other with F = qv × B. */
+function BeamOut({ cx: x, cy: y, r = 5.5 }: { cx: number; cy: number; r?: number }) {
+  const t = useT();
+  return (
+    <g>
+      <title>{t("beam out of the screen")}</title>
+      <circle cx={x} cy={y} r={r} className="cv-beam-ring" />
+      <circle cx={x} cy={y} r={Math.max(1.5, r * 0.33)} className="cv-center" />
+    </g>
+  );
+}
+
+/* ------------------------------------------------------------------ schematic field */
+/** The field across a bore, worked out from the element's own parameters
+ *  (`analyticField`): shade for the strength, arrows for the direction.  It is
+ *  a schematic and not data of any kind, so callers put `schematicNote` under
+ *  it.  *rPix* is the drawn radius, *rM* the aperture it stands for. */
+function FieldGrid({ cx: x0, cy: y0, rPix, rM, field, colour, n = 7 }: { cx: number; cy: number; rPix: number; rM: number; field: ElementField; colour: string; n?: number }) {
+  const cs = crossSection(field, Math.max(rM, 1e-6), n);
+  if (!cs.max) return null;
+  const clip = `cv-bore-${Math.round(x0)}-${Math.round(y0)}`;
+  const cell = (2 * rPix) / (n - 1);
+  const at = (s: { x: number; y: number }) => [x0 + (s.x / Math.max(rM, 1e-6)) * rPix, y0 - (s.y / Math.max(rM, 1e-6)) * rPix]; // SVG y grows downwards
+  return (
+    <g className="cv-fieldgrid">
+      <clipPath id={clip}>
+        <circle cx={x0} cy={y0} r={rPix} />
+      </clipPath>
+      <g clipPath={`url(#${clip})`}>
+        {cs.samples.map((s, i) => {
+          const [px, py] = at(s);
+          return (
+            <rect
+              key={`c${i}`}
+              x={px - cell / 2}
+              y={py - cell / 2}
+              width={cell}
+              height={cell}
+              className="cv-fieldcell"
+              style={{ fill: colour, fillOpacity: 0.12 + (0.68 * Math.hypot(s.bx, s.by)) / cs.max }}
+            />
+          );
+        })}
+        {cs.samples.map((s, i) => {
+          const b = Math.hypot(s.bx, s.by);
+          if (b / cs.max < 0.12) return null; // too short to read: leave the cell bare
+          const [px, py] = at(s);
+          const len = (cell * 0.82 * b) / cs.max;
+          const dx = (s.bx / b) * len;
+          const dy = -(s.by / b) * len;
+          return <line key={`a${i}`} x1={px - dx / 2} y1={py - dy / 2} x2={px + dx / 2} y2={py + dy / 2} markerEnd="url(#cv-field)" />;
+        })}
+      </g>
+    </g>
   );
 }
 
@@ -314,6 +380,34 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
   );
   const label = (k: number, fallback: string) => (kw?.params[k] ? pick(kw.params[k].label) : fallback);
   const unit = (k: number, fallback = "") => kw?.params[k]?.unit ?? fallback;
+
+  // what the "Field" button opens: the map behind a field element, or the
+  // schematic field of a matrix element worked out from its own parameters
+  const fieldSource = (): FieldSource | null => {
+    const L = Math.max(0, pn(0));
+    const R = Math.max(1e-4, pn(1));
+    if (st.key === "field") return fieldName ? { kind: "map", name: fieldName, fieldDirs } : null;
+    const analytic = (field: ElementField, length: number, u = "T"): FieldSource => ({ kind: "analytic", field, length, r: R, name: st.name || st.keyword, unit: u });
+    if (st.key === "quad") return pn(3) ? analytic({ kind: "quadrupole", g: pn(3) }, L) : null;
+    if (st.key === "solenoid") return pn(3) ? analytic({ kind: "solenoid", b: pn(3) }, L) : null;
+    if (st.key === "bend")
+      return analytic({ kind: "dipole", b: Math.sign(pn(3)) || 1, index: pn(5), rho: Math.max(1e-6, pn(4)), vertical: p(6) === "1" }, Math.abs(pn(3)) * (Math.PI / 180) * Math.max(1e-6, pn(4)));
+    // a corrector has no length of its own: only its cross-section means anything
+    if (st.key === "steerer") return pn(3) || pn(4) ? analytic({ kind: "steerer", bx: pn(3), by: pn(4) }, 0, p(5) === "1" ? "V/m" : "T") : null;
+    return null;
+  };
+  const source = fieldSource();
+  const windowTitle = st.name ? `${st.name} (${st.keyword})` : t("{kw}, line {n}", { kw: st.keyword, n: st.line + 1 });
+  const openField = () => source && useFieldWindow.getState().show(source, windowTitle);
+  // While the field window is open it follows this view: another element replaces
+  // it, and a dragged slider redraws the field live (the title is unchanged, so
+  // the window keeps the plane and component the user chose).
+  const sourceKey = source ? JSON.stringify(source) : "";
+  useEffect(() => {
+    const w = useFieldWindow.getState();
+    if (w.source && source) w.show(source, windowTitle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey, windowTitle]);
 
   // ------------------------------------------------ geometry shared by the side views
   const W = 560;
@@ -390,6 +484,7 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
     const peakMap = mapGrad ? Math.max(...mapGrad.map(Math.abs)) : null;
     const gEff = isMap ? (peakMap != null ? g * peakMap * Math.sign(mapGrad![Math.floor(mapGrad!.length / 2)] || 1) : null) : g;
     const pol = Math.sign(isMap ? (gEff ?? g) : g) || polarity(st);
+    const gShow = (isMap ? gEff : g) ?? 0;      // the gradient the schematic field is drawn from
     const csx = 440;
     const csr = 44;
     const poles = [45, 135, 225, 315].map((a, i) => {
@@ -417,7 +512,7 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
         <circle cx={csx} cy={cy} r={csr + 36} className="cv-yoke" />
         {poles}
         <circle cx={csx} cy={cy} r={csr - 6} className="cv-bore" />
-        <circle cx={csx} cy={cy} r={2.5} className="cv-center" />
+        {gShow !== 0 && <FieldGrid cx={csx} cy={cy} rPix={csr - 6} rM={R} field={{ kind: "quadrupole", g: gShow }} colour={colorVar("--el-quad")} />}
         {/* forces on a positive particle: focusing along x when G > 0 */}
         {pol !== 0 && (
           <g className="cv-force">
@@ -427,9 +522,15 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
             <line x1={csx} y1={cy + (pol > 0 ? 12 : 34)} x2={csx} y2={cy + (pol > 0 ? 34 : 12)} markerEnd="url(#cv-force)" />
           </g>
         )}
+        <BeamOut cx={csx} cy={cy} />
         <text x={csx} y={24} textAnchor="middle" className="cv-caption">
           {pol > 0 ? t("focusing in x, defocusing in y") : pol < 0 ? t("defocusing in x, focusing in y") : t("no gradient")}
         </text>
+        {gShow !== 0 && (
+          <text x={csx} y={cy + csr + 52} textAnchor="middle" className="cv-schematic">
+            {t("B in the bore: schematic from G")}
+          </text>
+        )}
         {L > 0 && <Dim x1={x0} x2={x0 + sideW} y={H - 26} label={`L = ${fmt6(L)} m`} />}
         {!readOnly && L > 0 && !isMap && <Handle x={x0 + sideW} y={H - 26} cursor="ew-resize" tip={t("Drag to change the length (Shift: fine)")} onPointerDown={dragLength} />}
         {mapGrad && profile.data && (
@@ -558,6 +659,7 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
   } else if (st.key === "bend") {
     const alpha = pn(3);
     const rho = Math.max(1e-6, pn(4));
+    const [bcx, bcy, bcr] = [450, 112, 46];      // cross-section, clear of the orbit sector on the left
     const scale = 150 / Math.max(num(st.params[4]), 0.1);
     const r = Math.min(170, rho * scale);
     const ax = 110;
@@ -594,6 +696,20 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
         <text x={W - 20} y={30} textAnchor="end" className="cv-caption">
           {t("arc length {v} m", { v: fmt6(Math.abs(alpha) * (Math.PI / 180) * rho) })}
         </text>
+        {/* cross-section: the only place the field index N is visible */}
+        <g>
+          <rect x={bcx - 54} y={bcy - 74} width={108} height={22} rx={3} style={{ fill: colorVar("--el-bend") }} className="cv-body translucent" />
+          <rect x={bcx - 54} y={bcy + 52} width={108} height={22} rx={3} style={{ fill: colorVar("--el-bend") }} className="cv-body translucent" />
+          <circle cx={bcx} cy={bcy} r={bcr} className="cv-bore" />
+          <FieldGrid cx={bcx} cy={bcy} rPix={bcr} rM={R} field={{ kind: "dipole", b: Math.sign(alpha) || 1, index: pn(5), rho, vertical: p(6) === "1" }} colour={colorVar("--el-bend")} />
+          <BeamOut cx={bcx} cy={bcy} />
+          <text x={bcx} y={bcy + 90} textAnchor="middle" className="cv-schematic">
+            {/* N acts over rho, so across an aperture it is usually a per-cent effect: say how much, rather than let the eye hunt for it */}
+            {pn(5)
+              ? t("B in the bore: schematic; N changes it by {p}% over ±R", { p: fmt6(Math.round((Math.abs(pn(5)) * R * 1000) / rho) / 10) })
+              : t("B in the bore: schematic, uniform without a field index")}
+          </text>
+        </g>
       </>
     );
     sliders.push(slider({ index: 3, label: label(3, "α"), unit: "°", scale: 30, min: -360, max: 360 }));
@@ -603,22 +719,29 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
     const by = pn(4);
     const m = Math.max(Math.abs(bx), Math.abs(by), 1e-12);
     const csx = 280;
-    // a positive particle moving into the screen: By kicks along x, Bx along -y
-    const kx = (by / m) * 60;
-    const ky = (-bx / m) * 60;
+    // a positive particle coming out of the screen, like every cross-section here:
+    // F = qv × B with v along +z, so By kicks along -x and Bx along +y
+    const kx = (-by / m) * 60;
+    const ky = (bx / m) * 60;
     drawing = (
       <>
         <path d={`M ${csx - 80} ${cy - 60} h 160 v 30 h -120 v 60 h 120 v 30 h -160 z`} style={{ fill: colorVar("--el-steerer") }} className="cv-body translucent" />
         <circle cx={csx} cy={cy} r={Math.min(pipeR, 24)} className="cv-bore" />
-        <circle cx={csx} cy={cy} r={3} className="cv-center" />
+        <FieldGrid cx={csx} cy={cy} rPix={Math.min(pipeR, 24)} rM={R} field={{ kind: "steerer", bx, by }} colour={colorVar("--el-steerer")} n={5} />
         {(bx !== 0 || by !== 0) && (
           <g className="cv-force">
             <line x1={csx} y1={cy} x2={csx + kx} y2={cy - ky} markerEnd="url(#cv-force)" />
           </g>
         )}
+        <BeamOut cx={csx} cy={cy} />
         <text x={csx} y={H - 16} textAnchor="middle" className="cv-caption">
-          {t("kick direction for a positive particle (beam into the screen)")}
+          {t("kick direction for a positive particle (beam out of the screen)")}
         </text>
+        {(bx !== 0 || by !== 0) && (
+          <text x={csx} y={H - 32} textAnchor="middle" className="cv-schematic">
+            {t("thin arrows: the field itself, uniform across the bore")}
+          </text>
+        )}
       </>
     );
     sliders.push(slider({ index: 3, label: label(3, "Bx"), unit: unit(3), scale: 0.01 }));
@@ -663,6 +786,14 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
         <Defs />
         {drawing}
       </svg>
+      {source && (
+        <IconButton
+          icon="screen-full"
+          className="cv-expand"
+          tip={source.kind === "map" ? t("Open the field map in a window: slices, components and direction") : t("Open the field in a window: cross-section, cut along z and direction")}
+          onClick={openField}
+        />
+      )}
       {(sliders.length > 0 || facts.length > 0) && (
         <div className="cv-controls">
           {sliders}

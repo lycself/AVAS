@@ -198,6 +198,38 @@ def test_fieldmap_ascii_and_binary(tmp_path):
     assert example.nz == 200 and abs(z[np.argmax(np.abs(axis))] - 0.175) < 0.02   # solenoid peak at its centre
 
 
+def test_fieldmap_planes(tmp_path):
+    """plane() cuts the axes it names, at the grid line nearest the request, with the file's norm."""
+    nz, nx, ny, norm = 8, 4, 2, 3.0
+    z = np.linspace(0, 0.8, nz + 1)
+    y = np.linspace(-0.02, 0.02, ny + 1)
+    x = np.linspace(-0.04, 0.04, nx + 1)
+    cube = z[:, None, None] + 10 * y[None, :, None] + 100 * x[None, None, :]     # tells the axes apart
+    header = [f"{nz} 0.8", f"{nx} -0.04 0.04", f"{ny} -0.02 0.02", str(norm)]
+    path = tmp_path / "lin.bsz"
+    path.write_text("\n".join(header + [f"{v:.8e}" for v in cube.reshape(-1)]), encoding="ascii")
+    fm = FieldMap(str(path)).read()
+
+    values, u, v, at = fm.plane("zx", order="outer")
+    assert at == pytest.approx(0.0)                                              # default cut: the beam axis
+    assert u == pytest.approx(z) and v == pytest.approx(x)
+    assert values == pytest.approx(norm * (u[None, :] + 100 * v[:, None]))
+
+    values, u, v, at = fm.plane("zy", at=0.039, order="outer")                   # snaps to the nearest grid line
+    assert at == pytest.approx(0.04) and v == pytest.approx(y)
+    assert values == pytest.approx(norm * (u[None, :] + 10 * v[:, None] + 100 * 0.04))
+
+    values, u, v, at = fm.plane("xy", at=0.44, order="outer")
+    assert at == pytest.approx(0.4) and u == pytest.approx(x) and v == pytest.approx(y)
+    assert values == pytest.approx(norm * (0.4 + 10 * v[:, None] + 100 * u[None, :]))
+
+    small, su, sv, _at = fm.plane("zx", order="outer", limit=(4, 3))             # thinned, both ends kept
+    assert len(su) <= 4 and len(sv) <= 3 and small.shape == (len(sv), len(su))
+    assert su[0] == pytest.approx(z[0]) and su[-1] == pytest.approx(z[-1])
+    with pytest.raises(ValueError):
+        fm.plane("xz")
+
+
 def test_lattice_source_setting(tmp_path, monkeypatch):
     monkeypatch.delenv(paths.LATTICE_ENV_VAR, raising=False)
     d = tmp_path / "in"

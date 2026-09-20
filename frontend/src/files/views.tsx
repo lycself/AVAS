@@ -4,11 +4,12 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { call } from "../bridge";
 import { reportError } from "../components/overlays";
 import { Plot, seriesColor } from "../components/Plot";
-import { Button, Spinner } from "../components/ui";
+import { Button, Spinner, Tabs } from "../components/ui";
 import { fmtG } from "../format";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
 import { defineThemes, monaco } from "../lattice/monaco";
+import { FieldSliceView } from "./FieldSlice";
 
 function InfoTable({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
@@ -105,6 +106,7 @@ export function FieldMapView({ path }: { path: string }) {
   const dark = useApp((s) => s.resolvedTheme === "dark");
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"profile" | "slice">("profile");
   useEffect(() => {
     setData(null);
     setError(null);
@@ -130,14 +132,29 @@ export function FieldMapView({ path }: { path: string }) {
     { type: "scatter", mode: "lines", x: data.z, y: data.peak, name: t("max |F| over the cross-section"), line: { color: seriesColor("accent", dark) } },
     { type: "scatter", mode: "lines", x: data.z, y: data.axis, name: t("on axis (x = y = 0)"), line: { color: seriesColor("orange", dark) } },
   ];
+  const flat = !data.nx && !data.ny;      // a map with no transverse grid has nothing to slice
   return (
     <div className="col" style={{ gap: 10, flex: 1, minHeight: 0 }}>
       <InfoTable rows={rows} />
-      <Plot
-        data={traces}
-        layout={{ xaxis: { title: { text: "z (m)" } }, yaxis: { title: { text: `.${data.ext} ${t("(file units)")}` } }, legend: { x: 1, xanchor: "right", y: 1 } } as any}
-        style={{ flex: 1, minHeight: 260 }}
-      />
+      {!flat && (
+        <Tabs
+          value={view}
+          onChange={setView}
+          tabs={[
+            { value: "profile" as const, label: t("Along z"), tip: t("Field on the axis and the largest value of each cross-section") },
+            { value: "slice" as const, label: t("Slices"), tip: t("Heat map through the map; a storage order guessed wrong shows up as stripes along z") },
+          ]}
+        />
+      )}
+      {view === "profile" || flat ? (
+        <Plot
+          data={traces}
+          layout={{ xaxis: { title: { text: "z (m)" } }, yaxis: { title: { text: `.${data.ext} ${t("(file units)")}` } }, legend: { x: 1, xanchor: "right", y: 1 } } as any}
+          style={{ flex: 1, minHeight: 260 }}
+        />
+      ) : (
+        <FieldSliceView key={path} source={{ kind: "file", path }} />
+      )}
     </div>
   );
 }

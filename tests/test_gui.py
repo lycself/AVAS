@@ -250,6 +250,38 @@ def test_files_page(project):
     assert fm["nz"] == 105 and len(fm["z"]) == 106
 
 
+def test_field_slices(project):
+    """files.fieldSlice cuts every component of the family on the same plane."""
+    ez = os.path.join(project["inputDir"], "hwr010.edz")
+    sl = resolve_blobs(ok("files.fieldSlice", path=ez, plane="zx"))
+    assert sl["fixed"] == "y" and sl["at"] == pytest.approx(0.0)         # the default cut is the beam axis
+    assert set(sl["components"]) == {"edx", "edy", "edz"}                # the RF magnetic files stay out
+    assert sl["arrows"] == ["edz", "edx"] and sl["order"] in ("outer", "inner")
+    assert len(sl["u"]) == 106 and len(sl["v"]) == 21
+    assert sl["components"]["edz"]["values"].shape == (len(sl["v"]), len(sl["u"]))   # rows over v, flat on the wire
+    assert sl["magnitude"]["max"] >= abs(sl["components"]["edz"]["max"])
+
+    cross = resolve_blobs(ok("files.fieldSlice", path=ez, plane="xy", at=0.1))
+    assert cross["fixed"] == "z" and abs(cross["at"] - 0.1) < 0.01
+    assert len(cross["u"]) == 21 and len(cross["v"]) == 21
+
+    thin = resolve_blobs(ok("files.fieldSlice", path=ez, plane="zx", limit=20))
+    assert len(thin["u"]) <= 20 and thin["u"][0] == pytest.approx(0.0)
+
+    mag = resolve_blobs(ok("files.fieldSlice", path=os.path.join(project["inputDir"], "sol.bsx"), plane="zx"))
+    assert set(mag["components"]) == {"bsx", "bsy", "bsz"} and mag["family"] == "bs"
+    assert rpc("files.fieldSlice", path=ez, plane="xz")["ok"] is False
+
+    # the lattice page asks by map name and lets the back end pick the component
+    by_name = resolve_blobs(ok("lattice.fieldSlice", name="hwr010", plane="zx"))
+    assert by_name["ext"] == "edz" and by_name["planes"] == ["zx", "zy", "xy"]
+    assert by_name["length"] == pytest.approx(0.21) and by_name["at"] == pytest.approx(0.0)
+    assert by_name["components"]["edz"]["values"].shape == (len(by_name["v"]), len(by_name["u"]))
+    assert ok("lattice.fieldSlice", name="sol", plane="xy", at=0.175)["ext"] == "bsz"
+    assert ok("lattice.fieldSlice", name="sol", ext="bsx")["ext"] == "bsx"
+    assert rpc("lattice.fieldSlice", name="no_such_map")["ok"] is False
+
+
 def test_results_plots(project):
     for kind in ("rms_x", "rms_xy", "phi", "beta_xyz", "emittance_z", "loss", "energy", "c_xy"):
         fig = ok("results.figure", plot="dataset", params={"type": kind})

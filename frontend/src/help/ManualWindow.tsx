@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FloatingWindow, fitRect, viewport, type Rect } from "../components/FloatingWindow";
 import { Markdown } from "../components/Markdown";
 import { pick, useT, useLang } from "../i18n";
 import { call } from "../bridge";
@@ -12,21 +13,11 @@ import referenceZh from "./reference.zh.md?raw";
 import referenceEn from "./reference.en.md?raw";
 import { manualSections, searchManual, type ManualCategory, type ManualSection } from "./content";
 
-type Rect = { x: number; y: number; width: number; height: number };
-function viewport() {
-  const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
-  return { width: window.innerWidth / zoom, height: window.innerHeight / zoom, zoom };
-}
-function fit(r: Rect): Rect {
-  const v = viewport();
-  const width = Math.min(v.width, Math.max(Math.min(340, v.width), r.width));
-  const height = Math.min(v.height, Math.max(Math.min(260, v.height), r.height));
-  return { width, height, x: Math.max(0, Math.min(r.x, v.width - width)), y: Math.max(0, Math.min(r.y, v.height - height)) };
-}
+const MIN = { width: 340, height: 260 };
 function initial(): Rect {
   const v = viewport();
   const width = Math.min(700, v.width * .55);
-  return fit({ x: v.width - width - 24, y: 60, width, height: v.height - 110 });
+  return fitRect({ x: v.width - width - 24, y: 60, width, height: v.height - 110 }, MIN);
 }
 export function ManualLayer() {
   return useManual((s) => s.open) ? <ManualWindow /> : null;
@@ -35,8 +26,6 @@ function ManualWindow() {
   const t = useT();
   const lang = useLang((s) => s.lang);
   const close = useManual((s) => s.close);
-  const [rect, setRect] = useState(initial);
-  const [maximized, setMaximized] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<ManualCategory>("guide");
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -44,19 +33,11 @@ function ManualWindow() {
   const [toc, setToc] = useState(() => initial().width > 480);
   const [schema, setSchema] = useState<Schema | null>(null);
   const [error, setError] = useState("");
-  const root = useRef<HTMLDivElement>(null);
   const article = useRef<HTMLDivElement>(null);
-  const gesture = useRef<{ x: number; y: number; rect: Rect; edge: string } | null>(null);
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    root.current?.focus();
     let active = true;
     call<Schema>("schema.all").then(s => { if (active) setSchema(s); }).catch(e => { if (active) setError(String(e.message ?? e)); });
-    const resize = () => setRect(r => fit(r));
-    window.addEventListener("resize", resize);
-    const observer = new MutationObserver(resize);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-    return () => { active = false; observer.disconnect(); window.removeEventListener("resize", resize); if (root.current?.contains(document.activeElement) || document.activeElement === document.body) previous?.focus(); };
+    return () => { active = false; };
   }, []);
   const sections = useMemo(() => {
     const chinese = lang === "zh_CN";
@@ -90,35 +71,8 @@ function ManualWindow() {
   function selectCategory(next: ManualCategory) {
     setCategory(next); setQuery(""); setPendingId(null); article.current?.scrollTo(0, 0);
   }
-  function start(e: PointerEvent<HTMLElement>, edge = "") {
-    if (e.button !== 0 || maximized || (e.target as HTMLElement).closest("button")) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    gesture.current = { x: e.clientX, y: e.clientY, rect, edge };
-  }
-  function move(e: PointerEvent<HTMLElement>) {
-    const g = gesture.current;
-    if (!g) return;
-    const dx = (e.clientX - g.x) / viewport().zoom, dy = (e.clientY - g.y) / viewport().zoom;
-    const r = { ...g.rect };
-    if (!g.edge) { r.x += dx; r.y += dy; }
-    else {
-      if (g.edge.includes("e")) r.width += dx;
-      if (g.edge.includes("s")) r.height += dy;
-      if (g.edge.includes("w")) { r.x += dx; r.width -= dx; }
-      if (g.edge.includes("n")) { r.y += dy; r.height -= dy; }
-    }
-    setRect(fit(r));
-  }
-  const drag = { onPointerMove: move, onPointerUp: () => { gesture.current = null; }, onPointerCancel: () => { gesture.current = null; }, onLostPointerCapture: () => { gesture.current = null; } };
-  return <div ref={root} role="dialog" aria-modal="false" aria-label={t("User manual")} tabIndex={-1}
-    className="manual-window" style={maximized ? { inset: 0 } : { left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
-    onKeyDown={e => { e.stopPropagation(); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); root.current?.querySelector("input")?.focus(); } if (e.key === "Escape") { e.preventDefault(); close(); } }}>
-    <header className="manual-title" onPointerDown={e => start(e)} {...drag}>
-      <strong>{t("User manual")}</strong>
-      <button className="btn btn-small" onClick={() => setMaximized(!maximized)}>{maximized ? t("Restore window") : t("Maximize window")}</button>
-      <button className="btn btn-small" onClick={close}>{t("Close")}</button>
-    </header>
+  return <FloatingWindow label={t("User manual")} title={t("User manual")} initialRect={initial} minSize={MIN} onClose={close}
+    onKeyDown={(e, root) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); root?.querySelector("input")?.focus(); } }}>
     <div className="manual-tabs" role="tablist" aria-label={t("Manual categories")}>
       {(["guide", "cases", "reference"] as const).map(key => <button key={key} role="tab" aria-selected={category === key} className="btn btn-small" onClick={() => selectCategory(key)}>{labels[key]}</button>)}
     </div>
@@ -138,6 +92,5 @@ function ManualWindow() {
         {!schema && (category === "reference" || query.trim()) && <p role="status">{error ? `${t("Unable to load parameter reference")}: ${error}` : t("Loading parameter reference...")}</p>}
       </article>
     </div>
-    {!maximized && ["n", "s", "e", "w", "ne", "nw", "se", "sw"].map(edge => <div key={edge} className={`manual-resize manual-${edge}`} onPointerDown={e => start(e, edge)} {...drag} />)}
-  </div>;
+  </FloatingWindow>;
 }

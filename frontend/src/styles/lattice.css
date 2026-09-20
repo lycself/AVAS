@@ -143,6 +143,7 @@
 .cv-controls { flex: 1 1 280px; display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 260px; }
 .cv-empty { padding: 12px 14px; }
 .cv-busy { position: absolute; right: 8px; top: 8px; pointer-events: none; opacity: .6; }
+.cv-expand { position: absolute; right: 34px; top: 8px; }
 .cv-slider { display: grid; grid-template-columns: minmax(80px, max-content) minmax(100px, 1fr) 96px 40px; align-items: center; gap: 10px; }
 .cv-slider.disabled { opacity: .55; pointer-events: none; }
 .cv-slider-label { color: var(--fg); white-space: nowrap; }
@@ -170,8 +171,15 @@
 .cv-pole-s { fill: var(--el-solenoid); stroke: var(--fg-soft); opacity: .9; }
 .cv-bore { fill: var(--beamline-bg); stroke: var(--fg-soft); stroke-dasharray: 3 2; }
 .cv-center { fill: var(--accent); }
+/* ⊙ on the axis: the beam comes out of the screen in every cross-section */
+.cv-beam-ring { fill: var(--editor-bg); stroke: var(--accent); stroke-width: 1.4; }
 .cv-force line { stroke: var(--danger); stroke-width: 2; }
 .cv-forcehead { fill: var(--danger); }
+/* schematic field inside a bore: shade for the strength, arrows for the direction */
+.cv-fieldcell { stroke: none; }
+.cv-fieldgrid line { stroke: var(--fg); stroke-width: 1.1; opacity: .7; }
+.cv-fieldhead { fill: var(--fg); opacity: .7; }
+.cv-svg .cv-schematic { font-size: 10px; fill: var(--fg-muted); }
 .cv-arrowhead { fill: var(--fg-muted); }
 .cv-dim line { stroke: var(--fg-muted); stroke-width: 1; }
 .cv-dim text { fill: var(--fg); }

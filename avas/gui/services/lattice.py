@@ -287,6 +287,17 @@ def field_profile(name, fieldDirs=None, points=400):
     return {"name": name, "components": _cached(("field", name, int(points)), stamp, compute)}
 
 
+@rpc("lattice.fieldSlice")
+def field_slice(name, fieldDirs=None, plane="zx", at=None, limit=None, ext=None):
+    """One plane of the map an element refers to, for the component view's field window.
+
+    Same payload as ``files.fieldSlice``; the element knows the map by name, not
+    by path, and *ext* is chosen for it when it has no preference.
+    """
+    from avas.gui import fieldcache
+    return fieldcache.slice_payload(_field_dirs(fieldDirs), name, plane, at, limit, ext)
+
+
 def _beam_for_preview(p):
     from avas.sim import linear_optics
     path = p.input_file("beam.txt")

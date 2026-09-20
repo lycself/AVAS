@@ -86,6 +86,7 @@ packaging/        PyInstaller + Inno Setup 打包
   （文件对话框、打开文件 / 文件夹、外部链接、退出、缩放）只写在 `host.ts` 里，页面调用 `pickFolder` / `pickFile` / `openPath` 等，
   **不要在页面里直接调 `dialog.*` / `shell.*` / `app.quit` / `app.zoom`**。浏览器里用 `components/FileDialog.tsx`（后端 `fs.list`）、下载链接 `/download?path=`。
 - 优先复用 `components/ui.tsx`、`components/overlays.tsx`（`openMenu`、`choiceDialog`、`toast`、`reportError` 等）、`components/Plot.tsx`。
+- 非模态浮动窗口一律用 `components/FloatingWindow.tsx`（拖动、八向缩放、最大化／还原、Esc 关闭、跟随界面缩放），使用说明和元件场分布窗口都基于它；几何不持久化，每次打开回到 `initialRect`。不要再各写一套拖拽缩放。
 - **颜色**只来自 `styles/tokens.css` 的 CSS 变量；canvas 和 three.js 通过 `getComputedStyle` / `cssColor()` 读取变量。确实需要写死颜色时（Plotly 调色板、Monaco 主题）在该行注明 `design:allow-colour 原因`。主题切换必须保持一帧内完成，不要做逐元素重新计算样式的方案。
 - **文字**：界面文字写英文原文 `t("...")`，中文放 `zh_CN.json`；带参数用 `t("… {name}", { name })`。关键字、参数的物理说明来自 `avas/data/schema.py` 的中英文对照，前端用 `pick()` 选择，不要在组件里另写说明文字。
 - 布局仿 VS Code：菜单栏、左侧导航、页面、下方日志面板、状态栏。页面切换时**页面保持挂载**（`display: none`），写 effect 时要考虑页面隐藏的情况。
@@ -116,7 +117,11 @@ packaging/        PyInstaller + Inno Setup 打包
 
 - 可视化编辑的撤销／重做直接使用当前 Monaco 文本模型的历史，不依赖键盘焦点；无对应历史时按钮禁用。「撤销本次所有修改」恢复到进入本次编辑时的文本，保持编辑状态，恢复本身作为独立一步可撤销，写入文件仍需保存。文本点击按鼠标命中的实际模型行选中元件，重复点击仍定位；键盘移动同步选中，程序定位、编辑和撤销／重做造成的光标移动不得覆盖元件选择。
 
-- 元件定位使用独立的整行高亮与左侧标记，失焦／只读仍可见；定位展开目标折叠并立即居中，重复点击也生效。文本＋结构右侧复用 ComponentView 展示元件及场曲线，修改仍经同一个 Monaco 模型一步撤销。校正磁铁倒三角加竖线符号提供图例，场图类型推测在悬停说明中标明。
+- 元件定位使用独立的整行高亮与左侧标记，失焦／只读仍可见；定位展开目标折叠并立即居中，重复点击也生效。文本＋结构右侧复用 ComponentView 展示元件及场曲线，修改仍经同一个 Monaco 模型一步撤销。
+
+- 场的图形一律区分**数据**与**示意**。场图文件的切片是数据：读取、缓存与切面集中在 `avas/gui/fieldcache.py`（`files.fieldSlice` 按路径、`lattice.fieldSlice` 按场图名字，两个 service 都调它，彼此不互相 import），整个 cube 留在后端，只把要看的那一个平面按 `bridge.blob` 传出，同一 family（`bs`／`es`／`bd`／`ed`）中网格相同的分量一起切，供模与面内箭头使用；色标用 `Plot.tsx` 的 `fieldScale()`，有符号分量必须配 `zmid: 0`。矩阵模型元件孔径内的场由 `lattice/analyticField.ts` 按元件参数算出，是示意图，必须用 `.cv-schematic` 或视图里的说明标注，不得与场图数据混为一谈；螺线管横向无场，横截面不画网格。
+- 两种来源经 `files/slice.ts` 归一成同一个 `Slice`（后端 payload 走 `fromPayload`，解析场走 `analyticSlice`），`files/FieldSlice.tsx` 一套视图渲染两者，文件页和元件场分布窗口共用。解析场按**硬边界**生成：元件外恒为零，纵切面向两端各留 14 % 余量把这条边画出来；零长度元件（校正铁）只有 `xy` 一个平面，请求别的平面时由 `analyticSlice` 改回来，所以渲染一律用 `data.plane` 而不是组件 state。
+- 场分布窗口开着时由 `ComponentView` 推送更新（`useFieldWindow`）：换元件换内容，改参数实时重画。窗口内容的 React key 只能用元件标题，不能用 source 全量，否则拖一下滑块就把用户选的切面和分量重置了。箭头位移在数据坐标下正比于场分量（`files/quiver.ts`），因此屏幕方向随坐标轴拉伸，只有等比例时才是真实方向，界面要说明这一点。**所有横截面一律从下游往上游看，束流垂直屏幕向外**（2026-09-21 统一；校正铁原先按射入屏幕画受力，已改号）：这样同一张图里的场箭头和受力箭头可以直接用 F = qv × B 相互核对。圆心的 ⊙ 记号（`BeamOut`、`.cv-beam-ring`）标出这个方向，新的横截面都要带上它，不要再引入别的观察方向。校正磁铁倒三角加竖线符号提供图例，场图类型推测在悬停说明中标明。
 
 - 可视化编辑器 2D / 3D 选中元件时，列表展开其全部祖先分组并滚动到高亮行；重复点击同一元件也触发定位。搜索或筛选挡住目标时只清除阻挡目标的条件；手动折叠、输入筛选本身不触发重新展开。
 
@@ -201,6 +206,7 @@ packaging/        PyInstaller + Inno Setup 打包
 
 - **beam.txt twiss**：β 单位 mm/mrad；发射度是**归一化 rms**，π·mm·mrad（rms_x0 = sqrt(β·ε/(βγ))）；twissz 同样单位，z' = Δp/p。
 - **场图**：电场 MV/m × Ke，磁场 T × Kb；射频电场按 E·cos(ωt+φ0)，射频磁场用 sin；V3=0 的同步相位 = atan2(∫E sinφ, ∫E cosφ)。场图存储顺序要按**一组分量文件**判断（`avas/data/fieldmap.py: group_order()`），不能按单个文件判断。
+- **示例项目的场图本身有噪声**（2026-09-21 核实）：`examples/hwr010` 的 sol / bfield / hwr010 三组场图沿 z 的二阶差分平均为量程的 6～9 %，`sol.bsz` 在"平顶"区逐点在 5.9～10.1 之间跳。切片热图会把它显示成沿 z 的竖条纹——**那是数据，不是读取或切片的错误**。判断存储顺序的 `_cube_roughness` 在这种噪声下区分度很弱（sol 组两种顺序的粗糙度只差约 1 %），只能靠 `group_order()` 按整组投票，并用 Bz 峰值是否落在元件中心这类物理判据复核。横向场的正确性可以这样核实：螺线管端部横截面上 (Bx, By) 应处处指向轴心（已核实，偏差在噪声量级内），中心截面上横向场为零。
 - **displacepos** 内核按 **mm** 读取（手册写 m，已在 schema.py 注明）。
 - **RF 相位 V3**：V3=2 是 t=0 时刻的绝对相位；synData.txt 的 φRF = phase_t0 + 360·f·t_in。分段运行把中段单独拿出来时，要用 φRF − 360·f·(t_in − T_entry) 重新换算（`segment.rephase`），不能直接沿用或改成 V3=0。
 - **输出面**：超出 lattice 末端会报错；离末端太近（5 mm）也会失败，2 cm 可以，所以分段 lattice 会去掉离末端 5 cm 以内的输出面。内核结束时总会写 `outData_<末端>.dst`。

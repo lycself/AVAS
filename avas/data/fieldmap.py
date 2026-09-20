@@ -30,6 +30,7 @@ EXT_MEANING = {
     "bsx": ("static magnetic field Bx", "静磁场 Bx"), "bsy": ("static magnetic field By", "静磁场 By"),
     "bsz": ("static magnetic field Bz", "静磁场 Bz"),
 }
+PLANES = ("zx", "zy", "xy")          # the two axes kept by FieldMap.plane(), horizontal first
 _BINARY_HEADER = struct.Struct("<id i2d i2d d")
 
 
@@ -112,6 +113,39 @@ class FieldMap:
         z = np.linspace(0.0, self.length, self.nz + 1)
         return z, axis, peak
 
+    def axis_values(self):
+        """Grid coordinates (m) along z, y and x (the axes of :meth:`_cube`)."""
+        z = np.linspace(0.0, self.length, self.nz + 1)
+        return z, _axis(self.y_range, self.ny + 1), _axis(self.x_range, self.nx + 1)
+
+    def plane(self, plane="zx", at=None, order=None, limit=(400, 240)):
+        """Values on one grid plane: ``(values, u, v, at)``, ready for a heat map.
+
+        *plane* names the two axes that are kept, horizontal one first: "zx"
+        and "zy" are longitudinal cuts at a fixed y / x, "xy" a cross-section
+        at a fixed z.  *at* is the coordinate (m) of the third axis; the
+        nearest grid plane is taken and returned, the default being the beam
+        axis (x = y = 0) or the middle of the map.  ``values[iv, iu]`` is
+        indexed by the second axis first and carries the file's normalisation,
+        like :meth:`profiles`.  *limit* caps ``(len(u), len(v))`` by dropping
+        grid lines, keeping both ends.
+        """
+        if plane not in PLANES:
+            raise ValueError(f"unknown plane {plane!r}")
+        cube = self._cube(order)
+        z, y, x = self.axis_values()
+        name, coords = {"zx": ("y", y), "zy": ("x", x), "xy": ("z", z)}[plane]
+        want = (self.length / 2 if name == "z" else 0.0) if at is None else float(at)
+        k = int(np.argmin(np.abs(coords - want)))
+        if plane == "zx":
+            values, u, v = cube[:, k, :].T, z, x
+        elif plane == "zy":
+            values, u, v = cube[:, :, k].T, z, y
+        else:
+            values, u, v = cube[k], x, y
+        iu, iv = _pick(len(u), limit[0]), _pick(len(v), limit[1])
+        return values[np.ix_(iv, iu)] * self.norm, u[iu], v[iv], float(coords[k])
+
     def on_axis(self):
         z, axis, _peak = self.profiles()
         return z, axis
@@ -125,6 +159,20 @@ def _looks_ascii(head):
     except UnicodeDecodeError:
         return False
     return all(ch in "0123456789+-.eE \t\r\n" for ch in text)
+
+
+def _axis(rng, n):
+    """Coordinates of *n* grid lines spanning *rng*; a single line sits at its start."""
+    lo, hi = rng
+    return np.full(1, float(lo)) if n <= 1 else np.linspace(float(lo), float(hi), n)
+
+
+def _pick(n, limit):
+    """At most *limit* indices of ``range(n)``, first and last always kept."""
+    limit = max(2, int(limit))
+    if n <= limit:
+        return np.arange(n)
+    return np.unique(np.linspace(0, n - 1, limit).round().astype(int))
 
 
 def _centre_indices(rng, n):

@@ -40,6 +40,21 @@ export function seriesColor(name: string | undefined, dark: boolean): string {
   return p ? p[dark ? 1 : 0] : name;
 }
 
+/** Heat-map colour scale for field maps.  A magnitude is sequential (viridis, the
+ *  same order of lightness in both themes); a signed component is diverging with
+ *  the background tone in the middle, so zero reads as "no field" and the sign is
+ *  visible at a glance.  Callers must lock the middle of a diverging scale to zero
+ *  (`zmid: 0`), otherwise an asymmetric range moves the neutral colour off zero. */
+export function fieldScale(dark: boolean, diverging: boolean): [number, string][] {
+  if (diverging)
+    return dark
+      ? [[0, "#3b8fdd"], [0.25, "#2c5f8a"], [0.5, "#2b2b2b"], [0.75, "#a04733"], [1, "#f5805c"]]
+      : [[0, "#2166ac"], [0.25, "#92bedd"], [0.5, "#f4f2ed"], [0.75, "#e08a72"], [1, "#b2182b"]];
+  return dark
+    ? [[0, "#2b2050"], [0.25, "#414a8c"], [0.5, "#2b8f8b"], [0.75, "#73c54c"], [1, "#f2e650"]]
+    : [[0, "#440154"], [0.25, "#3b528b"], [0.5, "#21918c"], [0.75, "#5ec962"], [1, "#fde725"]];
+}
+
 export function themeLayout(dark: boolean): Partial<Plotly.Layout> {
   const fg = cssColor("--fg", dark ? "#cccccc" : "#3b3b3b");
   const grid = dark ? "#333333" : "#e6e6e6";

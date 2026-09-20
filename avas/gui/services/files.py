@@ -10,7 +10,7 @@ from avas.data import filekinds as fk
 from avas.data.fieldmap import EXT_MEANING, FieldMap, components
 from avas.data.lattice_doc import LatticeDocument
 from avas.data.particles import read_dst, read_edst
-from avas.gui import bridge, context
+from avas.gui import bridge, context, fieldcache
 from avas.gui.filehistory import supported as history_supported
 from avas.gui.bridge import UserError, rpc
 from avas.gui.locks import require_unlocked
@@ -271,6 +271,16 @@ def fieldmap(path):
         "yRange": list(fm.y_range), "norm": fm.norm, "base": base, "found": found, "usedBy": users,
         "z": bridge.blob(z, "float64"), "axis": bridge.blob(axis, "float64"), "peak": bridge.blob(peak, "float64"),
     }
+
+
+@rpc("files.fieldSlice")
+def field_slice(path, plane="zx", at=None, limit=None):
+    """One plane of the field map *path* belongs to (see avas.gui.fieldcache)."""
+    p = _check(path)
+    base = os.path.splitext(os.path.basename(path))[0]
+    ext = os.path.splitext(path)[1].lstrip(".").lower()
+    dirs = (p.field_dirs() or []) + [os.path.dirname(path)]
+    return fieldcache.slice_payload(dirs, base, plane, at, limit, ext)
 
 
 @rpc("files.rfCavities")

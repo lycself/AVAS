@@ -1,4 +1,5 @@
 import { ManualLayer } from "./help/ManualWindow";
+import { FieldWindowLayer } from "./lattice/FieldWindow";
 import "./styles/manual.css";
 import { useEffect, useState } from "react";
 import { DialogLayer, MenuLayer, ToastLayer, TooltipLayer } from "./components/overlays";
@@ -43,6 +44,7 @@ export function App() {
     <>
       {ready ? <Shell /> : <div className="boot"><Spinner size={28} /></div>}
       <ManualLayer />
+      <FieldWindowLayer />
       <DialogLayer />
       <MenuLayer />
       <ToastLayer />

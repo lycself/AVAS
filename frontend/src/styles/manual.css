@@ -1,6 +1,18 @@
-.manual-window { position: fixed; z-index: 80; display: flex; flex-direction: column; background: var(--editor-bg); color: var(--fg); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 8px 28px var(--scrollbar); container-type: inline-size; }
-.manual-title { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--toolbar-bg); cursor: move; touch-action: none; user-select: none; }
-.manual-title strong { flex: 1; }
+/* geometry shared by every FloatingWindow (the manual, the field viewer) */
+.float-window { position: fixed; z-index: 80; display: flex; flex-direction: column; background: var(--editor-bg); color: var(--fg); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 8px 28px var(--scrollbar); container-type: inline-size; }
+.float-title { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--toolbar-bg); cursor: move; touch-action: none; user-select: none; }
+.float-title strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.float-resize { position: absolute; touch-action: none; }
+.float-n, .float-s { left: 7px; right: 7px; height: 6px; cursor: ns-resize; }
+.float-n { top: -3px; } .float-s { bottom: -3px; }
+.float-e, .float-w { top: 7px; bottom: 7px; width: 6px; cursor: ew-resize; }
+.float-e { right: -3px; } .float-w { left: -3px; }
+.float-ne, .float-nw, .float-se, .float-sw { width: 10px; height: 10px; }
+.float-ne { top: -3px; right: -3px; cursor: nesw-resize; }
+.float-nw { top: -3px; left: -3px; cursor: nwse-resize; }
+.float-se { bottom: -3px; right: -3px; cursor: nwse-resize; }
+.float-sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
+
 .manual-tools { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .manual-tools input { flex: 1; min-width: 0; }
 .manual-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
@@ -12,18 +24,11 @@
 .manual-body h2 { font-size: 19px; margin: 6px 0 12px; }
 .manual-body .md h3, .manual-body .md h4, .manual-body .md h5 { font-size: 15px; }
 .manual-body .md-table td, .manual-body .md-table th { white-space: normal; }
-.manual-resize { position: absolute; touch-action: none; }
-.manual-n, .manual-s { left: 7px; right: 7px; height: 6px; cursor: ns-resize; }
-.manual-n { top: -3px; } .manual-s { bottom: -3px; }
-.manual-e, .manual-w { top: 7px; bottom: 7px; width: 6px; cursor: ew-resize; }
-.manual-e { right: -3px; } .manual-w { left: -3px; }
-.manual-ne, .manual-nw, .manual-se, .manual-sw { width: 10px; height: 10px; }
-.manual-ne { top: -3px; right: -3px; cursor: nesw-resize; }
-.manual-nw { top: -3px; left: -3px; cursor: nwse-resize; }
-.manual-se { bottom: -3px; right: -3px; cursor: nwse-resize; }
-.manual-sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
 @container (max-width: 480px) { .manual-body nav { width: 115px; } .manual-body article { padding-inline: 10px; } }
 
 .manual-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
 .manual-tabs [aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .manual-body nav small { display: block; color: var(--fg-muted); }
+
+/* field viewer: the plots take the whole body, the controls sit above them */
+.field-window-body { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 10px 12px 12px; gap: 8px; }
