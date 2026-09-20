@@ -63,7 +63,7 @@ Name: "addtopath"; Description: "{cm:AddToPath}"; Flags: unchecked
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [INI]
-Filename: "{app}\avas-install.ini"; Section: "UI"; Key: "Language"; String: "{code:InitialLanguage}"; Flags: uninsdeleteentry uninsdeletefileifempty
+Filename: "{app}\avas-install.ini"; Section: "UI"; Key: "Language"; String: "{code:InitialLanguage}"; Flags: uninsdeleteentry uninsdeletesectionifempty
 
 [Icons]
 Name: "{group}\AVAS"; Filename: "{app}\AVASGui.exe"; WorkingDir: "{userdocs}"
