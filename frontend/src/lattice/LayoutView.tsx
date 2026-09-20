@@ -10,6 +10,7 @@
 // clears both; the × on the left of an entry hides that curve (remembered in
 // localStorage).  Palette items can be dropped onto the beamline.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { assignLanes, drawGroups, laneAt, laneCenter, LANE_HEIGHT, LANE_TOP } from "./layoutLanes";
 import { ViewNavigation } from "./ViewNavigation";
 import { cx, Icon } from "../components/ui";
 import { pick, useT } from "../i18n";
@@ -17,7 +18,7 @@ import { useApp } from "../store/app";
 import type { LiveBandItem } from "../store/live";
 import { subscribeBunch, useMotion, type BunchFrame } from "./bunchPlayer";
 import { cssColor, niceStep } from "../util";
-import { aperture, drawGlyph, elementShape, isZeroLength, polarity, type Shape } from "./glyphs";
+import { aperture, drawGlyph, elementShape, polarity, type Shape } from "./glyphs";
 import { dropMarker, type NewElementKind } from "./structureOps";
 import { elementColorVar, fmt6, worstIssue, type LatticeDoc, type Schema } from "./types";
 import { sampleAt, type Preview, type RunEnvelope } from "./usePreview";
@@ -41,7 +42,7 @@ type Arr = ArrayLike<number>;
 /** A beam envelope drawn in the layout: z (m), sizes (mm), energy (MeV), losses. */
 export type EnvelopeCurves = { z: Arr; rmsX: Arr; rmsY: Arr; maxX?: Arr; maxY?: Arr; energy?: Arr; losses?: { z: number; n: number }[] };
 
-type Item = { line: number; z0: number; z1: number; color: string; shape: Shape; pol: number; label: string; typeTitle: string; lane: number; issue: "error" | "warning" | null; r: number | null };
+type Item = { line: number; z0: number; z1: number; color: string; shape: Shape; pol: number; label: string; typeTitle: string; lane: number; block: number | null; apertureBase: boolean; issue: "error" | "warning" | null; r: number | null };
 
 type Series = {
   /** legend key: the x and y of one envelope have their own keys, all band curves share one */
@@ -176,11 +177,10 @@ export function LayoutView({
   const drag = useRef<{ x: number; v0: number; v1: number; moved: boolean } | null>(null);
   const lastFrame = useRef<BunchFrame | null>(null);
   const titles = useMemo(() => new Map(schema.lattice.map((k) => [k.key, k.title])), [schema]);
-  const GLYPH_H = compact ? 46 : 76;
 
   const items = useMemo<Item[]>(() => {
     const blockOrder = new Map<number, number>();
-    return doc.statements
+    return assignLanes(doc.statements
       .filter((s) => s.active && s.isElement && s.zStart != null)
       .map((s) => {
         let lane = 0;
@@ -200,11 +200,18 @@ export function LayoutView({
           label: s.name || (s.key === "field" ? s.params[8] : "") || s.keyword,
           typeTitle: title ? pick(title) : s.keyword,
           lane,
+          block: s.block,
+          apertureBase: lane === 0,
           issue: worstIssue(s),
           r: aperture(s),
         };
-      });
+      }));
   }, [doc, titles]);
+  const laneCount = Math.max(1, ...items.map((it) => it.lane + 1));
+  const layered = laneCount > 1 || items.some((it) => it.block != null);
+  const GLYPH_H = layered ? LANE_TOP + laneCount * LANE_HEIGHT + 18 : compact ? 46 : 76;
+  const itemCy = (it: Item) => layered ? laneCenter(it.lane) : GLYPH_H / 2 + 4;
+  const itemH = layered ? 12 : GLYPH_H / 2 - 6;
 
   // ---- the curves, back to front
   const series = useMemo<Series[]>(() => {
@@ -297,6 +304,16 @@ export function LayoutView({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
+
+  useEffect(() => {
+    const it = items.find((item) => item.line === selected);
+    const viewport = wrapRef.current?.parentElement;
+    if (!it || !layered || !viewport) return;
+    const top = 36 + itemCy(it) - 16;
+    const bottom = top + LANE_HEIGHT;
+    if (top < viewport.scrollTop + 36) viewport.scrollTop = Math.max(0, top - 36);
+    else if (bottom > viewport.scrollTop + viewport.clientHeight) viewport.scrollTop = bottom - viewport.clientHeight;
+  }, [selected, items, layered]);
 
   const plot = { left: 56, right: show.energy ? 56 : 16, top: GLYPH_H + 8, bottom: AXIS_H + 6 };
   const pw = Math.max(10, size.w - plot.left - plot.right);
@@ -439,21 +456,27 @@ export function LayoutView({
     ctx.clip();
     ctx.strokeStyle = c.drift;
     ctx.beginPath();
-    ctx.moveTo(plot.left, glyphCy + 0.5);
-    ctx.lineTo(plot.left + pw, glyphCy + 0.5);
+    ctx.moveTo(plot.left, (layered ? laneCenter(0) : glyphCy) + 0.5);
+    ctx.lineTo(plot.left + pw, (layered ? laneCenter(0) : glyphCy) + 0.5);
     ctx.stroke();
     const ordered = [...items].sort((a, b) => Number(a.shape !== "drift") - Number(b.shape !== "drift") || a.lane - b.lane);
+    if (layered) {
+      ctx.fillStyle = c.drift;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(t("Display lanes only — no transverse offset"), plot.left, 1);
+      drawGroups(ctx, items, xOf, c.drift);
+    }
     for (const it of ordered) {
       if (it.z1 < view[0] || it.z0 > view[1]) continue;
       const x0 = xOf(it.z0);
       const x1 = xOf(it.z1);
-      const zero = it.z1 - it.z0 <= 0 || isZeroLength(it.shape);
-      const h = (GLYPH_H / 2 - 6) * (it.lane ? 0.78 : 1);
-      drawGlyph(ctx, it.shape, it.pol, x0, zero ? x0 : x1, glyphCy, h, cssColor(it.color), { alpha: it.lane ? 0.55 : 0.42 });
+      const zero = it.z1 <= it.z0;
+      drawGlyph(ctx, it.shape, it.pol, x0, zero ? x0 : x1, itemCy(it), itemH, cssColor(it.color), { alpha: 0.5 });
       if (it.issue && !compact) {
         ctx.fillStyle = it.issue === "error" ? c.danger : c.warning;
         ctx.beginPath();
-        ctx.arc((x0 + x1) / 2, 5, 3, 0, Math.PI * 2);
+        ctx.arc((x0 + x1) / 2, layered ? itemCy(it) - 13 : 5, 3, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -462,7 +485,7 @@ export function LayoutView({
       const x1 = Math.max(xOf(sel.z1), x0 + 4);
       ctx.strokeStyle = c.accent;
       ctx.lineWidth = 2;
-      ctx.strokeRect(x0 - 2, 4, x1 - x0 + 4, GLYPH_H - 4);
+      ctx.strokeRect(x0 - 2, layered ? itemCy(sel) - 15 : 4, x1 - x0 + 4, layered ? 30 : GLYPH_H - 4);
       ctx.fillStyle = c.accent;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
@@ -480,7 +503,7 @@ export function LayoutView({
       ctx.fillStyle = c.pipe;
       ctx.globalAlpha = 0.45;
       for (const it of items) {
-        if (!it.r || it.lane || it.z1 < view[0] || it.z0 > view[1] || it.z1 <= it.z0) continue;
+        if (!it.r || !it.apertureBase || it.z1 < view[0] || it.z0 > view[1] || it.z1 <= it.z0) continue;
         const x0 = xOf(it.z0);
         const x1 = xOf(it.z1);
         const yt = yOf(it.r * 1000);
@@ -777,7 +800,7 @@ export function LayoutView({
   const hitItem = (x: number, y: number): Item | null => {
     const z = zOf(x);
     const tol = ((view[1] - view[0]) / pw) * 4;
-    const hits = items.filter((it) => z >= it.z0 - tol && z <= it.z1 + tol);
+    const hits = items.filter((it) => z >= it.z0 - tol && z <= it.z1 + tol && (!layered || y > GLYPH_H + 4 || it.lane === laneAt(y)));
     if (!hits.length) return null;
     if (y > GLYPH_H + 4) {
       // in the plot area pick the element under the cursor, preferring real ones over drifts
@@ -805,6 +828,10 @@ export function LayoutView({
     const rows: { k: string; v: string; strong?: boolean }[] = [{ k: "z", v: `${fmt6(z)} m` }];
     const it = hitItem(xOf(z), y);
     if (it) rows.push({ k: t("Element"), v: `${it.label} · ${it.typeTitle}` });
+    const coincident = items.filter((item) => z >= item.z0 && z <= item.z1);
+    if (coincident.length > 1) {
+      for (const item of coincident) rows.push({ k: t("Overlapping element"), v: `${item.label} · ${item.typeTitle} (${t("Line")} ${item.line + 1})`, strong: item.line === it?.line });
+    }
     if (it?.r) rows.push({ k: t("Aperture"), v: `${fmt6(it.r * 1000)} mm` });
     const values: { k: string; v: string; strong?: boolean }[] = [];
     for (const s of legend) {
@@ -818,12 +845,13 @@ export function LayoutView({
   const hoverInfo = hover && hover.x >= plot.left ? readout(hover.z, hover.y) : null;
 
   return (
-    <div className={cx("layout-view", compact && "compact")}>
+    <div className={cx("layout-view", compact && "compact")} style={{ overflow: "auto" }}>
       <div className="view-navigation" onPointerDown={(e) => e.stopPropagation()}>
         <ViewNavigation onZoom={zoom} onFit={fit} />
       </div>
     <div
       className="layout-plot"
+      style={{ minHeight: layered ? GLYPH_H + 140 : undefined }}
       ref={wrapRef}
       tabIndex={-1}
       onKeyDown={(e) => {

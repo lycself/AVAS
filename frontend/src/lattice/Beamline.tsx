@@ -1,10 +1,11 @@
 // Schematic of the active elements along z.  Wheel = zoom, drag = pan,
 // click = select, double-click = fit.
+import { assignLanes, drawGroups, laneCenter, LANE_HEIGHT, LANE_TOP } from "./layoutLanes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pick, useT } from "../i18n";
 import { useApp } from "../store/app";
 import { cssColor, niceStep } from "../util";
-import { drawGlyph, elementShape, isZeroLength, polarity, type Shape } from "./glyphs";
+import { drawGlyph, elementShape, polarity, type Shape } from "./glyphs";
 import { elementColorVar, fmt6, worstIssue, type LatticeDoc, type Schema } from "./types";
 
 type Item = {
@@ -13,6 +14,7 @@ type Item = {
   z1: number;
   color: string;
   lane: number;
+  block: number | null;
   kind: "marker" | "line" | "box";
   shape: Shape;
   pol: number;
@@ -21,7 +23,6 @@ type Item = {
   issue: "error" | "warning" | null;
 };
 
-const LANES = [1.0, 0.72, 0.48, 0.3];
 const HEIGHT = 104;
 
 export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc | null; schema: Schema; selected: number | null; onSelect: (line: number) => void }) {
@@ -40,16 +41,9 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
 
   const items = useMemo<Item[]>(() => {
     if (!doc) return [];
-    const blockOrder = new Map<number, number>();
-    return doc.statements
+    return assignLanes(doc.statements
       .filter((s) => s.active && s.isElement && s.zStart != null)
       .map((s) => {
-        let lane = 0;
-        if (s.block != null) {
-          const n = blockOrder.get(s.block) ?? 0;
-          blockOrder.set(s.block, n + 1);
-          lane = Math.min(n, 3);
-        }
         const z0 = s.zStart!;
         const z1 = s.zEnd ?? z0;
         const label = s.name || (s.key === "field" ? s.params[8] : "") || s.keyword;
@@ -60,16 +54,20 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
           z0,
           z1,
           color: elementColorVar(s),
-          lane,
-          kind: z1 - z0 <= 0 || isZeroLength(shape) ? "marker" : s.key === "drift" ? "line" : "box",
+          lane: 0,
+          block: s.block,
+          kind: z1 <= z0 ? "marker" : s.key === "drift" ? "line" : "box",
           shape,
           pol: polarity(s),
           label,
           title: `${label} · ${title ? pick(title) : s.keyword}\nz = ${fmt6(z0)} … ${fmt6(z1)} m`,
           issue: worstIssue(s),
         } as Item;
-      });
+      }));
   }, [doc, titles]);
+  const laneCount = Math.max(1, ...items.map((it) => it.lane + 1));
+  const layered = laneCount > 1 || items.some((it) => it.block != null);
+  const height = layered ? LANE_TOP + laneCount * LANE_HEIGHT + 26 : HEIGHT;
 
   const total = Math.max(doc?.totalLength ?? 0, ...items.map((i) => i.z1), 1e-6);
 
@@ -90,10 +88,10 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: HEIGHT }));
+    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: height }));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [height]);
 
   // bring an externally selected element into view
   useEffect(() => {
@@ -109,15 +107,25 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  const rect = { left: 10, top: 8, width: Math.max(10, size.w - 20), height: HEIGHT - 30 };
+  useEffect(() => {
+    const it = items.find((item) => item.line === selected);
+    const viewport = wrapRef.current;
+    if (!it || !layered || !viewport) return;
+    const top = laneCenter(it.lane) - 16;
+    const bottom = top + LANE_HEIGHT;
+    if (top < viewport.scrollTop) viewport.scrollTop = top;
+    else if (bottom > viewport.scrollTop + viewport.clientHeight) viewport.scrollTop = bottom - viewport.clientHeight;
+  }, [selected, items, layered]);
+
+  const rect = { left: 10, top: 8, width: Math.max(10, size.w - 20), height: height - 30 };
   const xOf = (z: number) => rect.left + ((z - view[0]) / (view[1] - view[0])) * rect.width;
   const zOf = (x: number) => view[0] + ((x - rect.left) / rect.width) * (view[1] - view[0]);
   const itemRect = (it: Item) => {
     const x0 = xOf(it.z0);
     const x1 = xOf(it.z1);
-    const h = rect.height * LANES[it.lane];
-    const cy = rect.top + rect.height / 2;
-    if (it.kind === "marker") return { x: x0 - 3, y: rect.top, w: 6, h: rect.height };
+    const h = layered ? 28 : rect.height;
+    const cy = layered ? laneCenter(it.lane) : rect.top + rect.height / 2;
+    if (it.kind === "marker") return { x: x0 - 3, y: cy - h / 2, w: 6, h };
     return { x: x0, y: cy - h / 2, w: Math.max(2, x1 - x0), h };
   };
 
@@ -126,13 +134,19 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = size.w * dpr;
-    canvas.height = HEIGHT * dpr;
+    canvas.height = height * dpr;
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, size.w, HEIGHT);
+    ctx.clearRect(0, 0, size.w, height);
     ctx.fillStyle = cssColor("--beamline-bg");
-    ctx.fillRect(0, 0, size.w, HEIGHT);
-    const cy = rect.top + rect.height / 2;
+    ctx.fillRect(0, 0, size.w, height);
+    const cy = layered ? laneCenter(0) : rect.top + rect.height / 2;
+    ctx.font = "11px Segoe UI, sans-serif";
+    if (layered) {
+      ctx.fillStyle = cssColor("--fg-soft");
+      ctx.fillText(t("Display lanes only — no transverse offset"), rect.left, 12);
+      drawGroups(ctx, items, xOf, cssColor("--fg-soft"));
+    }
     ctx.strokeStyle = cssColor("--el-drift");
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -148,19 +162,18 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
       if (it.z1 < view[0] || it.z0 > view[1]) continue;
       const r = itemRect(it);
       const color = cssColor(it.color);
-      if (it.kind === "marker") drawGlyph(ctx, it.shape, it.pol, r.x, r.x + r.w, cy, (rect.height / 2) * 0.8, color);
-      else drawGlyph(ctx, it.shape, it.pol, r.x, r.x + r.w, cy, (rect.height / 2) * LANES[it.lane], color, { alpha: it.lane ? 0.59 : 0.43 });
+      drawGlyph(ctx, it.shape, it.pol, xOf(it.z0), it.kind === "marker" ? xOf(it.z0) : xOf(it.z1), layered ? laneCenter(it.lane) : cy, layered ? 12 : rect.height / 2, color, { alpha: 0.5 });
       if (it.issue) {
         ctx.fillStyle = cssColor(it.issue === "error" ? "--danger" : "--warning");
         ctx.beginPath();
-        ctx.arc(r.x + r.w / 2, rect.top + 3, 3, 0, Math.PI * 2);
+        ctx.arc(r.x + r.w / 2, layered ? laneCenter(it.lane) - 13 : rect.top + 3, 3, 0, Math.PI * 2);
         ctx.fill();
       }
     }
     const sel = items.find((i) => i.line === selected);
     if (sel) {
       let r = itemRect(sel);
-      if (sel.kind === "line") r = { x: r.x, y: cy - 0.2 * rect.height, w: r.w, h: 0.4 * rect.height };
+      if (sel.kind === "line" && !layered) r = { x: r.x, y: cy - 0.2 * rect.height, w: r.w, h: 0.4 * rect.height };
       ctx.strokeStyle = cssColor("--accent");
       ctx.lineWidth = 2;
       ctx.strokeRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4);
@@ -187,12 +200,12 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
     ctx.textAlign = "right";
     ctx.fillText(t("z (m)"), rect.left + rect.width, y + 4);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, view, size, selected, theme]);
+  }, [items, view, size, selected, theme, height]);
 
   const hit = (x: number, y: number): Item | null => {
     const hits = items.filter((it) => {
       const r = itemRect(it);
-      return x >= r.x - 2 && x <= r.x + r.w + 2 && y >= Math.min(r.y, rect.top) && y <= Math.max(r.y + r.h, rect.top + rect.height);
+      return x >= r.x - 2 && x <= r.x + r.w + 2 && y >= r.y && y <= r.y + r.h;
     });
     if (!hits.length) return null;
     hits.sort((a, b) => b.lane - a.lane || Number(a.kind === "line") - Number(b.kind === "line") || a.z1 - a.z0 - (b.z1 - b.z0));
@@ -205,10 +218,10 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
   };
 
   return (
-    <div className="beamline" ref={wrapRef}>
+    <div className="beamline" ref={wrapRef} style={{ maxHeight: 240, overflow: "auto" }}>
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: HEIGHT, display: "block" }}
+        style={{ width: "100%", height, display: "block" }}
         onWheel={(e) => {
           const { x } = local(e);
           const zc = zOf(x);
@@ -257,6 +270,7 @@ export function Beamline({ doc, schema, selected, onSelect }: { doc: LatticeDoc 
       {hover && (
         <div className="beamline-tip" style={{ left: Math.min(hover.x + 12, size.w - 220), top: hover.y + 14 }}>
           {hover.item.title}
+          {items.filter((it) => it.line !== hover.item.line && zOf(hover.x) >= it.z0 && zOf(hover.x) <= it.z1).map((it) => `\n${t("Overlapping element")}: ${it.label} (${t("Line")} ${it.line + 1})`).join("")}
         </div>
       )}
       {!items.length && <div className="beamline-empty">{t("No active elements between start and end")}</div>}
