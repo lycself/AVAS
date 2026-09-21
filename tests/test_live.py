@@ -49,16 +49,21 @@ def test_tail_reads_only_new_complete_rows(tmp_path):
     assert restarted and len(rows["z"]) == 1 and np.isnan(rows["rmsY"][0]) and losses == []
 
 
-def test_tail_ignores_the_previous_runs_file_until_it_is_rewritten(tmp_path):
-    import time
+@pytest.mark.parametrize("rewritten_after", [0, 1])
+def test_tail_ignores_the_previous_runs_file_until_it_is_rewritten(tmp_path, rewritten_after):
     from avas.data.dataset_stream import DatasetTail
     path = tmp_path / "DataSet.txt"
     path.write_text(row(0.0) + row(0.1) + row(0.2))           # left over from the previous run
-    old = time.time() - 60
+    # Control both timestamps: Windows file mtimes and time.time() need not
+    # advance together for writes performed immediately after the cutoff.
+    started = 1_700_000_000
+    old = started - 60
     os.utime(path, (old, old))
-    tail = DatasetTail(str(path), not_before=time.time())
+    tail = DatasetTail(str(path), not_before=started)
     assert tail.poll() == (False, None, [])                    # the engine is still starting
     path.write_text(row(0.0))                                  # rewritten by the new run
+    rewritten = started + rewritten_after
+    os.utime(path, (rewritten, rewritten))
     restarted, rows, _ = tail.poll()
     assert not restarted and list(rows["z"]) == [0.0]
 
