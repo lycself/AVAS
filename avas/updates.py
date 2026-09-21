@@ -76,7 +76,10 @@ def check():
         except Exception:
             pass  # the remote commit may not have been fetched yet
     elif available and current["commit"]:
-        comparison = fetch_json(f"https://api.github.com/repos/{REPOSITORY}/compare/{current['commit']}...{release['commit']}")
+        # GitHub includes file patches only on page 1. We need the global
+        # ancestry status, not potentially huge diffs of compiled web assets.
+        comparison = fetch_json(f"https://api.github.com/repos/{REPOSITORY}/compare/"
+                                f"{current['commit']}...{release['commit']}?per_page=1&page=2")
         if comparison.get("status") not in ("ahead", "behind", "identical"):
             raise ValueError("This installation does not share the official update history.")
         available = comparison["status"] == "ahead"

@@ -14,6 +14,42 @@ from avas import update_worker as worker
 A, B, C = "a" * 40, "b" * 40, "c" * 40
 
 
+@pytest.mark.parametrize("kind", ["source", "frozen"])
+@pytest.mark.parametrize("status,available", [("ahead", True), ("behind", False), ("identical", False), ("diverged", None)])
+def test_check_large_comparison_uses_summary_page(monkeypatch, kind, status, available):
+    import io
+    from urllib.parse import parse_qs, urlsplit
+
+    monkeypatch.setattr(updates, "installation", lambda: {"kind": kind, "commit": A})
+
+    def respond(request, timeout):
+        if request.full_url == updates.LATEST:
+            return io.BytesIO(json.dumps(release(B)).encode())
+        url = urlsplit(request.full_url)
+        assert url.path.endswith(f"/compare/{A}...{B}")
+        query = parse_qs(url.query)
+        data = {"status": status, "commits": []}
+        if query.get("page") != ["2"] or query.get("per_page") != ["1"]:
+            data["files"] = [{"patch": "x" * (2 * 1024 * 1024)}]
+        return io.BytesIO(json.dumps(data).encode())
+
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    if available is None:
+        with pytest.raises(ValueError, match="official update history"):
+            updates.check()
+    else:
+        assert updates.check()["available"] is available
+
+
+def test_update_metadata_size_limit_remains(monkeypatch):
+    import io
+
+    monkeypatch.setattr(updates.urllib.request, "urlopen",
+                        lambda *a, **k: io.BytesIO(b" " * (1024 * 1024 + 1)))
+    with pytest.raises(ValueError, match="metadata is too large"):
+        updates.fetch_json(updates.LATEST)
+
+
 def release(commit=A):
     return {"schema": 1, "repository": updates.REPOSITORY, "commit": commit, "version": "2.0.0",
             "requires_python": ">=3.11,<3.14", "published": "2026-09-20", "notes": "Changes",

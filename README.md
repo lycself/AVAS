@@ -210,6 +210,8 @@ avas serve --open
 
 ### 软件更新
 
+更新检查仅获取版本关系摘要，避免大体积文件差异导致检查失败。旧版若提示 `Update metadata is too large`，请关闭 AVAS，从官方发布页手动安装新版一次；便携版请将新版完整解压到新目录。
+
 Windows 安装包支持英文和简体中文；首次启动且尚无语言偏好时，软件跟随安装器所选语言，升级或重装保留已保存的语言设置。简体中文安装翻译随源码提供，构建时无需另外下载语言包。双击 `AVAS.exe`（不带参数）也会打开界面；带参数时仍执行命令行功能，例如 `AVAS.exe run --help`。`AVASGui.exe` 是无控制台的界面入口。
 
 启动界面后会在后台检查 `lycself/AVAS` 的官方更新，检查结果缓存 6 小时；**帮助 → 检查更新** 可立即重查。网络失败不影响使用。点击提示查看版本和更新摘要，再选择**更新并重启**；确认时若发现更新的版本，会重新展示并要求确认。确认后锁定提交，下载期间的新发布不会改变此次安装目标。「忽略此版本」只忽略该提交，弹窗会提醒仍可从帮助菜单获取更新。
@@ -380,6 +382,8 @@ avas serve --open
 ### Software updates
 
 The Windows installer supports English and Simplified Chinese. On first launch without a saved language preference, AVAS adopts the installer language; upgrades and reinstalls preserve the saved preference. Running `AVAS.exe` without arguments opens the GUI; arguments still invoke the CLI, for example `AVAS.exe run --help`. `AVASGui.exe` opens the GUI without a console. The Chinese installer translation ships with the source, so builds need no separate language-pack download.
+
+Update checks request only the version relationship summary, avoiding oversized file diffs. If an older version reports `Update metadata is too large`, close AVAS and install a new official release manually once; extract portable bundles in full into a new folder.
 
 The interface checks official updates from `lycself/AVAS` in the background and caches checks for six hours. **Help → Check for updates** checks immediately. Network errors do not block normal use. Review the update and choose **Update and restart**. If a newer version appeared before confirmation, review it again; after confirmation the exact commit is pinned. Ignoring a version affects only that commit; the dialog reminds you that updates remain available from Help.
 
