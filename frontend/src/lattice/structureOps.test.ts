@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deleteUnit,
+  superposeWith,
   dropMarker,
   duplicateUnit,
   insertAfter,
@@ -269,10 +270,18 @@ describe("insertAtZ", () => {
     expect(apply(text, r.edits)).toEqual(["start", "drift 0.1 0.02 0", "quad 0.5 0.02 0 0", "end"]);
     expect(r.message).toMatch(/shorter/);
   });
-  it("goes before or after a non-drift element depending on the half", () => {
-    const doc = parse(SIMPLE);
-    expect(ok(insertAtZ(doc, SIMPLE, 0.31, "drift 0.1 0.02 0", 0.1)).edits[0].start).toBe(2);
-    expect(ok(insertAtZ(doc, SIMPLE, 0.39, "drift 0.1 0.02 0", 0.1)).edits[0].start).toBe(3);
+  it("creates a block at the drop position and preserves the original element", () => {
+    const r = ok(insertAtZ(parse(SIMPLE), SIMPLE, 0.32, "solenoid 0.02 0.02 0 1", 0.02));
+    const out = apply(SIMPLE, r.edits);
+    expect(out.slice(2, 7)).toEqual(["superpose 0 0 0 0 0 0", SIMPLE[2], "superpose 0.02 0 0 0 0 0", "solenoid 0.02 0.02 0 1", "superposeend"]);
+    const doc = parse(out);
+    expect(doc.statements.find((s) => s.key === "solenoid")?.zStart).toBeCloseTo(0.32);
+    expect(doc.totalLength).toBeCloseTo(parse(SIMPLE).totalLength);
+    expect(out[r.select!]).toBe("solenoid 0.02 0.02 0 1");
+  });
+  it("keeps endpoint insertion sequential", () => {
+    const text = ["start", "quad 0.1 0.02 0 1", "end"];
+    expect(apply(text, ok(insertAtZ(parse(text), text, 0.1, "solenoid 0.1 0.02 0 1", 0.1)).edits)).toEqual([text[0], text[1], "solenoid 0.1 0.02 0 1", "end"]);
   });
   it("superposes inside a block", () => {
     const doc = parse(BLOCK);
@@ -291,7 +300,7 @@ describe("dropMarker", () => {
     const doc = parse(BLOCK);
     expect(dropMarker(doc, 0.1).kind).toBe("split");
     expect(dropMarker(doc, 0.4).kind).toBe("superpose");
-    expect(dropMarker(parse(SIMPLE), 0.32)).toEqual({ z: 0.3, kind: "between" });
+    expect(dropMarker(parse(SIMPLE), 0.32)).toEqual({ z: 0.32, kind: "superpose" });
     expect(dropMarker(parse(SIMPLE), 5).kind).toBe("between");
   });
 });
@@ -302,5 +311,28 @@ describe("newElementText", () => {
     expect(newElementText("quad", { length: 0.25, aperture: 0.015 })).toBe("quad 0.25 0.015 0 0");
     expect(newElementText("field_rf", { frequency: 162.5e6, fieldmap: "hwr" })).toBe("field 0.2 0.02 0 1 162500000 0 1 1 hwr");
     expect(newElementText("outputplane")).toBe("outputplane 0");
+  });
+});
+
+describe("aligned superposition", () => {
+  it("creates three members at exactly the same start and keeps downstream positions", () => {
+    const text = ["start", "drift 0.2 0.02 0", "S : field 0.35 0.02 0 3 0 0 1 1 sol", "drift 0.1 0.02 0", "end"];
+    const two = apply(text, ok(superposeWith(parse(text), text, 2, "H : field 0.35 0.02 0 3 0 0 1 1 v3h")).edits);
+    const doc = parse(two);
+    const three = apply(two, ok(superposeWith(doc, two, doc.statements.find((s) => s.name === "H")!.line, "V : field 0.35 0.02 0 3 0 0 1 1 v3v")).edits);
+    const result = parse(three);
+    const members = result.statements.filter((s) => s.key === "field");
+    expect(members).toHaveLength(3);
+    expect(members.map((s) => s.zStart)).toEqual([0.2, 0.2, 0.2]);
+    expect(new Set(members.map((s) => s.block)).size).toBe(1);
+    expect(result.totalLength).toBeCloseTo(parse(text).totalLength);
+    expect(three.filter((s) => s === "superposeend")).toHaveLength(1);
+  });
+  it("supports a zero length target and preserves its original text", () => {
+    const text = ["start", "C : steerer 0 0.02 0 1 0 0 0", "end"];
+    const result = ok(superposeWith(parse(text), text, 1, "quad 0.1 0.02 0 1"));
+    expect(apply(text, result.edits)).toContain(text[1]);
+    expect(result.edits).toHaveLength(1);
+    expect("error" in superposeWith(parse(text), text, 0, "quad 0.1 0.02 0 1")).toBe(true);
   });
 });

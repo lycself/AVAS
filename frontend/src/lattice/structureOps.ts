@@ -275,9 +275,10 @@ function insertBefore(doc: LatticeDoc, line: number, elementText: string): OpRes
 /**
  * Insert a new element at position *z* (m).  Inside a drift the drift is split so
  * that everything downstream keeps its position; inside a superpose block the
- * element is superposed at that z; elsewhere it goes before/after the nearest unit.
+ * element is superposed at that z. Inside an ordinary non-drift element a new
+ * block is created; its endpoints still insert sequentially.
  */
-export function insertAtZ(doc: LatticeDoc, _text: string[], z: number, elementText: string, length: number): OpResult {
+export function insertAtZ(doc: LatticeDoc, text: string[], z: number, elementText: string, length: number): OpResult {
   const active = doc.statements.filter((s) => s.active);
   const start = active.find((s) => s.key === "start");
   const end = active.find((s) => s.key === "end");
@@ -318,9 +319,20 @@ export function insertAtZ(doc: LatticeDoc, _text: string[], z: number, elementTe
         message: t("The drift is shorter than the new element; inserted after it (downstream elements move by {l} m).", { l: fmt(length) }),
       };
     }
-    const mid = ((st.zStart ?? 0) + (st.zEnd ?? 0)) / 2;
-    const at = z < mid ? u.start : u.end;
-    return { edits: [{ start: at, end: at, lines: [st.indent + elementText] }], select: at };
+    if (z <= z0 || z >= z1) {
+      const at = z <= z0 ? u.start : u.end;
+      return { edits: [{ start: at, end: at, lines: [st.indent + elementText] }], select: at };
+    }
+    const relative = Math.max(0, z - z0);
+    const lines = [
+      `${st.indent}superpose 0 0 0 0 0 0`,
+      ...text.slice(u.start, u.end),
+      `${st.indent}superpose ${fmt(relative)} 0 0 0 0 0`,
+      `${st.indent}${elementText}`,
+      `${st.indent}superposeend`,
+    ];
+    return { edits: [{ start: u.start, end: u.end, lines }], select: u.start + lines.length - 2,
+      message: t("Superposed at z0 = {v} m in the block.", { v: fmt(relative) }) };
   }
   // outside every element: before the first or after the last one
   const firstU = elementsUnits[0];
@@ -352,8 +364,24 @@ export function dropMarker(doc: LatticeDoc, z: number): { z: number; kind: "spli
     if (!st.active || !st.isElement || st.zStart == null || st.zEnd == null) continue;
     if (z >= st.zStart && z <= st.zEnd) {
       if (st.key === "drift") return { z, kind: "split" };
-      return { z: z < (st.zStart + st.zEnd) / 2 ? st.zStart : st.zEnd, kind: "between" };
+      return { z, kind: z > st.zStart && z < st.zEnd ? "superpose" : "between" };
     }
   }
   return { z, kind: "between" };
+}
+
+/** Add a member aligned to the selected element, including a zero-length one. */
+export function superposeWith(doc: LatticeDoc, text: string[], line: number, elementText: string): OpResult {
+  const st = statementAt(doc, line);
+  if (!st?.isElement || !st.active) return { error: t("Select an active element to superpose with.") };
+  if (st.block != null) {
+    const group = wholeBlock(doc, st.block);
+    const relative = Math.max(0, (st.zStart ?? 0) - blockStart(doc, st.block));
+    return { edits: [{ start: group.last.line, end: group.last.line,
+      lines: [`${st.indent}superpose ${fmt(relative)} 0 0 0 0 0`, st.indent + elementText] }], select: group.last.line + 1 };
+  }
+  const start = st.commentNameLine ?? st.line;
+  const lines = [`${st.indent}superpose 0 0 0 0 0 0`, ...text.slice(start, st.line + 1),
+    `${st.indent}superpose 0 0 0 0 0 0`, st.indent + elementText, `${st.indent}superposeend`];
+  return { edits: [{ start, end: st.line + 1, lines }], select: start + lines.length - 2 };
 }

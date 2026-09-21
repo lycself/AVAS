@@ -10,7 +10,8 @@ import type { FieldSource } from "../files/FieldSlice";
 import { crossSection, type ElementField } from "./analyticField";
 import { useFieldWindow } from "./FieldWindow";
 import { elementShape, fieldMapShape, polarity, type Shape } from "./glyphs";
-import { choiceLabel, fmt6, type Keyword, type Statement } from "./types";
+import { elementType } from "./elementType";
+import { choiceLabel, schemaNow, fmt6, type Keyword, type Statement } from "./types";
 
 export type Draft = Record<number, string>;
 
@@ -397,7 +398,8 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
     return null;
   };
   const source = fieldSource();
-  const windowTitle = st.name ? `${st.name} (${st.keyword})` : t("{kw}, line {n}", { kw: st.keyword, n: st.line + 1 });
+  const typeTitle = elementType(st, new Map(schemaNow()?.lattice.map((k) => [k.key, k]) ?? [])).label;
+  const windowTitle = `${st.name ? st.name + " · " : ""}${typeTitle} · ${t("line {n}", { n: st.line + 1 })}`;
   const openField = () => source && useFieldWindow.getState().show(source, windowTitle);
   // While the field window is open it follows this view: another element replaces
   // it, and a dragged slider redraws the field live (the title is unchanged, so
@@ -782,18 +784,20 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
 
   return (
     <div className="component-view">
+      <div className="cv-diagram">
       <svg className="cv-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
         <Defs />
         {drawing}
       </svg>
       {source && (
-        <IconButton
-          icon="screen-full"
-          className="cv-expand"
-          tip={source.kind === "map" ? t("Open the field map in a window: slices, components and direction") : t("Open the field in a window: cross-section, cut along z and direction")}
-          onClick={openField}
-        />
+        <div className="cv-diagram-actions">
+          <button className="btn btn-small" onClick={openField}
+            data-tip={source.kind === "map" ? t("Open the field map in a window: slices, components and direction") : t("Open the field in a window: cross-section, cut along z and direction")}>
+            <Icon name="graph" /> {source.kind === "map" ? t("View field map") : t("View field distribution")}
+          </button>
+        </div>
       )}
+      </div>
       {(sliders.length > 0 || facts.length > 0) && (
         <div className="cv-controls">
           {sliders}

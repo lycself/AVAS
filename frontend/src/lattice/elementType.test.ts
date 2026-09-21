@@ -1,7 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { guessMagnet } from "./beamline3dModel";
+import { fieldMapShape } from "./glyphs";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useLang } from "../i18n";
 import { elementType, matchesStatement } from "./elementType";
 import type { Keyword, Statement } from "./types";
+
+vi.mock("./types", () => ({ elementColorVar: () => "--el-other" }));
 
 const kw = new Map<string, Keyword>([
   ["field", { key: "field", title: ["Field map", "场图元件"], params: [{ key: "type", choices: [
@@ -20,11 +24,13 @@ afterEach(() => useLang.getState().setLang("en"));
 describe("element list types and search", () => {
   it("uses field type before filename hints and marks only inferred magnets", () => {
     useLang.getState().setLang("zh_CN");
-    expect(elementType(field("1", "sol_map"), kw).label).toBe("射频腔（场图）");
-    expect(elementType(field("2", "sol_map"), kw).label).toBe("静电场（场图）");
-    expect(elementType(field("3", "sol_map"), kw).label).toBe("螺线管（场图，推测）");
-    expect(elementType(field("3", "quad_map"), kw).label).toBe("四极铁（场图，推测）");
-    expect(elementType(field("3", "unknown_map"), kw).label).toBe("静磁场（场图）");
+    expect(elementType(field("1", "sol_map"), kw).label).toBe("射频腔");
+    expect(elementType(field("2", "sol_map"), kw).label).toBe("静电场");
+    expect(elementType(field("3", "sol_map"), kw).label).toBe("螺线管（推测）");
+    expect(elementType(field("3", "quad_map"), kw).label).toBe("四极铁（推测）");
+    expect(elementType(field("3", "unknown_map"), kw).label).toBe("静磁场");
+    expect(elementType(field("3", "sol_map"), kw).inferred).toBe(true);
+    expect(elementType(field("1", "sol_map"), kw).inferred).toBe(false);
     expect(elementType(field("9", "sol_map"), kw).label).toBe("场图元件");
   });
 
@@ -45,5 +51,12 @@ describe("element list types and search", () => {
     const st = { ...field("", ""), key: "custom", keyword: "custom" };
     expect(elementType(st, kw).label).toBe("custom");
     expect(matchesStatement(st, kw, "custom")).toBe(true);
+  });
+});
+
+describe("consistent map classification across views", () => {
+  it.each(["corr_map", "maps/corr_map", "q_test", "maps/q_test", "sol_map", "dip_map"])("shares classification for %s", (name) => {
+    const shape = fieldMapShape(name);
+    expect(guessMagnet(name)).toBe(shape === "steerer" ? "corrector" : shape);
   });
 });

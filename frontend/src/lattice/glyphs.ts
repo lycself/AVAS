@@ -11,7 +11,7 @@ const num = (s: string | undefined) => {
 
 /** Kind of magnet a static-magnetic field map is, guessed from its name (quads, solenoids, correctors, dipoles). */
 export function fieldMapShape(name: string): Shape {
-  const n = name.toLowerCase();
+  const n = name.toLowerCase().replace(/^.*[\\/]/, "");
   if (n.includes("sol")) return "solenoid";
   if (/(^v\d|steer|dc[hv]|corr)/.test(n)) return "steerer";
   if (/(^q\d|ql|quad|^q[a-z_])/.test(n)) return "quad";

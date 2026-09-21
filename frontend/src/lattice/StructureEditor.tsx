@@ -329,7 +329,7 @@ function ParamField({ p, value, readOnly, fieldmaps, onCommit }: { p: Param | nu
   return <CommitInput value={value} onCommit={onCommit} validate={validate} disabled={readOnly} mono />;
 }
 
-export function PropertyPanel({ st, kw, readOnly, fieldmaps, onEdits }: { st: Statement | null; kw: Map<string, Keyword>; readOnly?: boolean; fieldmaps: Record<string, string[]>; onEdits: (e: Edit[]) => void }) {
+export function PropertyPanel({ doc, st, kw, readOnly, fieldmaps, onEdits }: { doc: LatticeDoc; st: Statement | null; kw: Map<string, Keyword>; readOnly?: boolean; fieldmaps: Record<string, string[]>; onEdits: (e: Edit[]) => void }) {
   const tt = useT();
   const schemaField = kw.get("field");
   if (!st) return <div className="property-empty muted">{tt("Select an element or command in the list, the schematic or the text.")}</div>;
@@ -349,10 +349,13 @@ export function PropertyPanel({ st, kw, readOnly, fieldmaps, onEdits }: { st: St
   const isElementKind = !spec || schemaFieldIsElement(spec);
   const phaseRef = st.key === "field" && schemaField ? choiceLabel(schemaField.params[2], st.params[2] ?? "") : null;
   const fm = st.fieldmap;
+  const previous = doc.statements[doc.statements.indexOf(st) - 1];
+  const offset = st.isElement && st.block != null && previous?.key === "superpose" ? previous : null;
+  const firstInBlock = offset && doc.statements.find((s) => s.block === st.block && s.isElement) === st;
   return (
     <div className="property-panel">
       <div className="kpi">
-        {spec ? pick(spec.title) : tt("Unknown keyword")}
+        {elementType(st, kw).label}
         <span className="soft" style={{ marginLeft: 10, fontWeight: 400 }}>
           {st.keyword}
         </span>
@@ -360,6 +363,7 @@ export function PropertyPanel({ st, kw, readOnly, fieldmaps, onEdits }: { st: St
           {tt("line {n}", { n: st.line + 1 })}
         </span>
       </div>
+      {elementType(st, kw).inferred && <p className="muted">{tt("The element type is inferred from the field-map filename; the field distribution comes from the actual file data. If the type is incorrect, contact the maintainer via Help → About AVAS.")}</p>}
       {spec && pick(spec.doc) && <p className="muted">{pick(spec.doc)}</p>}
       {!st.active && <p className="soft">{tt("Outside start … end: not simulated.")}</p>}
       {st.issues.length > 0 && (
@@ -372,6 +376,20 @@ export function PropertyPanel({ st, kw, readOnly, fieldmaps, onEdits }: { st: St
         </div>
       )}
       <div className="prop-form">
+        {offset && <>
+          <label>{tt("Position within group")}</label>
+          <div className="prop-field" data-tip={tt("Measured from the first element; the first element stays at zero. Changing the group extent moves downstream elements.")}>
+            <CommitInput value={offset.params[0] ?? "0"} disabled={readOnly || !!firstInBlock} mono
+              validate={(v) => v.trim() !== "" && Number.isFinite(Number(v)) && Number(v) >= 0}
+              onCommit={(v) => {
+                if (readOnly || firstInBlock || !Number.isFinite(Number(v)) || Number(v) < 0) return;
+                const params = [...offset.params]; params[0] = String(Number(v));
+                onEdits([[offset.line, formatStatement(offset, { params })]]);
+              }} />
+            <span className="unit">m</span>
+          </div>
+        </>}
+
         {isElementKind && (
           <>
             <label data-tip={tt("Written as 'name : keyword …', or kept in the '!name' comment line.")}>{tt("Name")}</label>
@@ -718,7 +736,7 @@ export function StructureEditor({ doc, schema, selected, selectionRequest = 0, o
                   const text = formatStatement(current, { params });
                   if (text !== current.raw) onEdits([[line, text]]);
                 }} />}
-              <PropertyPanel st={st} kw={kw} readOnly={readOnly} fieldmaps={fieldmaps} onEdits={onEdits} />
+              <PropertyPanel doc={doc} st={st} kw={kw} readOnly={readOnly} fieldmaps={fieldmaps} onEdits={onEdits} />
             </div>
           </div>
         ) : (

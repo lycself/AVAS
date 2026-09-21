@@ -139,11 +139,12 @@
 
 /* ---------------------------------------------------------------- component view */
 .component-view { position: relative; display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 10px 14px 4px; border-bottom: 1px solid var(--border); }
-.cv-svg { flex: 1 1 420px; max-width: 640px; min-width: 300px; height: auto; aspect-ratio: 560 / 230; background: var(--beamline-bg); border: 1px solid var(--border); border-radius: 6px; touch-action: none; }
+.cv-diagram { flex: 1 1 420px; max-width: 640px; min-width: 0; background: var(--beamline-bg); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
+.cv-diagram-actions { order: -1; display: flex; justify-content: flex-end; padding: 6px 8px 0; }
+.cv-svg { display: block; width: 100%; height: auto; aspect-ratio: 560 / 230; touch-action: none; }
 .cv-controls { flex: 1 1 280px; display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 260px; }
 .cv-empty { padding: 12px 14px; }
 .cv-busy { position: absolute; right: 8px; top: 8px; pointer-events: none; opacity: .6; }
-.cv-expand { position: absolute; right: 34px; top: 8px; }
 .cv-slider { display: grid; grid-template-columns: minmax(80px, max-content) minmax(100px, 1fr) 96px 40px; align-items: center; gap: 10px; }
 .cv-slider.disabled { opacity: .55; pointer-events: none; }
 .cv-slider-label { color: var(--fg); white-space: nowrap; }
@@ -201,7 +202,7 @@
 .lattice-reveal-line { background: var(--lattice-reveal); }
 .lattice-reveal-margin { border-left: 3px solid var(--accent); }
 .player-source { max-width: 160px; }
-.structure-inspector .cv-svg { min-width: 0; width: 100%; }
+.structure-inspector .cv-diagram { min-width: 0; width: 100%; }
 
 .glyph-key { position: absolute; top: 8px; right: 12px; max-width: 55%; font-size: 11px; color: var(--fg-soft); background: var(--beamline-bg); pointer-events: none; }
 .player-bar { flex-wrap: wrap; }

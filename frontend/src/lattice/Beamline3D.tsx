@@ -30,6 +30,7 @@ import type { LatticeDoc } from "./types";
 export type { Envelope3D, PointerDevice } from "./b3dViewer";
 export type Beamline3DProps = {
   doc: LatticeDoc;
+  onElementContextMenu?: (line: number, x: number, y: number) => void;
   selected: number | null; // statement line number
   onSelect: (line: number) => void;
   envelope?: Envelope3D; // optional beam envelope to show as a tube
@@ -46,7 +47,7 @@ const EX_MAX = 500;
 const exToSlider = (ex: number) => Math.round((1000 * Math.log(ex / EX_MIN)) / Math.log(EX_MAX / EX_MIN));
 const sliderToEx = (v: number) => roundNice(EX_MIN * Math.exp((v / 1000) * Math.log(EX_MAX / EX_MIN)));
 
-export default function Beamline3D({ doc, selected, onSelect, envelope, theme, className, bunchKinds }: Beamline3DProps): JSX.Element {
+export default function Beamline3D({ doc, selected, onSelect, onElementContextMenu, envelope, theme, className, bunchKinds }: Beamline3DProps): JSX.Element {
   const tr = useT();
   const hostRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
@@ -56,6 +57,8 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
   const device = useApp((s) => pointerDevice(s.settings));
   const viewerRef = useRef<Viewer | null>(null);
   const onSelectRef = useRef(onSelect);
+  const contextRef = useRef(onElementContextMenu);
+  contextRef.current = onElementContextMenu;
   const [failed, setFailed] = useState(false);
   const [lost, setLost] = useState(false);
   const [exUser, setExUser] = useState<number | null>(null);
@@ -112,6 +115,7 @@ export default function Beamline3D({ doc, selected, onSelect, envelope, theme, c
     try {
       viewer = new Viewer(hostRef.current!, labelsRef.current!, tipRef.current!, barRef.current, {
         onSelect: (line) => onSelectRef.current(line),
+        onElementContextMenu: (line, x, y) => contextRef.current?.(line, x, y),
         onFlyChange: setFlying,
         onContextLost: setLost,
         onFollowChange: setFollowing,

@@ -1,3 +1,4 @@
+import { elementType } from "./elementType";
 import { createWheelClassifier, type PointerDevice } from "../components/pointer";
 // The three.js viewer behind Beamline3D.tsx: scene construction from the model,
 // on-demand rendering, camera animation (fit, focus, fly-through, follow the
@@ -5,7 +6,6 @@ import { createWheelClassifier, type PointerDevice } from "../components/pointer
 // position bar live in b3dHud.ts, the unit geometries in b3dGeometry.ts.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { pick, t } from "../i18n";
 import { cssColor, niceStep } from "../util";
 import {
   CLOUD,
@@ -71,27 +71,10 @@ function readColors(): Map<string, THREE.Color> {
   return out;
 }
 
-function fieldKindText(e: Elem): string {
-  if (e.shape === "rf") return t("RF cavity");
-  if (e.shape === "efield") return t("Static electric field");
-  const guess: Record<string, () => string> = {
-    solenoid: () => t("Solenoid"),
-    quad: () => t("Quadrupole"),
-    dipole: () => t("Dipole"),
-    corrector: () => t("Steerer"),
-    magnet: () => t("Static magnetic field"),
-  };
-  return e.guess ? guess[e.guess]() : "";
-}
-
 function tooltipText(e: Elem): string {
   const schema = schemaNow();
   const kw = schema?.lattice.find((k) => k.key === e.st.key);
-  let type = kw ? pick(kw.title) : e.st.keyword;
-  if (e.st.key === "field") {
-    const sub = fieldKindText(e);
-    if (sub) type += ` · ${sub}`;
-  }
+  const type = elementType(e.st, new Map(schema?.lattice.map((k) => [k.key, k]) ?? [])).label;
   const lines = [e.label, type, `z = ${fmt6(e.s0)} … ${fmt6(e.s1)} m`];
   const summary = statementSummary(e.st, kw);
   if (summary && summary !== e.label) lines.push(summary);
@@ -108,6 +91,7 @@ export type Callbacks = {
   onSelect: (line: number) => void;
   onFlyChange: (on: boolean) => void;
   onContextLost: (lost: boolean) => void;
+  onElementContextMenu?: (line: number, x: number, y: number) => void;
   onFollowChange: (on: boolean) => void;
 };
 
@@ -275,6 +259,7 @@ export class Viewer {
     canvas.addEventListener("pointerleave", this.onPointerLeave);
     canvas.addEventListener("dblclick", this.onDoubleClick);
     canvas.addEventListener("keydown", this.onKeyDown);
+    canvas.addEventListener("contextmenu", this.onElementContextMenu);
     canvas.addEventListener("webglcontextlost", this.onContextLost);
     canvas.addEventListener("webglcontextrestored", this.onContextRestored);
     // before OrbitControls' own wheel handler on the canvas: touchpad swipes pan instead of zooming
@@ -606,6 +591,7 @@ export class Viewer {
     canvas.removeEventListener("pointerleave", this.onPointerLeave);
     canvas.removeEventListener("dblclick", this.onDoubleClick);
     canvas.removeEventListener("keydown", this.onKeyDown);
+    canvas.removeEventListener("contextmenu", this.onElementContextMenu);
     canvas.removeEventListener("webglcontextlost", this.onContextLost);
     canvas.removeEventListener("webglcontextrestored", this.onContextRestored);
     this.host.removeEventListener("wheel", this.onWheel, { capture: true });
@@ -1409,6 +1395,16 @@ export class Viewer {
     this.pointer.inside = false;
     this.setHover(null);
     this.labels.setHot(null);
+  };
+
+  private onElementContextMenu = (ev: MouseEvent) => {
+    const label = this.labels.at(ev.clientX, ev.clientY);
+    const hits = this.pick(ev.clientX, ev.clientY);
+    const line = label?.line ?? hits.find((h) => h.line === this.selected)?.line ?? hits[0]?.line;
+    if (line == null || !this.cb.onElementContextMenu) return;
+    ev.preventDefault();
+    this.cb.onSelect(line);
+    this.cb.onElementContextMenu(line, ev.clientX, ev.clientY);
   };
 
   private onDoubleClick = (ev: MouseEvent) => {

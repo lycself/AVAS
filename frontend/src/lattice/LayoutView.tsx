@@ -85,7 +85,8 @@ type Props = {
   bunchKinds?: BunchFrame["kind"][];
   /** also keep the bunch of a finished live run (at its end) */
   bunchWhenDone?: boolean;
-  onDropElement?: (z: number, kind: NewElementKind) => void;
+  onDropElement?: (z: number, kind: NewElementKind, target?: number) => void;
+  onElementContextMenu?: (line: number, x: number, y: number) => void;
   readOnly?: boolean;
   compact?: boolean;
   /** Suggested height including all display lanes and a readable envelope. */
@@ -147,6 +148,7 @@ export function LayoutView({
   bunchKinds,
   bunchWhenDone,
   onDropElement,
+  onElementContextMenu,
   readOnly,
   compact,
   onPreferredHeight,
@@ -879,18 +881,20 @@ export function LayoutView({
         if (readOnly || !onDropElement || !e.dataTransfer.types.includes(PALETTE_MIME)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
-        const { x } = local(e);
-        const m = dropMarker(doc, zOf(x));
+        const { x, y } = local(e);
+        const target = y <= GLYPH_H + 4 ? hitItem(x, y) : null;
+        const m = target && target.shape !== "drift" ? { z: target.z0, kind: "superpose" as const } : dropMarker(doc, zOf(x));
         setDrop({ z: m.z, kind: m.kind });
       }}
       onDragLeave={() => setDrop(null)}
       onDrop={(e) => {
         const kind = e.dataTransfer.getData(PALETTE_MIME) as NewElementKind;
         setDrop(null);
-        if (!kind || !onDropElement) return;
+        if (readOnly || !kind || !onDropElement) return;
         e.preventDefault();
-        const { x } = local(e);
-        onDropElement(Math.max(0, zOf(x)), kind);
+        const { x, y } = local(e);
+        const target = y <= GLYPH_H + 4 ? hitItem(x, y) : null;
+        onDropElement(Math.max(0, zOf(x)), kind, target && target.shape !== "drift" ? target.line : undefined);
       }}
     >
       <canvas
@@ -937,6 +941,15 @@ export function LayoutView({
           drag.current = null;
           setHover(null);
         }}
+        onContextMenu={(e) => {
+          if (!onElementContextMenu) return;
+          const { x, y } = local(e);
+          const target = hitItem(x, y);
+          if (!target) return;
+          e.preventDefault();
+          onSelect?.(target.line);
+          onElementContextMenu(target.line, e.clientX, e.clientY);
+        }}
         onDoubleClick={fit}
       />
       {items.some((it) => it.shape === "steerer") && <div className="glyph-key">{t("▼│ Corrector symbol · field-map type may be inferred from its filename")}</div>}
@@ -953,7 +966,7 @@ export function LayoutView({
       )}
       {drop && (
         <div className="layout-drop-hint" style={{ left: Math.min(Math.max(8, xOf(drop.z) + 8), size.w - 200) }}>
-          {drop.kind === "split" ? t("split the drift here") : drop.kind === "superpose" ? t("superpose in this block") : t("insert here")}
+          {drop.kind === "split" ? t("split the drift here") : drop.kind === "superpose" ? t("superpose here") : t("insert here")}
         </div>
       )}
       {legend.length > 0 && (

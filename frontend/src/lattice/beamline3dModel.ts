@@ -1,3 +1,4 @@
+import { fieldMapShape } from "./glyphs";
 // Pure geometry / model code for the 3D beamline view (no three.js here, so it
 // is cheap to import and easy to test).  Beam coordinates: x horizontal, y up,
 // z along the reference orbit; lengths in metres.
@@ -73,12 +74,8 @@ const num = (v: string | undefined) => {
 };
 
 export function guessMagnet(file: string): Exclude<Elem["guess"], ""> {
-  const f = (file || "").toLowerCase().replace(/^.*[\\/]/, "");
-  if (f.includes("sol")) return "solenoid";
-  if (/(^q\d|ql|quad)/.test(f)) return "quad";
-  if (/(^d\d|_d\d|dip|bend)/.test(f)) return "dipole";
-  if (/(^v\d|steer|dc[hv])/.test(f)) return "corrector";
-  return "magnet";
+  const shape = fieldMapShape(file);
+  return shape === "steerer" ? "corrector" : shape === "solenoid" || shape === "quad" || shape === "dipole" ? shape : "magnet";
 }
 
 const APERTURE_KEYS = new Set(["drift", "field", "quad", "solenoid", "bend", "steerer", "edge"]);

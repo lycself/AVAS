@@ -16,7 +16,8 @@ import { PlayerBar } from "./PlayerBar";
 import { LayoutView, PALETTE_MIME, type EnvelopeCurves, type LayoutShow } from "./LayoutView";
 import { PropertyPanel, StructureTree, structureTreeHandlers } from "./StructureEditor";
 import { applyResult, elementOptions, PALETTE, structureMenu, type ApplyRange } from "./structureMenu";
-import { defaultLength, deleteUnit, duplicateUnit, insertAfter, insertAtZ, moveUnit, newElementText, type NewElementKind } from "./structureOps";
+import { elementType } from "./elementType";
+import { superposeWith, defaultLength, deleteUnit, duplicateUnit, insertAfter, insertAtZ, moveUnit, newElementText, type NewElementKind } from "./structureOps";
 import { formatStatement, type Edit, type LatticeDoc, type Schema, type Statement } from "./types";
 import { listSegmentResults, replaceLine, textFingerprint, useLinearPreview, useRunEnvelope, useSegmentEnvelope, type SegmentSource } from "./usePreview";
 import type { HistoryState } from "./editorHistory";
@@ -239,11 +240,17 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
     [doc, onEdits, readOnly],
   );
 
-  const dropElement = (z: number, kind: NewElementKind) => {
+  const dropElement = (z: number, kind: NewElementKind, target?: number) => {
     if (!doc || readOnly) return;
     const opts = elementOptions(doc, selected, frequency);
     const L = defaultLength(kind);
-    applyResult(insertAtZ(doc, lines(), z, newElementText(kind, { ...opts, length: L }), L), onRangeEdits);
+    applyResult(target != null ? superposeWith(doc, lines(), target, newElementText(kind, { ...opts, length: L })) : insertAtZ(doc, lines(), z, newElementText(kind, { ...opts, length: L }), L), onRangeEdits);
+  };
+
+  const elementContextMenu = (line: number, x: number, y: number) => {
+    if (!doc) return;
+    openMenu(structureMenu(doc, lines, line, onRangeEdits, { readOnly, frequency,
+      onShowText: showText ? undefined : onToggleText }), x, y);
   };
 
   const insertKind = (kind: NewElementKind) => {
@@ -541,11 +548,12 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
             segment={segmentEnv}
             bunchKinds={bunchKinds}
             onDropElement={dropElement}
+            onElementContextMenu={elementContextMenu}
             readOnly={readOnly}
           />
         ) : (
           <Suspense fallback={<div className="empty-state"><Spinner size={24} /></div>}>
-            <Beamline3D doc={doc} selected={selected} onSelect={(l) => selectFromDiagram(l, "3d")} envelope={envelope3d} theme={theme} bunchKinds={bunchKinds} />
+            <Beamline3D onElementContextMenu={elementContextMenu} doc={doc} selected={selected} onSelect={(l) => selectFromDiagram(l, "3d")} envelope={envelope3d} theme={theme} bunchKinds={bunchKinds} />
           </Suspense>
         )}
       </div>
@@ -575,12 +583,12 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
                 <div className="grow ellipsis">
                   <span className="kpi">{st.name || (st.key === "field" ? st.params[8] : "") || st.keyword}</span>
                   <span className="soft" style={{ marginLeft: 10 }}>
-                    {kw.get(st.key) ? pick(kw.get(st.key)!.title) : st.keyword} · {t("line {n}", { n: st.line + 1 })}
+                    {elementType(st, kw).label} · {t("line {n}", { n: st.line + 1 })}
                     {st.active && st.isElement ? ` · z = ${Number((st.zStart ?? 0).toPrecision(6))} … ${Number((st.zEnd ?? 0).toPrecision(6))} m` : ""}
                   </span>
                 </div>
-                <IconButton icon="arrow-up" tip={t("Move up (Alt+↑)")} disabled={readOnly} onClick={() => applyResult(moveUnit(doc, lines(), st.line, -1), onRangeEdits)} />
-                <IconButton icon="arrow-down" tip={t("Move down (Alt+↓)")} disabled={readOnly} onClick={() => applyResult(moveUnit(doc, lines(), st.line, 1), onRangeEdits)} />
+                <IconButton icon="arrow-up" tip={st.block != null ? t("Move whole group up (Alt+↑)") : t("Move up (Alt+↑)")} disabled={readOnly} onClick={() => applyResult(moveUnit(doc, lines(), st.line, -1), onRangeEdits)} />
+                <IconButton icon="arrow-down" tip={st.block != null ? t("Move whole group down (Alt+↓)") : t("Move down (Alt+↓)")} disabled={readOnly} onClick={() => applyResult(moveUnit(doc, lines(), st.line, 1), onRangeEdits)} />
                 <IconButton icon="copy" tip={t("Duplicate (Ctrl+D)")} disabled={readOnly} onClick={() => applyResult(duplicateUnit(doc, lines(), st.line), onRangeEdits)} />
                 <IconButton icon="trash" tip={t("Delete (Del)")} disabled={readOnly} onClick={() => applyResult(deleteUnit(doc, lines(), st.line), onRangeEdits)} />
                 <IconButton
@@ -593,7 +601,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
                 {st.isElement && (
                   <ComponentView st={st} kw={kw.get(st.key)} fieldDirs={fieldDirs} readOnly={readOnly} energy={energy} onDraft={onDraft} onCommit={onCommit} />
                 )}
-                <PropertyPanel st={st} kw={kw} readOnly={readOnly} fieldmaps={fieldmaps} onEdits={onEdits} />
+                <PropertyPanel doc={doc} st={st} kw={kw} readOnly={readOnly} fieldmaps={fieldmaps} onEdits={onEdits} />
               </div>
             </>
           ) : (

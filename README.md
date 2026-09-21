@@ -442,3 +442,24 @@ Visual editing shares the text model's Undo/Redo history; buttons are disabled w
 The Files page has a collapsible, vertically resizable File history section below its file list, with independent scrolling and the current filename. Selecting a version shows the comparison on the right while keeping the file tree available. The Lattice page has a History button beside the file selector; its dialog shows versions on the left, differences on the right, and restoration controls below. Both views share history and preserve the original editor and undo stack. There is no global history navigation entry. It lists saved versions of lattice files, beam.txt and input.txt and compares them with the current editor side by side. Saves from text, structure, visual, beam, settings and file editors, including approved AI changes, share persistent project-local `.avas_history/` storage. Restoration preserves the current editor text first, loads the selected version as an undoable edit, and requires saving to write the file. A successful save appends “Restored from version N” or “Modified after restoring version N” while retaining later versions. Undoing restoration clears its attribution for ordinary edits; adjacent identical contents are not duplicated. During a run, viewing and comparison remain available but restoration is disabled. History starts with saves after this feature is enabled, not individual keystrokes; external changes are captured at the next AVAS save. Text files up to 2 MB are supported, versions are not automatically removed, and renamed files start a separate history. Log filters are All, Warnings and errors, and Application logs only; Log is the panel title.
 
 Pointer mode is shared by 2D, 3D, run and result plots, and is saved across restarts. Choose Auto, Mouse or Touchpad in the Settings page, Settings menu or 3D shortcut menu. Mouse wheels zoom; touchpad swipes pan and pinches zoom. In the beamline layout, vertical swipes also pan along the beamline. Auto detects each gesture from wheel event characteristics; existing 3D preferences are retained as the global fallback. The visual editor lists every component with its name in a horizontal strip, navigable with arrows, horizontal touchpad scrolling or Shift+wheel; click and drag insertion remain available.
+
+
+### 可视化叠加编辑
+
+在二维可视化编辑器中，把元件拖到已有非漂移元件内部即可叠加，端点仍顺序插入，漂移段仍按原规则拆分。选中组内元件后可修改“组内纵向位置”（首元件固定为零）；组的总长度变化会移动下游元件。所有修改可撤销，保存后写入文件。列表、详情、场分布浮窗和 2D／3D 使用统一类型名称，文件名识别依据放在详情说明中；整组移动和组后插入有明确提示。
+
+### Visual superposition editing
+
+Drop a component inside an existing non-drift element in the 2D visual editor to superpose it. Endpoints insert sequentially; drifts retain their splitting behavior. Edit the selected member's position relative to the group entrance; the first member stays at zero. Changing the group extent moves downstream elements. Edits are undoable and written on save. Lists, inspectors, field windows and 2D/3D share concise type labels and explain filename-based identification in the details. Group movement and insertion after a group are explicitly labeled.
+
+二维视图拖到具体元件图形上时，新元件与目标入口对齐，可连续形成三层及更多叠加。二维／三维图中右键元件可选择“叠加元件”、复制、删除等；浏览状态下修改项禁用，先进入编辑状态。
+
+Dropping onto a specific non-drift glyph in 2D aligns the new member to its entrance, allowing three or more aligned members. Right-click an element in 2D/3D for Add superposed element, Duplicate, Delete and other structure actions. Mutation actions are disabled in browse mode; enter edit mode first.
+
+仅根据文件名判断的元件类型附加“（推测）”，名称不再附加“场图”后缀，图框右上角用文字按钮“查看场图／查看场分布”打开对应窗口。
+
+Only element types inferred from filenames carry an “(inferred)” suffix; names omit the field-map suffix. A labeled View field map / View field distribution button inside the diagram opens the corresponding window.
+
+推测类型的元件详情说明区提供反馈指引：若识别有误，可通过「帮助 → 关于 AVAS」联系维护者。
+
+Details for inferred element types explain how to report incorrect identification: contact the maintainer via Help → About AVAS.

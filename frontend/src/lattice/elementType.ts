@@ -23,10 +23,8 @@ export function elementType(st: Statement, kw: Map<string, Keyword>) {
       }
     }
   }
-  const label = st.key !== "field" || title === fallback ? pick(title)
-    : inferred ? t("{type} (field map, inferred)", { type: pick(title) })
-      : t("{type} (field map)", { type: pick(title) });
-  return { label, search: [...fallback, ...title, label].join(" ") };
+  const label = inferred ? t("{type} (inferred)", { type: pick(title) }) : pick(title);
+  return { label, inferred, search: [...fallback, ...title, label].join(" ") };
 }
 
 export function matchesStatement(st: Statement, kw: Map<string, Keyword>, query: string): boolean {
