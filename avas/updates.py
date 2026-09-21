@@ -92,10 +92,9 @@ def installation(root=None):
         if Path(worker.git(root, "rev-parse", "--show-toplevel")).resolve() != root:
             raise ValueError("Cannot identify the AVAS repository root")
         commit = worker.git(root, "rev-parse", "HEAD")
-    elif (root / worker.MANIFEST).is_file():
-        commit = worker.read_manifest(root)["commit"]
-    elif (root / ".avas-source.json").is_file():
-        commit = json.loads((root / ".avas-source.json").read_text(encoding="utf-8"))["commit"]
+    else:
+        from avas.buildinfo import archive_stamp
+        commit = archive_stamp(root).get("commit", "")
     return {"kind": kind, "commit": commit if SHA.fullmatch(commit) else "", "version": __version__, "root": str(root)}
 
 

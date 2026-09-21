@@ -2,7 +2,7 @@ import { useManual } from "./help/store";
 // Commands shared by the menu bar, tool bar, shortcuts and pages.
 import { call, isDesktop, on } from "./bridge";
 import { alertDialog, anyDialogOpen, choiceDialog, confirmDialog, promptDialog, reportError, toast, type MenuItem } from "./components/overlays";
-import { canQuit, openPath, pickFolder, pickSaveFile } from "./host";
+import { canQuit, copyText, openPath, pickFolder, pickSaveFile } from "./host";
 import { t } from "./i18n";
 import { refreshProject, setPage, setProject, showStatus, useApp, type ProjectSummary } from "./store/app";
 import { allPages, dirtyPages, useDirty } from "./store/pages";
@@ -280,25 +280,34 @@ export function openManual() {
 }
 
 export async function showAbout() {
-  const { version } = useApp.getState();
-  let lines: string[] = [];
+  const { version, build } = useApp.getState();
+  let b = build;
+  let environment = "";
   try {
     const info = await call<any>("app.info");
-    const b = info.build ?? {};
-    const buildTime = (value: string) => formatBuildTime(value) ?? `${value} (${t("timezone unknown")})`;
-    lines = [
-      b.frozen ? t("Stand-alone build") : t("Running from source"),
-      b.built ? `${t("Built")}: ${buildTime(b.built)}` : b.frontend ? `${t("Front end built")}: ${buildTime(b.frontend)}` : "",
-      b.commit ? `${t("Commit")}: ${b.commit}${b.dirty ? ` (${t("with local changes")})` : ""}` : "",
-      `${t("Location")}: ${b.location ?? ""}`,
-      `Python ${info.python} · WebView2 ${info.webview2 ?? "–"}`,
-    ].filter(Boolean);
+    b = info.build ?? build;
+    useApp.setState({ build: b });
+    environment = `Python ${info.python} · ${info.platform} · ${info.host === "browser" ? t("Browser") : `WebView2 ${info.webview2 ?? "–"}`}`;
   } catch {
-    /* the dialog still shows the version */
+    /* Keep the version snapshot received at startup. */
   }
+  const buildTime = (value?: string | null) => value ? formatBuildTime(value) ?? `${value} (${t("timezone unknown")})` : t("Unknown");
+  const lines = [
+    b.frozen ? t("Stand-alone build") : t("Running from source"),
+    `${t("Commit")}: ${b.commit || t("Unknown commit")}${b.dirty ? ` (${t("with local changes")})` : ""}`,
+    `${t("Commit time")}: ${buildTime(b.committed)}`,
+    b.frozen ? `${t("Built")}: ${buildTime(b.built)}` : "",
+    `${t("Front end built")}: ${buildTime(b.frontend)}`,
+    `${t("Location")}: ${b.location ?? ""}`,
+    environment,
+  ].filter(Boolean);
+  const identity = `AVAS ${version} · ${b.commit?.slice(0, 7) || t("Unknown commit")}`;
+  const versionInfo = `${identity}\nAdvanced Virtual Accelerator Software\n\n${lines.join("\n")}`;
   alertDialog(
-    `AVAS ${version}\nAdvanced Virtual Accelerator Software\n\n${lines.join("\n")}${lines.length ? "\n\n" : ""}${t("References")}\nC. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., Phys. Rev. Accel. Beams 28, 044602 (2025)\n\n${t("Feedback")}\n${t("Maintainer")}: Yuchen Lin\n${t("Feedback email")}: yuchenlin@stu.xmu.edu.cn`,
-    { title: t("About AVAS") },
+    `${versionInfo}\n\n${t("References")}\nC. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., Phys. Rev. Accel. Beams 28, 044602 (2025)\n\n${t("Feedback")}\n${t("Maintainer")}: Yuchen Lin\n${t("Feedback email")}: yuchenlin@stu.xmu.edu.cn`,
+    { title: t("About AVAS"), action: { label: t("Copy version information"), onClick: () => {
+      copyText(versionInfo).then(() => toast(t("Version information copied"))).catch(reportError);
+    } } },
   );
 }
 

@@ -1,4 +1,5 @@
 import { pointerDevice } from "../components/pointer";
+import { VersionStamp } from "../components/VersionStamp";
 // Window chrome: menu bar, tool bar, side bar, page area, log panel, status bar.
 import { checkUpdates, UpdateNotice } from "../updates";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
@@ -341,13 +342,12 @@ function Sidebar() {
   const collapsed = useApp((s) => s.sidebarCollapsed);
   const running = useApp((s) => s.run.running);
   const paused = useApp((s) => !!s.run.paused);
-  const version = useApp((s) => s.version);
   const projectOpen = useApp((s) => s.project.open);
   const dirty = useDirty((s) => s.dirty);
   const dirtyByPage: Partial<Record<PageId, boolean>> = { beam: dirty.beam, lattice: dirty.lattice, settings: dirty.settings, files: dirty.files };
   return (
     <nav className={cx("sidebar", collapsed && "collapsed")}>
-      <div className="sidebar-header">{!collapsed && <span>AVAS&nbsp;&nbsp;v{version}</span>}</div>
+      <div className="sidebar-header">{!collapsed && <>AVAS <VersionStamp /></>}</div>
       {PAGES.map((p) => {
         const meta = PAGE_META[p];
         const busy = p === "run" && running;

@@ -37,7 +37,7 @@ function sourceStamp(outDir: string): Plugin {
     name: "avas-source-stamp",
     apply: "build",
     closeBundle() {
-      writeFileSync(join(outDir, "source-hash.json"), JSON.stringify({ sha256: sourceHash() }, null, 2) + "\n");
+      writeFileSync(join(outDir, "source-hash.json"), JSON.stringify({ sha256: sourceHash(), built: new Date().toISOString() }, null, 2) + "\n");
     },
   };
 }

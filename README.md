@@ -270,7 +270,7 @@ ZIP 更新下载遇到暂时网络错误、下载不完整或校验失败时会�
 
 正式发布使用 7 位提交号标签，GitHub 的 Source code (zip) 名称缩短为 `AVAS-avas-xxxxxxx.zip`。完整提交号的兼容下载入口继续保留供旧版自动更新使用；日常下载请选择短标签正式版本。
 
-“帮助 → 关于 AVAS”按本地时区显示构建时间并标注 UTC 偏移；旧包缺少时区时标注“时区未知”。弹窗单列参考文献与反馈信息：维护者 Yuchen Lin，反馈邮箱 yuchenlin@stu.xmu.edu.cn。
+侧栏、首页和“帮助 → 关于 AVAS”显示版本号与短提交号，本地修改用星号及提示标识。“关于”提供完整提交号、提交时间、软件／界面构建时间和“复制版本信息”，便于反馈问题。时间按本地时区显示并标注 UTC 偏移；旧包缺少时区时标注“时区未知”，缺少提交或构建记录时显示未知，不用解压／复制产生的文件时间代替。源码 ZIP 无需 Git 即可读取发布标记。弹窗单列参考文献与反馈信息：维护者 Yuchen Lin，反馈邮箱 yuchenlin@stu.xmu.edu.cn。
 
 如果您在科研工作或发表论文中使用了本项目代码，请引用：
 
@@ -428,7 +428,7 @@ Front-end build, debug server, packaging and test instructions for developers ar
 
 Public releases use seven-character commit tags, shortening GitHub's Source code (zip) filename to `AVAS-avas-xxxxxxx.zip`. Full-commit compatibility releases remain available for older updaters; choose the short-tag public release for manual downloads.
 
-Help → About AVAS shows build times in the local timezone with an explicit UTC offset; legacy timestamps without a timezone are marked as unknown. References and feedback are listed separately: maintainer Yuchen Lin, feedback email yuchenlin@stu.xmu.edu.cn.
+The sidebar, home page and Help → About AVAS show the version and short commit ID; an asterisk and tooltip identify local changes. About includes the full commit ID, commit time, application/front-end build times and Copy version information for bug reports. Times use the local timezone with an explicit UTC offset; legacy timestamps without a timezone are marked accordingly, and missing revision/build records remain unknown rather than using extraction or copy times. Source ZIPs read release markers without requiring Git. References and feedback are listed separately: maintainer Yuchen Lin, feedback email yuchenlin@stu.xmu.edu.cn.
 
 If you use this code in your research, please cite:
 

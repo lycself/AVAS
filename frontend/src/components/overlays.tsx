@@ -431,7 +431,7 @@ export function DialogLayer() {
   );
 }
 
-export function alertDialog(message: ReactNode, opts?: { title?: string; detail?: string; kind?: "info" | "warning" | "error" }): Promise<void> {
+export function alertDialog(message: ReactNode, opts?: { title?: string; detail?: string; kind?: "info" | "warning" | "error"; action?: { label: string; onClick: () => void } }): Promise<void> {
   const kind = opts?.kind ?? "info";
   const icon = kind === "error" ? "error" : kind === "warning" ? "warning" : "info";
   return showDialog<void>((close) => (
@@ -441,9 +441,12 @@ export function alertDialog(message: ReactNode, opts?: { title?: string; detail?
       className={`dialog-${kind}`}
       onClose={() => close()}
       footer={
+        <>
+        {opts?.action && <Button onClick={opts.action.onClick}>{opts.action.label}</Button>}
         <Button variant="primary" autoFocus onClick={() => close()}>
           {t("OK")}
         </Button>
+        </>
       }
     >
       <div className="dialog-message">{message}</div>

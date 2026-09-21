@@ -13,6 +13,7 @@ import { showLog } from "../shell/LogPanel";
 import { setPage, setProject, useApp, type PageId, type ProjectSummary, type RunInfo } from "../store/app";
 import { setLatticeMode } from "../store/latticeUi";
 import { basename } from "../util";
+import { VersionStamp } from "../components/VersionStamp";
 
 function parentDir(p: string) {
   return p.split(/[\\/]/).slice(0, -1).join("\\");
@@ -27,7 +28,6 @@ export default function ProjectPage() {
 function Welcome() {
   const t = useT();
   const recent = useApp((s) => s.project.recent);
-  const version = useApp((s) => s.version);
   return (
     <div className="page">
       <div className="welcome">
@@ -38,8 +38,9 @@ function Welcome() {
           <div>
             <h1 className="welcome-title">AVAS</h1>
             <div className="welcome-sub">
-              Advanced Virtual Accelerator Software <span className="soft">· v{version}</span>
+              Advanced Virtual Accelerator Software
             </div>
+            <div className="welcome-sub"><VersionStamp /></div>
           </div>
         </div>
         <div className="welcome-columns">

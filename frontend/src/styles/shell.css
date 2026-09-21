@@ -26,9 +26,11 @@ body.dragging .sash-v, body.dragging { cursor: col-resize; }
 .sidebar-wrap { flex: none; min-width: 0; overflow: hidden; background: var(--sidebar-bg); }
 .sidebar { display: flex; flex-direction: column; height: 100%; }
 .sidebar-header {
-  height: 35px; flex: none; display: flex; align-items: center; padding: 0 14px;
-  font-size: 11px; font-weight: 600; letter-spacing: 1px; color: var(--fg-muted); white-space: nowrap; text-transform: uppercase;
+  min-height: 35px; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; padding: 4px 14px;
+  font-size: 11px; font-weight: 600; color: var(--fg-muted);
 }
+.version-stamp { display: inline-flex; flex-wrap: wrap; gap: 0 6px; }
+.version-stamp > span { white-space: nowrap; }
 .nav-item {
   position: relative; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border: 0;
   border-left: 2px solid transparent; background: transparent; color: var(--fg-muted); cursor: pointer; text-align: left; white-space: nowrap;

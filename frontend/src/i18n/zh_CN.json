@@ -1,4 +1,11 @@
 {
+  "Unknown commit": "提交号未知",
+  "Unknown": "未知",
+  "Browser": "浏览器",
+  "Commit time": "提交时间",
+  "Copy version information": "复制版本信息",
+  "Version information copied": "已复制版本信息",
+  "Could not copy version information. Select and copy the text manually.": "无法复制版本信息，请选中文字手动复制。",
   "timezone unknown": "时区未知",
   "References": "参考文献",
   "Feedback": "反馈",

@@ -90,3 +90,26 @@ export function applyZoom(factor: number) {
   if (isDesktop()) call("app.zoom", { factor }).catch(() => undefined);
   else (document.documentElement.style as CSSStyleDeclaration & { zoom: string }).zoom = factor === 1 ? "" : String(factor);
 }
+
+/** Clipboard fallback also supports browser hosts on trusted HTTP networks. */
+export async function copyText(text: string): Promise<void> {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch { /* Try the synchronous browser clipboard command. */ }
+  const focused = document.activeElement as HTMLElement | null;
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  try {
+    if (!document.execCommand("copy")) throw new Error(t("Could not copy version information. Select and copy the text manually."));
+  } finally {
+    input.remove();
+    focused?.focus();
+  }
+}

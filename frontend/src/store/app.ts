@@ -4,6 +4,7 @@ import { call, isDesktop, on } from "../bridge";
 import { applyZoom } from "../host";
 import { useLang, type Language } from "../i18n";
 import { initLive } from "./live";
+import type { BuildInfo } from "../components/VersionStamp";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type PageId = "project" | "beam" | "lattice" | "settings" | "files" | "run" | "scan" | "results";
@@ -82,6 +83,7 @@ type Settings = Record<string, any>;
 type AppState = {
   ready: boolean;
   version: string;
+  build: BuildInfo;
   settings: Settings;
   systemDark: boolean;
   theme: ThemeMode;
@@ -105,6 +107,7 @@ type AppState = {
 export const useApp = create<AppState>(() => ({
   ready: false,
   version: "",
+  build: {},
   settings: {},
   systemDark: false,
   theme: "system",
@@ -257,6 +260,7 @@ export async function initApp() {
   document.documentElement.lang = lang === "zh_CN" ? "zh-CN" : "en";
   set({
     version: info.version,
+    build: info.build ?? {},
     settings: s,
     systemDark: media.matches,
     theme: (["system", "light", "dark"].includes(s["ui/theme"]) ? s["ui/theme"] : "system") as ThemeMode,
