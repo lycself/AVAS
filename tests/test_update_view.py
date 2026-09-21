@@ -2,7 +2,7 @@
 import math
 
 from avas.update_status import StatusWindow
-from avas.update_view import activity_segment, fit_bounds, map_panel_rect, normalize_presentation, scene
+from avas.update_view import activity_segment, fit_bounds, frame_delay, map_panel_rect, normalize_presentation, progress_rect, scene
 
 
 def test_handoff_uses_client_origin_zoom_and_negative_monitor_coordinates():
@@ -29,7 +29,7 @@ def test_panel_is_clamped_to_selected_monitor_work_area():
 
 def test_stages_stay_continuous_and_never_invent_overall_progress():
     status = StatusWindow("zh_CN", enabled=False, versions={"current": "old", "target": "new"})
-    for stage, expected in [("waiting", 2), ("checking", 2), ("backup", 3), ("installing", 3),
+    for stage, expected in [("waiting", 3), ("checking", 3), ("backup", 3), ("installing", 3),
                             ("dependencies", 3), ("checking_startup", 3), ("restarting", 4)]:
         status.set(stage, .4); status.drain()
         model = status.model()
@@ -74,3 +74,59 @@ def test_activity_segment_moves_only_right_and_reenters_from_left():
     assert positions[0][1] < .001 and positions[-1][0] > 99.999
     assert all(0 <= left <= right <= 100 for left, right in positions)
     assert abs(positions[50][0]-35) < .01 and abs(positions[50][1]-65) < .01
+
+
+def panel_layout():
+    return {"width": 680, "height": 610, "header": [1, 1, 679, 44], "body": [1, 44, 679, 550],
+            "footer": [1, 550, 679, 609], "message": [29, 330, 650, 370], "track": [29, 380, 650, 384],
+            "nodes": [[60+i*120, 250, 89+i*120, 279] for i in range(5)], "grid": 40, "scroll": 0,
+            "labels": [[60+i*120, 289, 89+i*120, 306] for i in range(5)], "title": [29, 100, 650, 130],
+            "commands": [["text", [420, 420, 650, 438], "#9d9d9d", "2026-09-22 03:27 (UTC+8)", 12, "left", 400, [7]*len("2026-09-22 03:27 (UTC+8)")]],
+            "rules": [[29, 400, 650, 401]]}
+
+
+def test_handoff_keeps_local_timestamp_line_positions_and_only_animates_track():
+    layout = panel_layout()
+    status = StatusWindow("zh_CN", enabled=False, presentation={"layout": layout})
+    assert status.presentation["layout"] is not None
+    model = status.model()
+    model["phase"] = .2
+    before = scene(model, 680, 610)
+    model["phase"] = .7
+    after = scene(model, 680, 610)
+    assert [cmd for cmd in before if cmd[0] != "activity"] == [cmd for cmd in after if cmd[0] != "activity"]
+    assert before != after
+    assert layout["commands"][0] in after
+    assert progress_rect(model, 680, 610) == layout["track"]
+    status.set("installing", .42); status.drain()
+    installing = scene(status.model(), 680, 610)
+    assert any(cmd[0] == "text" and "42%" in cmd[3] for cmd in installing)
+    assert not any(cmd[0] == "activity" for cmd in installing)
+
+
+def test_invalid_handoff_falls_back_without_executing_or_drawing_unbounded_content():
+    for key, bad in [("width", math.inf), ("track", [1, 2, -1, 4]), ("grid", 0),
+                     ("nodes", []), ("commands", [["html", [], "", "<script>"]])]:
+        layout = panel_layout()
+        layout[key] = bad
+        assert normalize_presentation({"layout": layout})["layout"] is None
+    layout = panel_layout()
+    layout["commands"][0][-1] = [math.nan]*23
+    assert normalize_presentation({"layout": layout})["layout"] is None
+
+
+def test_frame_scheduling_subtracts_render_cost_and_avoids_catchup_bursts():
+    assert abs(frame_delay(1, 1.004, True) - (1/60-.004)) < 1e-9
+    assert frame_delay(1, 1.020, True) == 0
+    assert abs(frame_delay(1, 1.004, False)-.046) < 1e-9
+
+
+def test_animation_handoff_accounts_for_helper_startup_time(monkeypatch):
+    from avas import update_status, update_view
+    monkeypatch.setattr(update_view.time, "time", lambda: 1000.0)
+    monkeypatch.setattr(update_status.time, "monotonic", lambda: 20.0)
+    status = StatusWindow(enabled=False, presentation={"animationEpoch": 999700})
+    assert abs(status.model()["phase"]-.25) < 1e-9
+    monkeypatch.setattr(update_status.time, "monotonic", lambda: 20.3)
+    assert abs(status.model()["phase"]-.5) < 1e-9
+    assert normalize_presentation({"animationEpoch": math.inf})["animationEpoch"] is None

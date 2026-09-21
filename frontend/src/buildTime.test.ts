@@ -15,4 +15,8 @@ describe("build timestamps", () => {
     expect(formatBuildTime("2026-09-21 10:06")).toBeNull();
     expect(formatBuildTime("invalidZ")).toBeNull();
   });
+
+  it("formats release timestamps with fractional seconds like the About dialog", () => {
+    expect(formatBuildTime("2026-09-21T19:27:47.789593+00:00")).toBe(formatBuildTime("2026-09-22T03:27:47+08:00"));
+  });
 });

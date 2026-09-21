@@ -35,6 +35,8 @@ class StatusWindow:
         self.error = None
         self.thread = None
         self.presentation = normalize_presentation(presentation)
+        epoch = self.presentation["animationEpoch"]
+        self._phase_origin = time.monotonic() - (time.time() - epoch/1000) if epoch is not None else 0
         self.icon_path = str(icon_path) if icon_path else None
         self.versions = {key: str((versions or {}).get(key, "—"))[:80] for key in ("current", "target")}
         self.stage, self.value = "waiting", None
@@ -53,14 +55,15 @@ class StatusWindow:
         return {"zh": self.zh, "stage": self.stage, "value": self.value,
                 "message": TEXT[self.stage][int(self.zh)], "versions": self.versions,
                 "colours": self.presentation["colours"], "step": self.step(self.stage),
-                "phase": time.monotonic() % 1.2 / 1.2 if self.animating() else 0.5}
+                "layout": self.presentation["layout"],
+                "phase": (time.monotonic()-self._phase_origin) % 1.2 / 1.2 if self.animating() else 0.5}
 
     def animating(self):
         return self.value is None and self.stage != "failed" and self.presentation["motion"] != "off"
 
     @staticmethod
     def step(stage):
-        return 2 if stage in ("waiting", "checking") else 4 if stage == "restarting" else 3
+        return 4 if stage == "restarting" else 3
 
     def __enter__(self):
         if self.enabled:

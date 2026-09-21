@@ -228,6 +228,8 @@ AI / 开发者提交前主动维护 [变更记录](docs/changes/README.md)，CI 
 
 下载更新时显示进度条、百分比、已下载／总大小和平均下载速度；服务器未提供总大小时显示已下载量与不定进度条。校验、解压和文件检查分别显示状态，刷新或重连可恢复下载进度。更新器确认启动并创建日志后才关闭 AVAS；文件短暂占用会限时重试，持续占用或权限不足时停止并说明文件路径，替换前先完成临时副本，避免复制失败破坏旧文件。日志从下载准备阶段开始记录，重启前刷新落盘；主日志不可写时尝试系统临时目录，错误详情也保存在结果中，界面不会只要求查找不存在的日志。旧版更新器自身无法完成升级时，需手动安装新版 setup.exe 一次。
 
+更新阶段的连接线仅显示在相邻圆圈之间，不穿过圆圈或数字。更新时间与“关于 AVAS”使用同一本地时间格式，并注明 UTC 偏移；无时区的旧记录明确标注时区未知。Windows 独立更新器接收主面板的实际位置、尺寸、文字换行与字距，保留版本和可见更新说明，切换时原位衔接。等待动效缓存静态页面，仅重画进度条，按 60 帧目标调度；实际流畅度取决于显示器与系统负载。
+
 更新检查与每次下载重试都会重新读取当前代理配置；软件启动后再开启或切换系统代理，可直接重新检查更新，无需重启。独立安装窗口继承当前主题和动效设置，Windows 文字按显示器 DPI 清晰绘制，图形边缘平滑处理。等待进度与主程序一致，以 1.2 秒周期从左向右循环，未知总量不显示百分比；关闭动效时保持静止，最小化时暂停绘制。源码 ZIP、Git 和打包版更新窗口统一使用 AVAS 图标。
 
 独立安装窗口延续更新面板的浅／深色配色、网格背景、版本信息及阶段图。Windows 交接时尽量沿用面板位置与大小，并适配界面缩放和显示器工作区；窗口可拖动、最小化。安装开始后不能取消，完成后自动重启。窗口首次绘制成功后主程序才退出。
@@ -413,6 +415,8 @@ Existing users need one manual pull or a new official package to obtain the upda
 Logs, results and program backups are under `%LOCALAPPDATA%\AVAS\updates\update-*\`. Failed file replacement attempts backup restoration; a failed packaged startup check also restores the old bundle. Python dependency changes cannot be fully rolled back. For a dependency failure, retain the backup and log, repair using `.venv\Scripts\python.exe -m pip install -e .` and `.venv\Scripts\python.exe -m pip check`, then restart. Keep `journal.json` after an interrupted installation; do not mix program files from different versions.
 
 Update downloads show a progress bar, percentage, downloaded/total size and average speed. When the server omits the total size, the bar is indeterminate and downloaded bytes remain visible. Verification, extraction and file checks have separate states; progress survives page refresh or reconnection. AVAS closes only after the helper acknowledges startup and creates its log. Temporary file locks are retried for a limited time; persistent locks or permission failures identify the affected file. Replacements are copied to temporary files first so an incomplete copy cannot truncate the installed file. Logging starts during download preparation and is flushed before restart, with a system temporary directory fallback if the normal log cannot be written. Error details are also saved in the result and the dialog identifies missing logs. If an older updater cannot complete its own upgrade, install the new setup.exe manually once.
+
+Update stage connectors run only between adjacent circles, without crossing their numbers or checkmarks. Update timestamps use the same local-time format as About AVAS, including the UTC offset; legacy values without a timezone are labelled explicitly. On Windows, the independent updater receives the panel’s actual position, dimensions, line breaks and character spacing, preserving versions and visible release notes through the handoff. Waiting animations cache the static page and repaint only the progress strip, targeting 60 frames per second; actual smoothness depends on the display and system load.
 
 Update checks and each download retry read the current proxy configuration again, so enabling or changing the system proxy after launch only requires another update check. The independent installer inherits the active theme and motion settings. Windows text renders at native monitor DPI with smoothed geometry. Unknown progress matches the main application: a 1.2-second left-to-right loop without a percentage. Motion stays still when disabled and rendering pauses while minimized. Source ZIP, Git and packaged update windows use the AVAS icon.
 

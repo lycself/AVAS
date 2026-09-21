@@ -5,6 +5,7 @@ import { fileDialog } from "./components/FileDialog";
 import { toast } from "./components/overlays";
 import { t } from "./i18n";
 import { useApp } from "./store/app";
+import { captureUpdatePanel } from "./updateHandoff";
 
 export type FileFilters = string[]; // "DST (*.dst)", "All files (*.*)"
 
@@ -84,7 +85,12 @@ export function canQuit(): boolean {
 export async function installPreparedUpdate() {
   if (!isDesktop()) throw new Error(t("Update the server installation locally, then restart avas serve."));
   const panel = document.querySelector<HTMLElement>(".update-window");
+  // A user may have scrolled long notes: keep the installation status visible at handoff.
+  const body = panel?.querySelector<HTMLElement>(".update-body");
+  if (body) body.scrollTop = 0;
   const rect = panel?.getBoundingClientRect();
+  const animation = panel?.querySelector(".progress-fill")?.getAnimations()[0];
+  const animationEpoch = typeof animation?.currentTime === "number" ? Date.now() - animation.currentTime : null;
   const style = getComputedStyle(document.documentElement);
   const setting = useApp.getState().settings["ui/motion"] ?? "full";
   const motion = setting === "auto" ? (matchMedia("(prefers-reduced-motion: reduce)").matches ? "off" : "full") : setting;
@@ -92,6 +98,7 @@ export async function installPreparedUpdate() {
     accent: "--update-accent", grid: "--update-grid", onAccent: "--update-on-accent",
     text: "--fg-strong", muted: "--fg-muted", border: "--border-strong" }).map(([key, token]) => [key, style.getPropertyValue(token).trim()]));
   await call("updates.install", { presentation: { theme: useApp.getState().resolvedTheme, colours, motion,
+    layout: panel ? captureUpdatePanel(panel) : null, animationEpoch,
     panel: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
     viewport: { width: window.innerWidth, height: window.innerHeight },
   } });

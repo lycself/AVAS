@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { flushSync } from "react-dom";
 import { create } from "zustand";
 import { call, on } from "./bridge";
 import { resolveUnsaved } from "./actions";
@@ -20,6 +21,16 @@ const useUpdates = create<{ info: Info | null; open: boolean; reviewing: boolean
   info: null, open: false, reviewing: false, outcome: "", busy: false, cancelRequested: false, message: "", progress: null, hidden: "", status: { phase: "idle", commit: "" },
 }));
 let resolveReview: ((choice: string) => void) | null = null;
+let handingOff = false;
+async function installWithPanel() {
+  const previous = useUpdates.getState().status;
+  handingOff = true;
+  flushSync(() => useUpdates.setState({ open: true, progress: null, message: "Restarting to install the update...",
+    status: { ...previous, phase: "installing", progress: null } }));
+  try { await installPreparedUpdate(); }
+  catch (error) { useUpdates.setState({ status: previous }); throw error; }
+  finally { handingOff = false; }
+}
 function chooseReview(choice: string) {
   const resolve = resolveReview;
   resolveReview = null;
@@ -27,11 +38,14 @@ function chooseReview(choice: string) {
   resolve?.(choice);
 }
 function closePanel() {
+  if (handingOff) return;
   if (useUpdates.getState().reviewing) chooseReview("later");
   useUpdates.setState({ open: false });
 }
 
-on("updates.progress", (data: DownloadProgress) => useUpdates.setState({ message: data.message, progress: data }));
+on("updates.progress", (data: DownloadProgress) => {
+  if (!handingOff) useUpdates.setState({ message: data.message, progress: data });
+});
 
 export async function checkUpdates() {
   useUpdates.setState({ open: true });
@@ -45,7 +59,7 @@ async function resumePreparedUpdate() {
   useUpdates.setState({ busy: true, open: true, outcome: "" });
   try {
     if (!(await resolveUnsaved(t("updating AVAS")))) return;
-    await installPreparedUpdate();
+    await installWithPanel();
   } catch (error) { reportError(error, t("AVAS update")); }
   finally { useUpdates.setState({ busy: false }); }
 }
@@ -100,7 +114,7 @@ async function showUpdate() {
       if (!(await resolveUnsaved(t("updating AVAS")))) return;
       if (useUpdates.getState().cancelRequested) return;
       useUpdates.setState({ message: "Restarting to install the update...", progress: null });
-      await installPreparedUpdate();
+      await installWithPanel();
       prepared = false;
       return;
     }
@@ -132,7 +146,7 @@ export function UpdateNotice() {
     const poll = async () => {
       try {
         const status = await call<UpdateStatus>("updates.status");
-        if (!stopped) useUpdates.setState({ status,
+        if (!stopped && !handingOff) useUpdates.setState({ status,
           ...(useUpdates.getState().status.cancelling && status.phase === "idle" ? { outcome: "cancelled" as const } : {}),
           ...(status.phase === "preparing" && status.progress ? { progress: status.progress, message: status.progress.message } : {}),
         });
