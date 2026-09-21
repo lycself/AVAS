@@ -523,31 +523,56 @@ def test_network_failure_during_release_inspection_is_not_treated_as_absence(mon
         publisher.release_info("avas-latest")
 
 
-def test_github_source_zip_uses_exact_baseline_without_mutating_on_prepare(tmp_path, monkeypatch):
-    root, baseline, new = tmp_path / "installed", tmp_path / "baseline", tmp_path / "new"
+@pytest.mark.parametrize("modified", [False, True])
+def test_github_source_zip_uses_exact_baseline_without_mutating_on_prepare(tmp_path, monkeypatch, modified):
+    root, new = tmp_path / "installed", tmp_path / "new"
     old_files = {"app": "old", ".avas-source.json": json.dumps({"commit": A})}
     make_install(root, old_files)
-    make_install(baseline, old_files)
-    make_install(new, {"app": "new", ".avas-source.json": json.dumps({"commit": B})}, B)
+    make_install(new, {"app": "new", ".avas-source.json": json.dumps({"commit": B}),
+                       "docs/update-notes.md": "Release notes"}, B)
     (root / worker.MANIFEST).unlink()  # GitHub Download ZIP, unlike the release asset
-    archive(baseline, tmp_path / "baseline.zip")
+    # GitHub's archive uses LF; the release asset uses CRLF and adds release notes.
+    (root / "app").write_bytes(b"old\n")
+    with zipfile.ZipFile(tmp_path / "baseline.zip", "w") as zf:
+        zf.writestr(f"AVAS-{A}/app", b"old\n")
+        zf.writestr(f"AVAS-{A}/.avas-source.json", (root / ".avas-source.json").read_bytes())
+    (new / "app").write_bytes(b"new\r\n")
+    manifest = worker.read_manifest(new)
+    manifest["files"]["app"] = worker.digest(new / "app")
+    (new / worker.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
     archive(new, tmp_path / "new.zip")
     python = root / ".venv" / ("Scripts/python.exe" if updates.os.name == "nt" else "bin/python")
     python.parent.mkdir(parents=True)
     python.write_text("fixture")
     monkeypatch.setattr(updates.sys, "prefix", str(root / ".venv"))
     monkeypatch.setattr(updates, "USER_DATA_DIR", str(tmp_path / "state"))
-    monkeypatch.setattr(updates, "fetch_json", lambda url: release(A) if f"avas-{A}/" in url else pytest.fail(url))
-    monkeypatch.setattr(updates, "download", lambda item, dest, **kwargs: worker.shutil.copy2(
-        tmp_path / ("baseline.zip" if f"avas-{A}/" in item["url"] else "new.zip"), dest))
+    monkeypatch.setattr(updates, "fetch_json", lambda url: pytest.fail("Must use the exact GitHub archive"))
+
+    def download(item, dest, **kwargs):
+        if item["url"] == f"https://github.com/{updates.REPOSITORY}/archive/{A}.zip":
+            assert kwargs["require_checksum"] is False
+            source = "baseline.zip"
+        else:
+            assert item == release(B)["assets"]["source"]
+            source = "new.zip"
+        worker.shutil.copy2(tmp_path / source, dest)
+
+    monkeypatch.setattr(updates, "download", download)
     current = updates.installation(root)
     assert current["commit"] == A and current["kind"] == "source"
+    if modified:
+        (root / "app").write_bytes(b"local edit\n")
+        with pytest.raises(RuntimeError, match="Local file changed"):
+            updates.stage(release(B), current)
+        assert (root / "app").read_bytes() == b"local edit\n"
+        assert not (root / worker.MANIFEST).exists()
+        return
     prepared = updates.stage(release(B), current)
-    assert not (root / worker.MANIFEST).exists() and (root / "app").read_text() == "old"
+    assert not (root / worker.MANIFEST).exists() and (root / "app").read_bytes() == b"old\n"
     plan = json.loads(Path(prepared["directory"], "plan.json").read_text())
     monkeypatch.setattr(worker, "command", lambda *a, **kw: None)
     worker.execute(plan)
-    assert (root / "app").read_text() == "new" and worker.read_manifest(root)["commit"] == B
+    assert (root / "app").read_bytes() == b"new\r\n" and worker.read_manifest(root)["commit"] == B
 
 
 def test_download_checksum_failure(tmp_path, monkeypatch):

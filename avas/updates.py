@@ -279,25 +279,13 @@ def _stage(release, current, work, progress):
         if new["commit"] != release["commit"] or new["kind"] != kind:
             raise ValueError("The update package does not match the confirmed version")
         if not (root / worker.MANIFEST).is_file():
-            # GitHub's Download ZIP carries export-subst metadata, but no generated
-            # manifest. Obtain its exact baseline, never infer it from current files.
-            try:
-                baseline = validate_release(fetch_json(f"{BASE}/avas-{current['commit']}/update.json"))
-            except urllib.error.HTTPError as exc:
-                if exc.code != 404:
-                    raise
-                # Download ZIP may be from an intermediate commit whose publish job
-                # was superseded. Its exact official GitHub archive is still a baseline.
-                download({"url": f"https://github.com/{REPOSITORY}/archive/{current['commit']}.zip"},
-                         work / "baseline.zip", require_checksum=False, progress=progress)
-                progress({"message": "Checking the installed files...", "stage": "preflight"})
-                old = worker.unpack(work / "baseline.zip", work / "baseline", source_commit=current["commit"], check=check_cancelled)
-            else:
-                if baseline["commit"] != current["commit"]:
-                    raise ValueError("Invalid baseline version")
-                download(baseline["assets"]["source"], work / "baseline.zip", progress=progress)
-                progress({"message": "Checking the installed files...", "stage": "preflight"})
-                old = worker.unpack(work / "baseline.zip", work / "baseline", check=check_cancelled)
+            # GitHub archives and release assets can have different line endings
+            # and generated files, even at the same commit. Match the archive's
+            # provenance instead of comparing it with the release asset manifest.
+            download({"url": f"https://github.com/{REPOSITORY}/archive/{current['commit']}.zip"},
+                     work / "baseline.zip", require_checksum=False, progress=progress)
+            progress({"message": "Checking the installed files...", "stage": "preflight"})
+            old = worker.unpack(work / "baseline.zip", work / "baseline", source_commit=current["commit"], check=check_cancelled)
             worker.preflight(root, old["files"], new["files"], check_cancelled)
         else:
             progress({"message": "Checking the installed files...", "stage": "preflight"})
