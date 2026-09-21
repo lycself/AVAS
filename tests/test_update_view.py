@@ -2,7 +2,7 @@
 import math
 
 from avas.update_status import StatusWindow
-from avas.update_view import fit_bounds, map_panel_rect, normalize_presentation, scene
+from avas.update_view import activity_segment, fit_bounds, map_panel_rect, normalize_presentation, scene
 
 
 def test_handoff_uses_client_origin_zoom_and_negative_monitor_coordinates():
@@ -46,3 +46,31 @@ def test_compact_scene_keeps_progress_above_footer():
     commands = scene(status.model(), 340, 380)
     status_labels = [c for c in commands if c[0] == "text" and c[3] == "Working…"]
     assert status_labels[0][1][3] <= 380-64
+
+
+def test_waiting_moves_without_status_events_but_respects_motion_and_failure(monkeypatch):
+    from avas import update_status
+    status = StatusWindow(enabled=False)
+    monkeypatch.setattr(update_status.time, "monotonic", lambda: 0.0)
+    first = scene(status.model(), 680, 610)
+    monkeypatch.setattr(update_status.time, "monotonic", lambda: 0.8)
+    second = scene(status.model(), 680, 610)
+    assert first != second and status.value is None
+    assert not any("%" in cmd[3] for cmd in second if cmd[0] == "text")
+    status.presentation["motion"] = "off"
+    still = scene(status.model(), 680, 610)
+    monkeypatch.setattr(update_status.time, "monotonic", lambda: 1.2)
+    assert scene(status.model(), 680, 610) == still and not status.animating()
+    status.presentation["motion"] = "full"
+    status.set("installing", .3); status.drain()
+    assert not status.animating() and status.value == .3
+    status.set("failed"); status.drain()
+    assert not status.animating()
+
+
+def test_activity_segment_moves_only_right_and_reenters_from_left():
+    positions = [activity_segment(100, n/100) for n in range(101)]
+    assert all(a[0] <= b[0] and a[1] <= b[1] for a, b in zip(positions, positions[1:]))
+    assert positions[0][1] < .001 and positions[-1][0] > 99.999
+    assert all(0 <= left <= right <= 100 for left, right in positions)
+    assert abs(positions[50][0]-35) < .01 and abs(positions[50][1]-65) < .01

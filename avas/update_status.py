@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import queue
 import threading
+import time
 if __package__:
     from .update_view import normalize_presentation, run_windows, run_tk
 else:
@@ -24,7 +25,7 @@ TEXT = {
 
 
 class StatusWindow:
-    def __init__(self, language="en", attention=None, enabled=True, presentation=None, versions=None):
+    def __init__(self, language="en", attention=None, enabled=True, presentation=None, versions=None, icon_path=None):
         self.zh = language == "zh_CN"
         self.attention = Path(attention) if attention else None
         self.enabled = enabled
@@ -34,6 +35,7 @@ class StatusWindow:
         self.error = None
         self.thread = None
         self.presentation = normalize_presentation(presentation)
+        self.icon_path = str(icon_path) if icon_path else None
         self.versions = {key: str((versions or {}).get(key, "—"))[:80] for key in ("current", "target")}
         self.stage, self.value = "waiting", None
 
@@ -50,7 +52,11 @@ class StatusWindow:
     def model(self):
         return {"zh": self.zh, "stage": self.stage, "value": self.value,
                 "message": TEXT[self.stage][int(self.zh)], "versions": self.versions,
-                "colours": self.presentation["colours"], "step": self.step(self.stage)}
+                "colours": self.presentation["colours"], "step": self.step(self.stage),
+                "phase": time.monotonic() % 1.2 / 1.2 if self.animating() else 0.5}
+
+    def animating(self):
+        return self.value is None and self.stage != "failed" and self.presentation["motion"] != "off"
 
     @staticmethod
     def step(stage):

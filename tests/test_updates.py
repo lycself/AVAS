@@ -14,6 +14,36 @@ from avas import update_worker as worker
 A, B, C = "a" * 40, "b" * 40, "c" * 40
 
 
+def test_update_request_refreshes_proxy_after_failure_and_after_disabling(monkeypatch):
+    import io
+    import urllib.error
+    proxies = {}
+    seen = []
+    monkeypatch.setattr(updates.urllib.request, "getproxies", lambda: dict(proxies))
+
+    def build(handler):
+        snapshot = dict(handler.proxies)
+
+        class Opener:
+            def open(self, request, timeout):
+                seen.append(snapshot)
+                if not snapshot:
+                    raise urllib.error.URLError("network requires proxy")
+                return io.BytesIO(b'{"connected": true}')
+
+        return Opener()
+
+    monkeypatch.setattr(updates.urllib.request, "build_opener", build)
+    with pytest.raises(urllib.error.URLError):
+        updates.fetch_json(updates.LATEST)
+    proxies["https"] = "http://127.0.0.1:7897"
+    assert updates.fetch_json(updates.LATEST) == {"connected": True}
+    proxies.clear()
+    with pytest.raises(urllib.error.URLError):
+        updates.fetch_json(updates.LATEST)
+    assert seen == [{}, {"https": "http://127.0.0.1:7897"}, {}]
+
+
 @pytest.mark.parametrize("kind", ["source", "frozen"])
 @pytest.mark.parametrize("status,available", [("ahead", True), ("behind", False), ("identical", False), ("diverged", None)])
 def test_check_large_comparison_uses_summary_page(monkeypatch, kind, status, available):
@@ -33,7 +63,7 @@ def test_check_large_comparison_uses_summary_page(monkeypatch, kind, status, ava
             data["files"] = [{"patch": "x" * (2 * 1024 * 1024)}]
         return io.BytesIO(json.dumps(data).encode())
 
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     if available is None:
         with pytest.raises(ValueError, match="official update history"):
             updates.check()
@@ -44,7 +74,7 @@ def test_check_large_comparison_uses_summary_page(monkeypatch, kind, status, ava
 def test_update_metadata_size_limit_remains(monkeypatch):
     import io
 
-    monkeypatch.setattr(updates.urllib.request, "urlopen",
+    monkeypatch.setattr(updates, "open_url",
                         lambda *a, **k: io.BytesIO(b" " * (1024 * 1024 + 1)))
     with pytest.raises(ValueError, match="metadata is too large"):
         updates.fetch_json(updates.LATEST)
@@ -297,6 +327,7 @@ def test_stage_and_install_fixed_archive(tmp_path, monkeypatch, kind):
     plan = json.loads(Path(prepared["directory"], "plan.json").read_text())
     assert plan["commit"] == B and (root / "app").read_text() == "old"
     assert plan["handshake"] and plan["guarded"]
+    assert Path(prepared["directory"], "avas.ico").read_bytes() == (Path(updates.PACKAGE_DIR) / "gui/web/avas.ico").read_bytes()
     if kind == "frozen":
         assert Path(prepared["directory"], "AVASUpdate.exe").read_text() == "new helper"
     else:
@@ -577,7 +608,7 @@ def test_github_source_zip_uses_exact_baseline_without_mutating_on_prepare(tmp_p
 
 def test_download_checksum_failure(tmp_path, monkeypatch):
     import io
-    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **kw: io.BytesIO(b"corrupted download"))
+    monkeypatch.setattr(updates, "open_url", lambda *a, **kw: io.BytesIO(b"corrupted download"))
     with pytest.raises(ValueError, match="checksum"):
         updates.download(release()["assets"]["source"], tmp_path / "download.zip")
 
@@ -610,7 +641,7 @@ def test_download_reports_bytes_speed_and_unknown_size(tmp_path, monkeypatch, le
     payload = b"x" * 200000
     response = io.BytesIO(payload)
     response.headers = {} if length is None else {"Content-Length": str(length)}
-    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **kw: response)
+    monkeypatch.setattr(updates, "open_url", lambda *a, **kw: response)
     events = []
     updates.download({"url": "https://example.invalid/update", "sha256": hashlib.sha256(payload).hexdigest()},
                      tmp_path / "update.zip", progress=events.append)
@@ -628,7 +659,7 @@ def test_truncated_download_is_not_complete(tmp_path, monkeypatch):
         response.headers = {"Content-Length": "100"}
         return response
     monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     with pytest.raises(ValueError, match="incomplete"):
         updates.download({"url": "https://example.invalid/update"}, tmp_path / "update.zip", require_checksum=False)
 
@@ -654,7 +685,7 @@ def test_download_retries_and_resumes_verified_asset(tmp_path, monkeypatch, supp
                 response.headers["Content-Range"] = f"bytes 5-{len(payload)-1}/{len(payload)}"
         return response
 
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
     dest = tmp_path / "update.zip"
     updates.download({"url": "https://example.invalid/update", "sha256": hashlib.sha256(payload).hexdigest()}, dest)
@@ -669,7 +700,7 @@ def test_download_rejects_wrong_resume_range(tmp_path, monkeypatch):
     response = io.BytesIO(b"wrong")
     response.status = 206
     response.headers = {"Content-Range": "bytes 0-4/5", "Content-Length": "5"}
-    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **kw: response)
+    monkeypatch.setattr(updates, "open_url", lambda *a, **kw: response)
     with pytest.raises(ValueError, match="byte range"):
         updates._download({"url": "https://example.invalid/update"}, dest, True, lambda data: None, resume=True)
     assert dest.read_bytes() == b"first"
@@ -714,7 +745,7 @@ def test_download_range_rejection_restarts_from_zero(tmp_path, monkeypatch):
         response.headers = {"Content-Length": str(len(payload))}
         return response
 
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
     dest = tmp_path / "update.zip"
     updates.download({"url": "https://example.invalid/update", "sha256": hashlib.sha256(payload).hexdigest()}, dest)
@@ -745,7 +776,7 @@ def test_cancelled_download_survives_next_prepare_and_reuses_complete_cache(tmp_
             response.status = 206
             response.headers = {"Content-Length": "9", "Content-Range": f"bytes 65536-{len(payload)-1}/{len(payload)}"}
         return response
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     first, second = tmp_path / "first", tmp_path / "second"
     token = updates._cancel_event.set(event)
     try:
@@ -768,7 +799,7 @@ def test_changed_asset_does_not_resume_previous_cache(tmp_path, monkeypatch):
     def respond(request, **kwargs):
         calls.append(request.get_header("Range"))
         return io.BytesIO(b"payload")
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     checksum = hashlib.sha256(b"payload").hexdigest()
     first = updates.cached_download({"url": "https://example.invalid/a", "sha256": checksum}, tmp_path / "first", lambda d: None)
     second = updates.cached_download({"url": "https://example.invalid/b", "sha256": checksum}, tmp_path / "second", lambda d: None)
@@ -790,7 +821,7 @@ def test_bad_cached_prefix_is_replaced_after_checksum_failure(tmp_path, monkeypa
             response.status = 206
             response.headers["Content-Range"] = "bytes 3-7/8"
         return response
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
     updates.download({"url": "https://example.invalid/a", "sha256": hashlib.sha256(payload).hexdigest()}, dest, resume=True)
     assert dest.read_bytes() == payload and calls == ["bytes=3-", None]
@@ -807,7 +838,7 @@ def test_download_low_space_is_not_retried_or_truncated(tmp_path, monkeypatch):
         return response
     dest = tmp_path / "update.zip"
     dest.write_bytes(b"existing")
-    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates, "open_url", respond)
     monkeypatch.setattr(worker.shutil, "disk_usage", lambda path: SimpleNamespace(free=0))
     with pytest.raises(ValueError, match="Not enough disk space"):
         updates.download({"url": "https://example.invalid/update"}, dest, require_checksum=False)
@@ -1037,13 +1068,16 @@ def test_cancel_during_extraction_does_not_touch_installation(tmp_path):
     assert (tmp_path / "staged/app").stat().st_size == 1024**2
 
 
-def test_helper_must_acknowledge_before_gui_closes(service, tmp_path, monkeypatch):
+@pytest.mark.parametrize("presentation", [None, {"theme": "dark", "colours": {"accent": "#123456"}, "motion": "off"}])
+def test_helper_must_acknowledge_before_gui_closes(service, tmp_path, monkeypatch, presentation):
     from avas.gui import app, maintenance
     from avas import update_view
     bounds = [120, 80, 680, 610, 1]
     monkeypatch.setattr(update_view, "panel_screen_rect", lambda *args: bounds)
     (tmp_path / "plan.json").write_text("{}")
     app.app_settings().set("ui/language", "zh_CN")
+    app.app_settings().set("ui/theme", "dark")
+    app.app_settings().set("ui/motion", "off")
     monkeypatch.setattr(service, "_prepared", {"directory": str(tmp_path), "command": ["fixture"]})
     monkeypatch.setattr(maintenance, "updating", True)
     monkeypatch.setitem(app.state(), "update_exiting", False)
@@ -1064,12 +1098,13 @@ def test_helper_must_acknowledge_before_gui_closes(service, tmp_path, monkeypatc
 
     monkeypatch.setattr(service.subprocess, "Popen", lambda *a, **kw: Process())
     monkeypatch.setattr(service.threading, "Timer", Timer)
-    assert service.install({"theme": "dark", "colours": {"accent": "#123456"}}) and closed and app.state()["update_exiting"]
+    assert service.install(presentation) and closed and app.state()["update_exiting"]
     plan = json.loads((tmp_path / "plan.json").read_text())
     assert plan["language"] == "zh_CN"
     assert plan["presentation"]["bounds"] == bounds
     assert plan["presentation"]["theme"] == "dark"
-    assert plan["presentation"]["colours"]["accent"] == "#123456"
+    assert plan["presentation"]["colours"]["accent"] == ("#123456" if presentation else "#5bd7ed")
+    assert plan["presentation"]["motion"] == "off"
 
 
 def test_helper_start_timeout_stops_its_process_tree(service, tmp_path, monkeypatch):

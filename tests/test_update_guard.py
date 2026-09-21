@@ -1,6 +1,7 @@
 """Startup/update races across distribution types; never use the real installation."""
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -91,11 +92,28 @@ def test_restart_acknowledgement_is_not_sent_until_window_shown(tmp_path, monkey
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Native Windows updater controls")
-def test_native_status_window_is_ready_and_closes_on_completion(tmp_path):
+@pytest.mark.parametrize("theme,scale", [("light", 1), ("dark", 1.5)])
+def test_native_status_window_is_ready_and_closes_on_completion(tmp_path, theme, scale):
     from avas.update_status import StatusWindow
+    from avas.paths import PACKAGE_DIR
+    import ctypes as c
+    from ctypes import wintypes as w
     attention = tmp_path / "attention"
-    with StatusWindow("zh_CN", attention) as window:
+    with StatusWindow("zh_CN", attention, presentation={"theme": theme, "bounds": [0, 0, 680*scale, 610*scale, scale]},
+                      icon_path=Path(PACKAGE_DIR) / "gui/web/avas.ico") as window:
         assert window.ready.is_set() and window.error is None
+        user = c.WinDLL("user32", use_last_error=True)
+        user.FindWindowW.argtypes = [w.LPCWSTR, w.LPCWSTR]
+        user.FindWindowW.restype = w.HWND
+        hwnd = user.FindWindowW(f"AVASUpdateCanvas-{id(window)}", None)
+        user.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
+        user.SendMessageW.restype = c.c_ssize_t
+        assert user.SendMessageW(hwnd, 0x7F, 0, 0)  # WM_GETICON, small
+        assert user.SendMessageW(hwnd, 0x7F, 1, 0)  # taskbar / Alt+Tab icon
+        user.GetWindowDpiAwarenessContext.argtypes = [w.HWND]
+        user.GetWindowDpiAwarenessContext.restype = c.c_void_p
+        user.AreDpiAwarenessContextsEqual.argtypes = [c.c_void_p, c.c_void_p]
+        assert user.AreDpiAwarenessContextsEqual(user.GetWindowDpiAwarenessContext(hwnd), c.c_void_p(-4))
         window.set("backup", 0.3)
         window.set("installing", 0.6)
         attention.touch()

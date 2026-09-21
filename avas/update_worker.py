@@ -448,7 +448,7 @@ def _run_logged(plan_path, log, log_path, session):
             gate = session.enter_context(UpdateGate(plan["lock"]))
         status = session.enter_context(StatusWindow(plan.get("language", "en"),
             gate.paths["attention"] if gate else None, enabled=bool(gate) and not plan.get("silent"),
-            presentation=plan.get("presentation"), versions=plan.get("display_versions", {
+            presentation=plan.get("presentation"), icon_path=plan_path.with_name("avas.ico"), versions=plan.get("display_versions", {
                 "current": plan.get("before", "")[:8], "target": plan.get("commit", "")[:8]})))
         status.set("waiting")
         if plan.get("handshake"):

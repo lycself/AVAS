@@ -62,11 +62,16 @@ def root_path():
 
 def fetch_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "AVAS-Updater", "Cache-Control": "no-cache"})
-    with urllib.request.urlopen(req, timeout=20) as response:
+    with open_url(req, timeout=20) as response:
         raw = response.read(1024 * 1024 + 1)
     if len(raw) > 1024 * 1024:
         raise ValueError("Update metadata is too large")
     return json.loads(raw)
+
+
+def open_url(request, timeout):
+    """Discover current system/environment proxies for every attempt, not at startup."""
+    return urllib.request.build_opener(urllib.request.ProxyHandler()).open(request, timeout=timeout)
 
 
 def validate_release(data):
@@ -156,7 +161,7 @@ def _download(item, dest, require_checksum, progress, resume=False):
         req.add_header("Range", f"bytes={offset}-")
     total = offset
     started = last_report = time.monotonic()
-    with urllib.request.urlopen(req, timeout=60) as response:
+    with open_url(req, timeout=60) as response:
         headers = getattr(response, "headers", {})
         try:
             length = int(headers.get("Content-Length", 0)) or None
@@ -305,6 +310,8 @@ def _stage(release, current, work, progress):
             shutil.copy2(Path(PACKAGE_DIR) / name, work / name)
         helper = [str(python), str(work / "update_worker.py")]
         restart = [str(python), "-m", "avas", "gui"]
+    # Keep the icon independent of the installation while files are replaced.
+    shutil.copy2(Path(PACKAGE_DIR) / "gui" / "web" / "avas.ico", work / "avas.ico")
     plan = {"root": str(root), "kind": kind, "before": current["commit"], "commit": release["commit"],
             "display_versions": {"current": f"{current.get('version', '')} · {current['commit'][:8]}",
                                  "target": f"{release['version']} · {release['commit'][:8]}"},

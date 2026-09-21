@@ -4,6 +4,7 @@ import { apiUrl, call, isDesktop } from "./bridge";
 import { fileDialog } from "./components/FileDialog";
 import { toast } from "./components/overlays";
 import { t } from "./i18n";
+import { useApp } from "./store/app";
 
 export type FileFilters = string[]; // "DST (*.dst)", "All files (*.*)"
 
@@ -85,10 +86,12 @@ export async function installPreparedUpdate() {
   const panel = document.querySelector<HTMLElement>(".update-window");
   const rect = panel?.getBoundingClientRect();
   const style = getComputedStyle(document.documentElement);
+  const setting = useApp.getState().settings["ui/motion"] ?? "full";
+  const motion = setting === "auto" ? (matchMedia("(prefers-reduced-motion: reduce)").matches ? "off" : "full") : setting;
   const colours = Object.fromEntries(Object.entries({ bg: "--update-bg", surface: "--update-surface",
     accent: "--update-accent", grid: "--update-grid", onAccent: "--update-on-accent",
     text: "--fg-strong", muted: "--fg-muted", border: "--border-strong" }).map(([key, token]) => [key, style.getPropertyValue(token).trim()]));
-  await call("updates.install", { presentation: { theme: document.documentElement.dataset.theme, colours,
+  await call("updates.install", { presentation: { theme: useApp.getState().resolvedTheme, colours, motion,
     panel: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
     viewport: { width: window.innerWidth, height: window.innerHeight },
   } });

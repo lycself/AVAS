@@ -152,7 +152,11 @@ def install(presentation=None):
                 plan = json.loads(plan_path.read_text(encoding="utf-8"))
                 plan["language"] = app.app_settings().get("ui/language") or "en"
                 from avas.update_view import normalize_presentation, panel_screen_rect
-                appearance = normalize_presentation(presentation)
+                supplied = dict(presentation) if isinstance(presentation, dict) else {}
+                if supplied.get("theme") not in ("light", "dark"):
+                    supplied["theme"] = app.resolve_theme(app.app_settings().get("ui/theme"))
+                supplied.setdefault("motion", app.app_settings().get("ui/motion") or "full")
+                appearance = normalize_presentation(supplied)
                 appearance["bounds"] = panel_screen_rect(app.state().get("window"), presentation)
                 plan["presentation"] = appearance
                 updates.worker.save_result(plan_path, plan)

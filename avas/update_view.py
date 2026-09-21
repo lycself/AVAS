@@ -32,7 +32,9 @@ def normalize_presentation(value):
             and 100 <= bounds[2] <= 16000 and 100 <= bounds[3] <= 16000 and 0.5 <= bounds[4] <= 8
             and abs(bounds[0]) <= 100000 and abs(bounds[1]) <= 100000):
         bounds = None
-    return {"theme": theme, "colours": colours, "bounds": bounds}
+    motion = value.get("motion", "full")
+    return {"theme": theme, "colours": colours, "bounds": bounds,
+            "motion": motion if motion in ("full", "lite", "off", "auto") else "full"}
 
 
 def map_panel_rect(panel, viewport, client):
@@ -89,6 +91,20 @@ def fit_bounds(bounds, work, scale):
     return round(max(left, min(x, right-width))), round(max(top, min(y, bottom-height))), round(width), round(height), scale
 
 
+def activity_segment(width, phase):
+    """Match CSS progress-slide: 30% segment, left -30% -> 100%, ease-in-out."""
+    low, high = 0.0, 1.0
+    phase = max(0, min(1, phase))
+    for _ in range(16):
+        t = (low+high)/2
+        x = 3*(1-t)**2*t*.42 + 3*(1-t)*t*t*.58 + t**3
+        if x < phase: low = t
+        else: high = t
+    eased = 3*t*t-2*t**3
+    left = width*(-.3+1.3*eased)
+    return max(0, left), min(width, left+width*.3)
+
+
 def scene(model, width, height):
     """Logical-pixel draw commands shared by both adapters; no generated percentages."""
     zh, colours = model["zh"], model["colours"]
@@ -140,6 +156,12 @@ def scene(model, width, height):
         box(pad, bar_y, (width-2*pad)*model["value"], 5, "accent")
         text(("当前步骤 " if zh else "Current operation ") + f"{round(model['value']*100)}%", pad, bar_y+12, width-2*pad, 24, 12, "muted")
     else:
+        if model["stage"] != "failed":
+            track = width-2*pad
+            # A moving segment indicates activity, never a completion percentage.
+            left, right = activity_segment(track, model.get("phase", 0.5))
+            if right > left:
+                box(pad+left, bar_y, right-left, 5, "accent")
         text("正在处理中…" if zh else "Working…", pad, bar_y+12, width-2*pad, 24, 12, "muted")
     if not compact:
         text("请等待自动重启。你的项目与个人设置将保留。" if zh else "Please wait for the automatic restart. Your projects and settings are preserved.",
@@ -166,6 +188,16 @@ def run_windows(status):
         fn = getattr(lib, name); fn.restype = restype; fn.argtypes = list(args); return fn
     api(user, "SetThreadDpiAwarenessContext", c.c_void_p, c.c_void_p)
     previous = user.SetThreadDpiAwarenessContext(c.c_void_p(-4))
+    shell = c.WinDLL("shell32", use_last_error=True)
+    api(shell, "SetCurrentProcessExplicitAppUserModelID", c.c_long, w.LPCWSTR)("AVAS.Update")
+    if status.presentation["motion"] == "auto":
+        enabled = w.BOOL(True)
+        api(user, "SystemParametersInfoW", w.BOOL, w.UINT, w.UINT, c.c_void_p, w.UINT)(0x1042, 0, c.byref(enabled), 0)
+        status.presentation["motion"] = "full" if enabled.value else "off"
+    api(user, "LoadImageW", w.HANDLE, w.HINSTANCE, w.LPCWSTR, w.UINT, c.c_int, c.c_int, w.UINT)
+    api(user, "SendMessageW", c.c_ssize_t, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
+    api(user, "DestroyIcon", w.BOOL, w.HICON)
+    api(user, "IsIconic", w.BOOL, w.HWND)
     api(user, "DefWindowProcW", c.c_ssize_t, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
     api(user, "RegisterClassW", w.ATOM, c.POINTER(WC))
     api(user, "UnregisterClassW", w.BOOL, w.LPCWSTR, w.HINSTANCE)
@@ -201,6 +233,9 @@ def run_windows(status):
     api(gdi, "SetBkMode", c.c_int, w.HDC, c.c_int)
     api(gdi, "Ellipse", w.BOOL, w.HDC, c.c_int, c.c_int, c.c_int, c.c_int)
     api(gdi, "BitBlt", w.BOOL, w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.HDC, c.c_int, c.c_int, w.DWORD)
+    api(gdi, "StretchBlt", w.BOOL, w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.DWORD)
+    api(gdi, "SetStretchBltMode", c.c_int, w.HDC, c.c_int)
+    api(gdi, "SetBrushOrgEx", w.BOOL, w.HDC, c.c_int, c.c_int, c.c_void_p)
     api(gdi, "CreateFontW", w.HANDLE, *([c.c_int]*5 + [w.DWORD]*8 + [w.LPCWSTR]))
     bounds = status.presentation["bounds"]
     probe = w.RECT(*([round(bounds[0]), round(bounds[1]), round(bounds[0]+bounds[2]), round(bounds[1]+bounds[3])] if bounds else [0, 0, 1, 1]))
@@ -215,22 +250,31 @@ def run_windows(status):
     def paint(hwnd):
         ps = PS(); dc = user.BeginPaint(hwnd, c.byref(ps))
         rect = w.RECT(); user.GetClientRect(hwnd, c.byref(rect))
-        mem = gdi.CreateCompatibleDC(dc); bitmap = gdi.CreateCompatibleBitmap(dc, rect.right, rect.bottom)
+        # Supersample geometry at physical DPI; draw text at native resolution below.
+        samples = 2 if rect.right*rect.bottom <= 4000000 else 1
+        draw_scale = scale*samples
+        mem = gdi.CreateCompatibleDC(dc); bitmap = gdi.CreateCompatibleBitmap(dc, rect.right*samples, rect.bottom*samples)
         if not mem or not bitmap:
             if bitmap: gdi.DeleteObject(bitmap)
             if mem: gdi.DeleteDC(mem)
             user.EndPaint(hwnd, c.byref(ps)); raise OSError("Cannot allocate update window surface")
         old_bitmap = gdi.SelectObject(mem, bitmap)
+        final = gdi.CreateCompatibleDC(dc)
+        final_bitmap = gdi.CreateCompatibleBitmap(dc, rect.right, rect.bottom)
+        if not final or not final_bitmap:
+            if final_bitmap: gdi.DeleteObject(final_bitmap)
+            if final: gdi.DeleteDC(final)
+            gdi.SelectObject(mem, old_bitmap); gdi.DeleteObject(bitmap); gdi.DeleteDC(mem)
+            user.EndPaint(hwnd, c.byref(ps)); raise OSError("Cannot allocate update window text surface")
+        old_final = gdi.SelectObject(final, final_bitmap)
         gdi.SetBkMode(mem, 1)
         try:
-            for cmd in scene(status.model(), rect.right/scale, rect.bottom/scale):
+            commands = scene(status.model(), rect.right/scale, rect.bottom/scale)
+            for cmd in commands:
                 kind, coords, ink = cmd[:3]
-                r = w.RECT(*(round(v*scale) for v in coords))
+                r = w.RECT(*(round(v*draw_scale) for v in coords))
                 if kind == "text":
-                    font = gdi.CreateFontW(-round(cmd[4]*scale), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
-                    old = gdi.SelectObject(mem, font); gdi.SetTextColor(mem, colour(ink))
-                    user.DrawTextW(mem, cmd[3], -1, c.byref(r), 0x10 | 0x800 | (1 if cmd[5] == "center" else 0))
-                    gdi.SelectObject(mem, old); gdi.DeleteObject(font)
+                    continue
                 else:
                     brush = gdi.CreateSolidBrush(colour(ink))
                     if kind == "ellipse":
@@ -240,8 +284,22 @@ def run_windows(status):
                     else:
                         user.FillRect(mem, c.byref(r), brush)
                     gdi.DeleteObject(brush)
-            gdi.BitBlt(dc, 0, 0, rect.right, rect.bottom, mem, 0, 0, 0x00CC0020)
+            gdi.SetStretchBltMode(final, 4)  # HALFTONE: antialiased circles and lines
+            gdi.SetBrushOrgEx(final, 0, 0, None)
+            gdi.StretchBlt(final, 0, 0, rect.right, rect.bottom, mem, 0, 0, rect.right*samples, rect.bottom*samples, 0x00CC0020)
+            # Text is not scaled as a bitmap: retain ClearType at the monitor's DPI.
+            gdi.SetBkMode(final, 1)
+            for cmd in commands:
+                if cmd[0] != "text": continue
+                r = w.RECT(*(round(v*scale) for v in cmd[1]))
+                font = gdi.CreateFontW(-round(cmd[4]*scale), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0,
+                                       "Microsoft YaHei UI" if status.zh else "Segoe UI")
+                old = gdi.SelectObject(final, font); gdi.SetTextColor(final, colour(cmd[2]))
+                user.DrawTextW(final, cmd[3], -1, c.byref(r), 0x10 | 0x800 | (1 if cmd[5] == "center" else 0))
+                gdi.SelectObject(final, old); gdi.DeleteObject(font)
+            gdi.BitBlt(dc, 0, 0, rect.right, rect.bottom, final, 0, 0, 0x00CC0020)
         finally:
+            gdi.SelectObject(final, old_final); gdi.DeleteObject(final_bitmap); gdi.DeleteDC(final)
             gdi.SelectObject(mem, old_bitmap); gdi.DeleteObject(bitmap); gdi.DeleteDC(mem); user.EndPaint(hwnd, c.byref(ps))
     @callback_type
     def procedure(hwnd, msg, wp, lp):
@@ -271,26 +329,37 @@ def run_windows(status):
     instance = kernel.GetModuleHandleW(None); name = f"AVASUpdateCanvas-{id(status)}"
     wc = WC(0, procedure, 0, 0, instance, None, None, None, None, name)
     window = None
+    icons = []
     try:
         if not user.RegisterClassW(c.byref(wc)): raise c.WinError(c.get_last_error())
         window = user.CreateWindowExW(0x40000, name, status._labels()[0], 0x800A0000, x, y, width, height, None, None, instance, None)
         if not window: raise c.WinError(c.get_last_error())
         if hasattr(user, "GetDpiForWindow"):
             api(user, "GetDpiForWindow", w.UINT, w.HWND); status._dpi = user.GetDpiForWindow(window)
+        if status.icon_path:
+            for kind, size in ((0, 16), (1, 32)):
+                pixels = round(size*getattr(status, "_dpi", 96)/96)
+                icon = user.LoadImageW(None, status.icon_path, 1, pixels, pixels, 0x10)
+                if icon:
+                    icons.append(icon)
+                    user.SendMessageW(window, 0x80, kind, icon)
         user.ShowWindow(window, 5); user.UpdateWindow(window)
         status.ready.set()  # only after first paint, before main process exits
         message = w.MSG()
         while not status.stopped.is_set():
             while user.PeekMessageW(c.byref(message), None, 0, 0, 1):
                 user.TranslateMessage(c.byref(message)); user.DispatchMessageW(c.byref(message))
-            if status.drain():
+            changed = status.drain()
+            if changed:
                 user.SetWindowTextW(window, status._labels()[0] + " — " + status.model()["message"])
+            if (changed or status.animating()) and not user.IsIconic(window):
                 user.InvalidateRect(window, None, False)
             if status._attention():
                 user.ShowWindow(window, 9); user.SetForegroundWindow(window)
             status.stopped.wait(0.05)
     finally:
         if window: user.DestroyWindow(window)
+        for icon in icons: user.DestroyIcon(icon)
         user.UnregisterClassW(name, instance)
         if previous: user.SetThreadDpiAwarenessContext(previous)
 
@@ -316,7 +385,8 @@ def run_tk(status):
                 else: canvas.create_rectangle(*rect, fill=colour, outline="")
         draw(); root.update(); status.ready.set()
         while not status.stopped.is_set():
-            if status.drain(): draw()
+            changed = status.drain()
+            if (changed or status.animating()) and root.state() != "iconic": draw()
             if status._attention(): root.deiconify(); root.lift()
             root.update(); status.stopped.wait(0.05)
     finally:
