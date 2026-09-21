@@ -42,7 +42,9 @@ def main():
         assert not result["ok"] and (temp / "update.log").exists()
         assert "Traceback" in (temp / "update.log").read_text(encoding="utf-8")
         ready = json.loads((temp / "ready.json").read_text(encoding="utf-8"))
-        assert ready["log"] == str(temp / "update.log")
+        # Windows TEMP can use an 8.3 alias (RUNNER~1); the helper resolves
+        # its plan path to the long name. Verify file identity, not spelling.
+        assert Path(ready["log"]).samefile(temp / "update.log"), ready
         # Successful replacement also uses a real frozen executable for the health
         # probe, with dependencies read from a disposable copy of the bundle.
         # The GUI path starts as an obsolete fixture and is replaced by the real exe.
