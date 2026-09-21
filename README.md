@@ -261,6 +261,8 @@ AI / 开发者提交前主动维护 [变更记录](docs/changes/README.md)，CI 
 
 ### 引用
 
+正式发布使用 7 位提交号标签，GitHub 的 Source code (zip) 名称缩短为 `AVAS-avas-xxxxxxx.zip`。完整提交号的兼容下载入口继续保留供旧版自动更新使用；日常下载请选择短标签正式版本。
+
 “帮助 → 关于 AVAS”按本地时区显示构建时间并标注 UTC 偏移；旧包缺少时区时标注“时区未知”。弹窗单列参考文献与反馈信息：维护者 Yuchen Lin，反馈邮箱 yuchenlin@stu.xmu.edu.cn。
 
 如果您在科研工作或发表论文中使用了本项目代码，请引用：
@@ -410,6 +412,8 @@ The **AI assistant** (`Ctrl+Shift+A`) works with any OpenAI-compatible endpoint,
 Front-end build, debug server, packaging and test instructions for developers are in [CONTRIBUTING.md](CONTRIBUTING.md); interface design rules are in [AGENTS.md](AGENTS.md).
 
 ### Citation
+
+Public releases use seven-character commit tags, shortening GitHub's Source code (zip) filename to `AVAS-avas-xxxxxxx.zip`. Full-commit compatibility releases remain available for older updaters; choose the short-tag public release for manual downloads.
 
 Help → About AVAS shows build times in the local timezone with an explicit UTC offset; legacy timestamps without a timezone are marked as unknown. References and feedback are listed separately: maintainer Yuchen Lin, feedback email yuchenlin@stu.xmu.edu.cn.
 

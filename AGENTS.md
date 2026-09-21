@@ -199,7 +199,7 @@ packaging/        PyInstaller + Inno Setup 打包
 - Windows 打包版 `AVAS.exe` 无参数时启动同目录 `AVASGui.exe`，有参数时保持命令行功能；源码入口行为不变。安装器将所选语言写入安装目录 `avas-install.ini`，打包版仅在用户设置没有 `ui/language` 时读取并持久化；升级、重装不得覆盖已保存的语言偏好。该安装配置不属于发布包文件清单，自动更新保留它。
 
 - 安装包简体中文翻译随仓库保存在 `packaging/languages/`，保留上游固定提交、校验值和许可证；不依赖 Inno Setup 安装目录自带中文文件，也不在构建时下载翻译。调用编译器的构建在 PyInstaller 开始前检查该文件。
-- 官方源固定为 `lycself/AVAS`。main 通过 CI 后生成源码包与 Windows 程序包并验证，再发布 `avas-latest/update.json`；固定提交的包放 `avas-<完整 SHA>` 发布中，不覆盖。发布时检查祖先关系，较旧流水线不得覆盖较新的指针。
+- 官方源固定为 `lycself/AVAS`。main 通过 CI 后生成源码包与 Windows 程序包并验证。正式发布使用 `avas-<7 位 SHA>`，缩短 GitHub 自动源码归档名称；发布前验证短标签实际指向完整 SHA，冲突时拒绝覆盖。完整 SHA 的兼容发布保留相同附件，新建时标为预发布，供旧更新器的严格下载地址校验和源码基线查询使用；短标签附件从已发布兼容包复制，重试不覆盖已发布文件。两处就绪后才发布 `avas-latest/update.json`，其下载说明链接短标签正式版本，元数据仍使用完整 SHA 地址。发布时检查祖先关系，较旧流水线不得覆盖较新的指针。
 - 后端 `services/updates.py` 统一检测与准备，`avas/updates.py` 下载校验，标准库独立程序 `avas/update_worker.py` 在主进程退出后安装；Windows 打包成独立的 `AVASUpdate.exe`，不能依赖将被替换的 `_internal`。
 - 自动检测缓存 6 小时，帮助菜单可强制检查；用户确认前重新检查，目标变化要重新确认。确认后所有获取与安装锁定 SHA，禁止裸 `git pull` 或下载可变分支压缩包。忽略版本按 SHA 保存，弹窗明确提醒仍可从帮助菜单获取更新。
 - 每次提交前，AI / 开发者必须主动新增 `docs/changes/*.md` 简短变更条目，用用户能理解的语言说明变化；内部维护也须明确说明范围。尚未提交的本次条目可编辑，已提交条目不可修改或删除，纠正时另增条目。CI 检查提交范围内新增非空条目。发布脚本按 `avas-latest/update.json` 的上次成功提交汇总新条目，生成 `dist/updates/docs/update-notes.md`（源码包内为 `docs/update-notes.md`），不回写提交；同一份文字固定写入该版本的 `update.json` 和 GitHub Release。弹窗按纯文本展示，不执行 HTML，也不从 Git 提交标题生成说明；新版本重新确认时同时展示新版本说明。

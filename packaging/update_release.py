@@ -118,6 +118,39 @@ def release_info(tag):
     return json.loads(reply.stdout)
 
 
+def publish_short_release(data, legacy_tag):
+    """Expose a short public tag; full-SHA assets remain usable by old updaters."""
+    commit = data["commit"]
+    tag = f"avas-{commit[:7]}"
+    refs = worker.git(ROOT, "ls-remote", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}")
+    # Annotated tags have a peeled commit; lightweight tags point straight to it.
+    by_ref = {ref: sha for sha, ref in (line.split() for line in refs.splitlines() if line.strip())}
+    target = by_ref.get(f"refs/tags/{tag}^{{}}", by_ref.get(f"refs/tags/{tag}"))
+    if target is not None and target != commit:
+        raise RuntimeError("Short release tag belongs to another commit; refusing to overwrite it")
+    existing = release_info(tag)
+    required = {"update.json", "avas-source.zip", "avas-windows.zip", f"AVAS-{data['version']}-setup.exe"}
+    if existing is not None and not existing["isDraft"]:
+        if target != commit or not required.issubset({a["name"] for a in existing["assets"]}):
+            raise RuntimeError("Published short-tag release is incomplete or has an unexpected target")
+        return tag
+    with tempfile.TemporaryDirectory() as temp:
+        folder = Path(temp)
+        # Reuse immutable published bytes, including when a CI job is retried.
+        for name in sorted(required):
+            gh("release", "download", legacy_tag, "--pattern", name, "--dir", temp)
+        notes = folder / "notes.txt"
+        notes.write_text(release_body(data), encoding="utf-8")
+        if existing is None:
+            gh("release", "create", tag, "--target", commit, "--title", f"AVAS {data['version']} · {commit[:7]}",
+               "--notes-file", str(notes), "--latest=false", "--draft")
+        else:
+            gh("release", "edit", tag, "--target", commit, "--notes-file", str(notes))
+        gh("release", "upload", tag, *(str(folder / name) for name in sorted(required)), "--clobber")
+        gh("release", "edit", tag, "--draft=false")
+    return tag
+
+
 def publish(output):
     data = json.loads((output / "update.json").read_text(encoding="utf-8"))
     commit = data["commit"]
@@ -149,17 +182,19 @@ def publish(output):
             (output / "update.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     else:
         if existing is None:
-            gh("release", "create", tag, "--target", commit, "--title", f"AVAS {data['version']} · {commit[:8]}",
-               "--notes-file", str(output / "notes.txt"), "--latest=false", "--draft")
+            gh("release", "create", tag, "--target", commit, "--title", f"AVAS update compatibility · {commit[:7]}",
+               "--notes", "供旧版 AVAS 自动更新使用。正式下载请使用短标签版本。 / Compatibility assets for older AVAS updaters; use the short-tag release for downloads.",
+               "--latest=false", "--prerelease", "--draft")
         gh("release", "upload", tag, str(output / "avas-source.zip"), str(output / "avas-windows.zip"),
            str(output / f"AVAS-{data['version']}-setup.exe"),
            str(output / "update.json"), "--clobber")  # only unpublished drafts may be repaired
         gh("release", "edit", tag, "--draft=false")
+    public_tag = publish_short_release(data, tag)
     if pointer is None:
         gh("release", "create", "avas-latest", "--target", commit, "--title", "AVAS automatic updates",
            "--notes", "供 AVAS 自动更新使用，普通用户无需下载。请到正式版本下载 Windows 安装包。 / Update metadata for AVAS. Download applications from a versioned release: https://github.com/lycself/AVAS/releases", "--prerelease", "--latest=false")
     gh("release", "edit", "avas-latest", "--notes",
-       f"供程序自动更新使用，无需手动下载。 / For automatic updates only.\n\n下载程序 / Download: https://github.com/{REPOSITORY}/releases/tag/{tag}")
+       f"供程序自动更新使用，无需手动下载。 / For automatic updates only.\n\n下载程序 / Download: https://github.com/{REPOSITORY}/releases/tag/{public_tag}")
     gh("release", "upload", "avas-latest", str(output / "update.json"), "--clobber")
 
 

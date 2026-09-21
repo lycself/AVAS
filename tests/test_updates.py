@@ -464,6 +464,7 @@ def test_publisher_uploads_pointer_only_after_fixed_release_is_ready(tmp_path, m
     publisher = load_publisher()
     (tmp_path / "update.json").write_text(json.dumps(release(A)))
     monkeypatch.setattr(publisher, "release_info", lambda tag: None)
+    monkeypatch.setattr(publisher.worker, "git", lambda *args: "")
     calls = []
     monkeypatch.setattr(publisher, "gh", lambda *args, **kwargs: calls.append(args))
     publisher.publish(tmp_path)
@@ -471,6 +472,46 @@ def test_publisher_uploads_pointer_only_after_fixed_release_is_ready(tmp_path, m
     ready = next(i for i, args in enumerate(calls) if args[:3] == ("release", "edit", f"avas-{A}"))
     pointer = next(i for i, args in enumerate(calls) if args[:3] == ("release", "upload", "avas-latest"))
     assert upload < ready < pointer == len(calls) - 1
+    short_ready = next(i for i, args in enumerate(calls) if args[:3] == ("release", "edit", f"avas-{A[:7]}"))
+    assert ready < short_ready < pointer
+    legacy_create = next(args for args in calls if args[:3] == ("release", "create", f"avas-{A}"))
+    assert "--prerelease" in legacy_create
+    short_create = next(args for args in calls if args[:3] == ("release", "create", f"avas-{A[:7]}"))
+    assert "--prerelease" not in short_create
+    assert short_create[short_create.index("--target") + 1] == A
+
+
+@pytest.mark.parametrize("draft", [True, False])
+def test_short_release_collision_never_overwrites_assets(monkeypatch, draft):
+    publisher = load_publisher()
+    monkeypatch.setattr(publisher.worker, "git", lambda *args: f"{B}\trefs/tags/avas-{A[:7]}\n")
+    monkeypatch.setattr(publisher, "release_info", lambda tag: {"isDraft": draft, "assets": []})
+    monkeypatch.setattr(publisher, "gh", lambda *args, **kwargs: pytest.fail("Must not mutate a colliding release"))
+    with pytest.raises(RuntimeError, match="another commit"):
+        publisher.publish_short_release(release(A), f"avas-{A}")
+
+
+def test_short_release_retry_preserves_published_assets(monkeypatch):
+    publisher = load_publisher()
+    tag = f"avas-{A[:7]}"
+    monkeypatch.setattr(publisher.worker, "git", lambda *args: f"{B}\trefs/tags/{tag}\n{A}\trefs/tags/{tag}^{{}}\n")
+    monkeypatch.setattr(publisher, "release_info", lambda tag: {"isDraft": False, "assets": [
+        {"name": name} for name in ("update.json", "avas-source.zip", "avas-windows.zip", "AVAS-2.0.0-setup.exe")]})
+    monkeypatch.setattr(publisher, "gh", lambda *args, **kwargs: pytest.fail("Published assets are immutable"))
+    assert publisher.publish_short_release(release(A), f"avas-{A}") == tag
+
+
+def test_short_release_repairs_unpublished_draft_without_tag(monkeypatch):
+    publisher = load_publisher()
+    tag = f"avas-{A[:7]}"
+    monkeypatch.setattr(publisher.worker, "git", lambda *args: "")
+    monkeypatch.setattr(publisher, "release_info", lambda tag: {"isDraft": True, "assets": []})
+    calls = []
+    monkeypatch.setattr(publisher, "gh", lambda *args, **kwargs: calls.append(args))
+    assert publisher.publish_short_release(release(A), f"avas-{A}") == tag
+    assert not any(args[:2] == ("release", "create") for args in calls)
+    assert any(args[:5] == ("release", "edit", tag, "--target", A) for args in calls)
+    assert calls[-1] == ("release", "edit", tag, "--draft=false")
 
 
 def test_network_failure_during_release_inspection_is_not_treated_as_absence(monkeypatch):
