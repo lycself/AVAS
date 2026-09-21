@@ -261,6 +261,8 @@ AI / 开发者提交前主动维护 [变更记录](docs/changes/README.md)，CI 
 
 ### 引用
 
+“帮助 → 关于 AVAS”按本地时区显示构建时间并标注 UTC 偏移；旧包缺少时区时标注“时区未知”。弹窗单列参考文献与反馈信息：维护者 Yuchen Lin，反馈邮箱 yuchenlin@stu.xmu.edu.cn。
+
 如果您在科研工作或发表论文中使用了本项目代码，请引用：
 
 > C. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., *Advanced virtual accelerator software: A linear accelerator simulation code*, Phys. Rev. Accel. Beams **28**, 044602 (2025). https://doi.org/10.1103/PhysRevAccelBeams.28.044602
@@ -408,6 +410,8 @@ The **AI assistant** (`Ctrl+Shift+A`) works with any OpenAI-compatible endpoint,
 Front-end build, debug server, packaging and test instructions for developers are in [CONTRIBUTING.md](CONTRIBUTING.md); interface design rules are in [AGENTS.md](AGENTS.md).
 
 ### Citation
+
+Help → About AVAS shows build times in the local timezone with an explicit UTC offset; legacy timestamps without a timezone are marked as unknown. References and feedback are listed separately: maintainer Yuchen Lin, feedback email yuchenlin@stu.xmu.edu.cn.
 
 If you use this code in your research, please cite:
 

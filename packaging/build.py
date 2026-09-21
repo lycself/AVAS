@@ -15,13 +15,13 @@ Steps:
    ``packaging/avas.iss`` -> ``dist/installer/AVAS-<version>-setup.exe``.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
-import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -91,7 +91,7 @@ def main(argv=None):
     if os.path.isdir(src) and os.path.isfile(web) and newest_mtime(src) > os.path.getmtime(web) + 1:
         print("WARNING: frontend/src is newer than the built page avas/gui/web; use --frontend to rebuild it")
 
-    stamp = {"version": __version__, "built": time.strftime("%Y-%m-%d %H:%M"), **git_stamp(ROOT)}
+    stamp = {"version": __version__, "built": datetime.now(timezone.utc).isoformat(timespec="seconds"), **git_stamp(ROOT)}
     with open(STAMP, "w", encoding="utf-8") as fh:
         json.dump(stamp, fh, indent=1)
     print("stamp:", stamp)

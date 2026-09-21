@@ -7,6 +7,7 @@ import { t } from "./i18n";
 import { refreshProject, setPage, setProject, showStatus, useApp, type ProjectSummary } from "./store/app";
 import { allPages, dirtyPages, useDirty } from "./store/pages";
 import { basename } from "./util";
+import { formatBuildTime } from "./buildTime";
 
 /** Ask about unsaved pages.  Resolves true when it is fine to continue. */
 export async function resolveUnsaved(action: string): Promise<boolean> {
@@ -284,9 +285,10 @@ export async function showAbout() {
   try {
     const info = await call<any>("app.info");
     const b = info.build ?? {};
+    const buildTime = (value: string) => formatBuildTime(value) ?? `${value} (${t("timezone unknown")})`;
     lines = [
       b.frozen ? t("Stand-alone build") : t("Running from source"),
-      b.built ? `${t("Built")}: ${b.built}` : b.frontend ? `${t("Front end built")}: ${b.frontend}` : "",
+      b.built ? `${t("Built")}: ${buildTime(b.built)}` : b.frontend ? `${t("Front end built")}: ${buildTime(b.frontend)}` : "",
       b.commit ? `${t("Commit")}: ${b.commit}${b.dirty ? ` (${t("with local changes")})` : ""}` : "",
       `${t("Location")}: ${b.location ?? ""}`,
       `Python ${info.python} · WebView2 ${info.webview2 ?? "–"}`,
@@ -295,7 +297,7 @@ export async function showAbout() {
     /* the dialog still shows the version */
   }
   alertDialog(
-    `AVAS ${version}\nAdvanced Virtual Accelerator Software\n\n${lines.join("\n")}${lines.length ? "\n\n" : ""}C. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., Phys. Rev. Accel. Beams 28, 044602 (2025)`,
+    `AVAS ${version}\nAdvanced Virtual Accelerator Software\n\n${lines.join("\n")}${lines.length ? "\n\n" : ""}${t("References")}\nC. Jin, Z.-J. Wang, X. Qi, Y. He, K. Li, et al., Phys. Rev. Accel. Beams 28, 044602 (2025)\n\n${t("Feedback")}\n${t("Maintainer")}: Yuchen Lin\n${t("Feedback email")}: yuchenlin@stu.xmu.edu.cn`,
     { title: t("About AVAS") },
   );
 }

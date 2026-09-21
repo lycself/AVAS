@@ -6,6 +6,7 @@ and from what it was built.  Running from source, the stamp is read from git
 and the build time of the web front end.
 """
 import functools
+from datetime import datetime, timezone
 import json
 import os
 import subprocess
@@ -32,8 +33,7 @@ def build_info():
     info["kind"] = "source"
     web = os.path.join(PACKAGE_DIR, "gui", "web", "index.html")
     if os.path.isfile(web):
-        import time
-        info["frontend"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(web)))
+        info["frontend"] = datetime.fromtimestamp(os.path.getmtime(web), timezone.utc).isoformat(timespec="seconds")
     info.update(git_stamp(os.path.dirname(PACKAGE_DIR)))
     return info
 

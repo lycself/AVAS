@@ -1,4 +1,9 @@
 {
+  "timezone unknown": "时区未知",
+  "References": "参考文献",
+  "Feedback": "反馈",
+  "Maintainer": "维护者",
+  "Feedback email": "反馈邮箱",
   "Restored from version {n}": "从版本 {n} 恢复",
   "Modified after restoring version {n}": "从版本 {n} 恢复后修改",
   "Display lanes only — no transverse offset": "分层仅用于示意，不表示横向偏移",
