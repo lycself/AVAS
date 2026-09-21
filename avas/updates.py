@@ -301,11 +301,13 @@ def _stage(release, current, work, progress):
         helper = [str(work / "AVASUpdate.exe")]
         restart = [str(root / "AVASGui.exe")]
     else:
-        for name in ("update_worker.py", "update_guard.py", "update_status.py"):
+        for name in ("update_worker.py", "update_guard.py", "update_status.py", "update_view.py"):
             shutil.copy2(Path(PACKAGE_DIR) / name, work / name)
         helper = [str(python), str(work / "update_worker.py")]
         restart = [str(python), "-m", "avas", "gui"]
     plan = {"root": str(root), "kind": kind, "before": current["commit"], "commit": release["commit"],
+            "display_versions": {"current": f"{current.get('version', '')} · {current['commit'][:8]}",
+                                 "target": f"{release['version']} · {release['commit'][:8]}"},
             "pid": os.getpid(), "python": str(python), "staged": str(work / "staged"),
             "backup": str(work / "backup"), "restart": restart, "handshake": True, "guarded": True}
     from avas.installation_lock import lock_path

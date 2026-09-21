@@ -140,7 +140,7 @@ def cancel():
 
 
 @rpc("updates.install")
-def install():
+def install(presentation=None):
     global _prepared
     with _lock:
         if _prepared is None or app.state().get("window") is None:
@@ -151,6 +151,10 @@ def install():
             if plan_path.is_file():
                 plan = json.loads(plan_path.read_text(encoding="utf-8"))
                 plan["language"] = app.app_settings().get("ui/language") or "en"
+                from avas.update_view import normalize_presentation, panel_screen_rect
+                appearance = normalize_presentation(presentation)
+                appearance["bounds"] = panel_screen_rect(app.state().get("window"), presentation)
+                plan["presentation"] = appearance
                 updates.worker.save_result(plan_path, plan)
             app.app_settings().set("updates/result", str(Path(_prepared["directory"]) / "result.json"))
             # Capture even bootloader/startup errors before the helper can open its own log.

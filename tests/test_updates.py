@@ -301,7 +301,7 @@ def test_stage_and_install_fixed_archive(tmp_path, monkeypatch, kind):
         assert Path(prepared["directory"], "AVASUpdate.exe").read_text() == "new helper"
     else:
         assert all(Path(prepared["directory"], name).is_file()
-                   for name in ("update_worker.py", "update_guard.py", "update_status.py"))
+                   for name in ("update_worker.py", "update_guard.py", "update_status.py", "update_view.py"))
     monkeypatch.setattr(worker, "command", lambda *a, **kw: None)  # no dependency installation in fixtures
     worker.execute(plan)
     assert (root / "app").read_text() == "new"
@@ -1039,6 +1039,9 @@ def test_cancel_during_extraction_does_not_touch_installation(tmp_path):
 
 def test_helper_must_acknowledge_before_gui_closes(service, tmp_path, monkeypatch):
     from avas.gui import app, maintenance
+    from avas import update_view
+    bounds = [120, 80, 680, 610, 1]
+    monkeypatch.setattr(update_view, "panel_screen_rect", lambda *args: bounds)
     (tmp_path / "plan.json").write_text("{}")
     app.app_settings().set("ui/language", "zh_CN")
     monkeypatch.setattr(service, "_prepared", {"directory": str(tmp_path), "command": ["fixture"]})
@@ -1061,8 +1064,12 @@ def test_helper_must_acknowledge_before_gui_closes(service, tmp_path, monkeypatc
 
     monkeypatch.setattr(service.subprocess, "Popen", lambda *a, **kw: Process())
     monkeypatch.setattr(service.threading, "Timer", Timer)
-    assert service.install() and closed and app.state()["update_exiting"]
-    assert json.loads((tmp_path / "plan.json").read_text())["language"] == "zh_CN"
+    assert service.install({"theme": "dark", "colours": {"accent": "#123456"}}) and closed and app.state()["update_exiting"]
+    plan = json.loads((tmp_path / "plan.json").read_text())
+    assert plan["language"] == "zh_CN"
+    assert plan["presentation"]["bounds"] == bounds
+    assert plan["presentation"]["theme"] == "dark"
+    assert plan["presentation"]["colours"]["accent"] == "#123456"
 
 
 def test_helper_start_timeout_stops_its_process_tree(service, tmp_path, monkeypatch):

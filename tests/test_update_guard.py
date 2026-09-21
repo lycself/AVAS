@@ -110,7 +110,7 @@ def test_native_status_window_is_ready_and_closes_on_completion(tmp_path):
 def test_native_phase_percentages_are_scoped_to_measured_operations():
     from avas.update_status import StatusWindow
     zh = StatusWindow("zh_CN", enabled=False)
-    assert "[备份]" in zh.phase_label("backup", 0.3)
+    assert "[安装]" in zh.phase_label("backup", 0.3)
     assert "30%" in zh.phase_label("backup", 0.3)
     assert "%" not in zh.phase_label("restarting")
     assert "%" not in zh.phase_label("dependencies", 0.5)
