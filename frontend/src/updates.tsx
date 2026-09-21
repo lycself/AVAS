@@ -2,26 +2,39 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { call, on } from "./bridge";
 import { resolveUnsaved } from "./actions";
-import { alertDialog, choiceDialog, reportError, toast } from "./components/overlays";
+import { alertDialog, reportError, toast } from "./components/overlays";
 import { Button, Spinner } from "./components/ui";
 import { UpdateProgress, type DownloadProgress } from "./components/UpdateProgress";
 import { installPreparedUpdate, openUrl } from "./host";
 import { t, useT } from "./i18n";
+import { UpdatePanel } from "./components/UpdatePanel";
 import "./styles/updates.css";
 
-type Info = {
+export type Info = {
   current: { kind: string; version: string; commit: string };
   release: { version: string; commit: string; published: string; notes: string };
   available: boolean; ignored: boolean; canInstall: boolean;
 };
-type UpdateStatus = { phase: "idle" | "preparing" | "ready" | "installing"; commit: string; progress?: DownloadProgress | null };
-const useUpdates = create<{ info: Info | null; busy: boolean; message: string; progress: DownloadProgress | null; hidden: string; status: UpdateStatus }>(() => ({
-  info: null, busy: false, message: "", progress: null, hidden: "", status: { phase: "idle", commit: "" },
+export type UpdateStatus = { phase: "idle" | "preparing" | "ready" | "installing"; commit: string; cancelling?: boolean; progress?: DownloadProgress | null };
+const useUpdates = create<{ info: Info | null; open: boolean; reviewing: boolean; outcome: "" | "cancelled" | "failed"; busy: boolean; cancelRequested: boolean; message: string; progress: DownloadProgress | null; hidden: string; status: UpdateStatus }>(() => ({
+  info: null, open: false, reviewing: false, outcome: "", busy: false, cancelRequested: false, message: "", progress: null, hidden: "", status: { phase: "idle", commit: "" },
 }));
+let resolveReview: ((choice: string) => void) | null = null;
+function chooseReview(choice: string) {
+  const resolve = resolveReview;
+  resolveReview = null;
+  useUpdates.setState({ reviewing: false });
+  resolve?.(choice);
+}
+function closePanel() {
+  if (useUpdates.getState().reviewing) chooseReview("later");
+  useUpdates.setState({ open: false });
+}
 
 on("updates.progress", (data: DownloadProgress) => useUpdates.setState({ message: data.message, progress: data }));
 
 export async function checkUpdates() {
+  useUpdates.setState({ open: true });
   if (useUpdates.getState().busy) return;
   const status = await call<UpdateStatus>("updates.status").catch(() => null);
   if (status && status.phase !== "idle") { useUpdates.setState({ status }); return; }
@@ -29,7 +42,7 @@ export async function checkUpdates() {
 }
 
 async function resumePreparedUpdate() {
-  useUpdates.setState({ busy: true });
+  useUpdates.setState({ busy: true, open: true, outcome: "" });
   try {
     if (!(await resolveUnsaved(t("updating AVAS")))) return;
     await installPreparedUpdate();
@@ -38,15 +51,17 @@ async function resumePreparedUpdate() {
 }
 
 async function cancelPreparedUpdate() {
+  useUpdates.setState({ cancelRequested: true });
   try {
     await call("updates.cancel");
-    useUpdates.setState({ status: { phase: "idle", commit: "" } });
-  } catch (error) { reportError(error, t("AVAS update")); }
+    const status = await call<UpdateStatus>("updates.status");
+    useUpdates.setState({ status, ...(status.phase === "idle" ? { outcome: "cancelled" as const, progress: null } : {}) });
+  } catch (error) { useUpdates.setState({ cancelRequested: false }); reportError(error, t("AVAS update")); }
 }
 
 async function showUpdate() {
   if (useUpdates.getState().busy) return;
-  useUpdates.setState({ busy: true, message: "Checking for updates...", progress: null });
+  useUpdates.setState({ busy: true, open: true, outcome: "", cancelRequested: false, message: "Checking for updates...", progress: null });
   let prepared = false;
   try {
     let info = await call<Info>("updates.check", { force: true });
@@ -54,29 +69,27 @@ async function showUpdate() {
     while (info.available) {
       useUpdates.setState({ message: "" });
       const release = info.release;
-      const message = `${t("Current version")}: ${info.current.version} · ${info.current.commit.slice(0, 8) || "—"}\n`
-        + `${t("Available version")}: ${release.version} · ${release.commit.slice(0, 8)}\n${release.published}\n\n${t("What's new")}\n${release.notes}`
-        + `\n\n${t("Even if you ignore this version, you can still get it from Help → Check for updates.")}`
-        + (info.canInstall ? `\n\n${t("AVAS will close while the update is installed, then restart automatically. Please do not open it manually. The update window will stay visible.")}`
-          : `\n\n${t("Update the server installation locally, then restart avas serve.")}`);
-      const choice = await choiceDialog(message, [
-        ...(info.canInstall ? [{ key: "install", label: t("Update and restart"), variant: "primary" as const }]
-          : [{ key: "download", label: t("Open downloads"), variant: "primary" as const }]),
-        { key: "ignore", label: t("Ignore this version") },
-        { key: "later", label: t("Later") },
-      ], { title: t("AVAS update") });
+      const choice = await new Promise<string>((resolve) => {
+        resolveReview = resolve;
+        useUpdates.setState({ reviewing: true, open: true });
+      });
       if (choice === "ignore") {
         await call("updates.ignore", { commit: release.commit });
-        useUpdates.setState({ info: { ...info, ignored: true } });
+        useUpdates.setState({ info: { ...info, ignored: true }, open: false });
         return;
       }
       if (choice === "download") {
         openUrl(`https://github.com/lycself/AVAS/releases/tag/avas-${release.commit}`);
         return;
       }
-      if (choice !== "install") { useUpdates.setState({ hidden: release.commit }); return; }
+      if (choice !== "install") { useUpdates.setState({ hidden: release.commit, open: false }); return; }
       useUpdates.setState({ message: "Preparing the confirmed update...", progress: null });
-      const result = await call<{ changed: boolean; info?: Info }>("updates.prepare", { commit: release.commit });
+      const result = await call<{ changed: boolean; cancelled?: boolean; info?: Info }>("updates.prepare", { commit: release.commit });
+      if (result.cancelled || useUpdates.getState().cancelRequested) {
+        useUpdates.setState({ outcome: "cancelled" });
+        toast(t("Update cancelled. Downloaded data is kept for the next attempt."));
+        return;
+      }
       if (result.changed && result.info) {
         info = result.info;
         useUpdates.setState({ info });
@@ -85,6 +98,7 @@ async function showUpdate() {
       }
       prepared = true;
       if (!(await resolveUnsaved(t("updating AVAS")))) return;
+      if (useUpdates.getState().cancelRequested) return;
       useUpdates.setState({ message: "Restarting to install the update...", progress: null });
       await installPreparedUpdate();
       prepared = false;
@@ -92,16 +106,18 @@ async function showUpdate() {
     }
     await alertDialog(t("This installation is already up to date."), { title: t("AVAS update") });
   } catch (error) {
+    useUpdates.setState({ outcome: "failed" });
     reportError(error, t("AVAS update"));
   } finally {
     if (prepared) await call("updates.cancel").catch(() => undefined);
-    useUpdates.setState({ busy: false, message: "", progress: null });
+    const status = await call<UpdateStatus>("updates.status").catch(() => ({ phase: "idle" as const, commit: "" }));
+    useUpdates.setState({ busy: false, message: "", progress: null, status });
   }
 }
 
 export function UpdateNotice() {
   const t = useT();
-  const { info, busy, message, progress, hidden, status } = useUpdates();
+  const { info, open, reviewing, outcome, busy, cancelRequested, message, progress, hidden, status } = useUpdates();
   useEffect(() => {
     let stopped = false;
     const check = async () => {
@@ -117,6 +133,7 @@ export function UpdateNotice() {
       try {
         const status = await call<UpdateStatus>("updates.status");
         if (!stopped) useUpdates.setState({ status,
+          ...(useUpdates.getState().status.cancelling && status.phase === "idle" ? { outcome: "cancelled" as const } : {}),
           ...(status.phase === "preparing" && status.progress ? { progress: status.progress, message: status.progress.message } : {}),
         });
       } catch { /* reconnect on next poll */ }
@@ -132,6 +149,11 @@ export function UpdateNotice() {
     }).catch(() => undefined);
     return () => { stopped = true; clearTimeout(timeout); clearInterval(timer); clearInterval(statusTimer); };
   }, []);
+  const panel = open && <UpdatePanel info={busy || status.phase === "idle" || info?.release.commit === status.commit ? info : null}
+    status={status} progress={progress ?? status.progress ?? null} message={message} busy={busy} reviewing={reviewing}
+    outcome={outcome} cancelling={!!status.cancelling || cancelRequested && status.phase === "preparing"}
+    onClose={closePanel} onChoose={chooseReview} onCancel={cancelPreparedUpdate} onReview={showUpdate} onInstall={resumePreparedUpdate} />;
+  if (open) return panel;
   if (!busy && status.phase !== "idle") return <div className="update-notice" role="status">
     {status.phase === "preparing" ? <UpdateProgress data={status.progress ?? { message: "Preparing the confirmed update...", stage: "prepare" }} />
       : <span>{status.phase === "ready" ? t("The confirmed update is ready to install.") : t("Restarting to install the update...")} {status.commit.slice(0, 8)}</span>}
@@ -139,6 +161,10 @@ export function UpdateNotice() {
       <Button onClick={resumePreparedUpdate}>{t("Update and restart")}</Button>
       <Button onClick={cancelPreparedUpdate}>{t("Cancel")}</Button>
     </>}
+    {status.phase === "preparing" && <Button disabled={status.cancelling || cancelRequested} onClick={cancelPreparedUpdate}>
+      {status.cancelling || cancelRequested ? t("Cancelling update...") : t("Cancel update")}
+    </Button>}
+    <Button onClick={() => useUpdates.setState({ open: true })}>{t("Review update")}</Button>
   </div>;
   if ((busy && !message) || (!busy && (!info?.available || info.ignored || hidden === info.release.commit))) return null;
   return <div className="update-notice" role="status">
@@ -147,5 +173,9 @@ export function UpdateNotice() {
       <Button onClick={showUpdate}>{t("Review update")}</Button>
       <Button onClick={() => useUpdates.setState({ hidden: info!.release.commit })}>{t("Later")}</Button>
     </>}
+    {busy && status.phase === "preparing" && <Button disabled={status.cancelling || cancelRequested} onClick={cancelPreparedUpdate}>
+      {status.cancelling || cancelRequested ? t("Cancelling update...") : t("Cancel update")}
+    </Button>}
+    {busy && <Button onClick={() => useUpdates.setState({ open: true })}>{t("Review update")}</Button>}
   </div>;
 }

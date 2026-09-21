@@ -12,3 +12,46 @@
 .update-progress { flex: 1; min-width: 180px; }
 .update-progress-label { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; margin-bottom: 6px; }
 .update-transfer { display: flex; flex-wrap: wrap; gap: 6px 16px; font-variant-numeric: tabular-nums; }
+
+.float-window.update-window { background: var(--update-bg); color: var(--fg); }
+.update-window .float-title { background: var(--update-surface); }
+.update-brand { letter-spacing: 3px; margin-right: 8px; }
+.update-body { flex: 1; min-height: 0; overflow: auto; padding: 26px 28px 22px; background-image: linear-gradient(var(--update-grid) 1px, transparent 1px), linear-gradient(90deg, var(--update-grid) 1px, transparent 1px); background-size: 40px 40px; }
+.update-identity { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: var(--fg-muted); font-size: 11px; margin-bottom: 24px; }
+.update-identity > span:last-child { display: flex; gap: 6px; align-items: center; }
+.update-hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+.update-hero h2 { margin: 0 0 10px; font-size: 23px; font-weight: 500; color: var(--fg-strong); }
+.update-hero p { margin: 0; color: var(--fg-muted); font-size: 13px; }
+.update-percent { white-space: nowrap; font-size: 48px; font-variant-numeric: tabular-nums; color: var(--fg-strong); }
+.update-percent span { font-size: 18px; color: var(--fg-muted); margin-left: 4px; }
+.update-versions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 22px 0; font-variant-numeric: tabular-nums; }
+.update-versions > div { display: grid; gap: 4px; }
+.update-versions small { color: var(--fg-muted); }
+.update-steps { display: flex; list-style: none; padding: 0; margin: 26px 0; }
+.update-steps li { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; flex-direction: column; gap: 10px; font-size: 12px; color: var(--fg-muted); text-align: center; overflow-wrap: anywhere; }
+.update-steps li::before { content: ""; position: absolute; height: 1px; top: 14px; left: -50%; width: 100%; background: var(--border-strong); }
+.update-steps li:first-child::before { display: none; }
+.update-node { position: relative; display: grid; place-items: center; width: 29px; height: 29px; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--update-bg); }
+.update-steps .active { color: var(--fg-strong); }
+.update-steps .active .update-node { color: var(--update-on-accent); background: var(--update-accent); border-color: var(--update-accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--update-accent) 10%, transparent), 0 0 16px color-mix(in srgb, var(--update-accent) 25%, transparent); }
+.update-steps .done .update-node { color: var(--update-accent); }
+.update-window .progress-fill { background: var(--update-accent); }
+.update-window .update-transfer strong { display: none; }
+.update-wait { display: flex; gap: 8px; align-items: center; color: var(--fg-muted); }
+.update-notes { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 18px; }
+.update-notes-heading { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; justify-content: space-between; color: var(--fg-muted); font-size: 12px; }
+.update-notes h3 { font-size: 13px; font-weight: 500; margin: 0 0 12px; color: var(--fg); }
+.update-release-notes { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; user-select: text; }
+.update-assurance { margin-top: 22px; display: flex; align-items: flex-start; gap: 8px; color: var(--fg-muted); font-size: 12px; line-height: 1.6; }
+.update-assurance .codicon { flex-shrink: 0; margin-top: 2px; }
+.update-ignore-note { color: var(--fg-muted); font-size: 12px; }
+.update-footer { background: var(--update-surface); border-top: 1px solid var(--border); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.update-footer > span { color: var(--fg-muted); font-size: 12px; flex: 1 1 150px; }
+.update-footer > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; flex: 1 1 280px; }
+.update-window { container-type: inline-size; }
+@container (max-width: 450px) {
+  .update-body { padding: 18px 16px; }
+  .update-hero h2 { font-size: 20px; }
+  .update-percent { font-size: 36px; }
+  .update-footer { padding: 12px; }
+}

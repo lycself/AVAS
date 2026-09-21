@@ -18,6 +18,7 @@ _cached = None
 _checked = 0
 _prepared = None
 _progress = None
+_cancel_event = None
 
 
 def _report_progress(data):
@@ -34,6 +35,7 @@ def status():
         return {"phase": "installing" if app.state().get("update_exiting") else "ready" if _prepared is not None
                 else "preparing" if maintenance.updating else "idle",
                 "commit": _prepared.get("commit", "") if _prepared else "",
+                "cancelling": _cancel_event is not None and _cancel_event.is_set(),
                 "progress": copy.deepcopy(_progress)}
 
 
@@ -77,7 +79,7 @@ def ignore(commit):
 
 @rpc("updates.prepare")
 def prepare(commit):
-    global _prepared
+    global _prepared, _cancel_event, _progress
     from avas.gui.services import runner
     if app.state().get("window") is None:
         raise UserError("Update the server installation locally, then restart avas serve.")
@@ -87,37 +89,53 @@ def prepare(commit):
         if runner.any_active():
             raise UserError("Finish all simulations and studies before updating.")
         maintenance.updating = True
+        with _lock:
+            event = _cancel_event = threading.Event()
     try:
         _report_progress({"message": "Preparing the confirmed update...", "stage": "prepare"})
         latest = check(force=True)
+        if event.is_set():
+            raise updates.UpdateCancelled()
         if latest["release"]["commit"] != commit:
-            with maintenance.lock:
-                maintenance.updating = False
             return {"changed": True, "info": latest}
         if not latest["available"]:
             raise UserError("This installation is already up to date.")
-        prepared = updates.stage(latest["release"], latest["current"], _report_progress)
+        prepared = updates.stage(latest["release"], latest["current"], _report_progress, event)
         prepared["commit"] = commit
         with _lock:
+            if event.is_set():
+                raise updates.UpdateCancelled()
             _prepared = prepared
         return {"changed": False}
+    except updates.UpdateCancelled:
+        return {"changed": False, "cancelled": True}
     except Exception as exc:
-        with maintenance.lock:
-            maintenance.updating = False
         if isinstance(exc, UserError):
             raise
         raise UserError(str(exc)) from exc
+    finally:
+        with maintenance.lock:
+            with _lock:
+                _cancel_event = None
+                if _prepared is None:
+                    _progress = None
+                    maintenance.updating = False
 
 
 @rpc("updates.cancel")
 def cancel():
     global _prepared, _progress
-    with _lock:
-        if _prepared is not None:
-            _prepared = None
-            _progress = None
-            with maintenance.lock:
-                maintenance.updating = False
+    with maintenance.lock:
+        with _lock:
+            if app.state().get("update_exiting"):
+                raise UserError("Installation has started and cannot be cancelled.")
+            if _cancel_event is not None:
+                _cancel_event.set()
+            if _prepared is not None:
+                _prepared = None
+                _progress = None
+                if _cancel_event is None:
+                    maintenance.updating = False
     return True
 
 

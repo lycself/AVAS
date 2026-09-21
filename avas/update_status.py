@@ -46,7 +46,19 @@ class StatusWindow:
             self.thread.join(timeout=5)
 
     def set(self, stage, value=None):
-        self.messages.put((TEXT[stage][int(self.zh)], value))
+        self.messages.put((stage, value))
+
+    def phase_label(self, stage, value=None):
+        """Measured percentages apply to the current phase, not the entire update."""
+        names = ("准备", "备份", "安装", "检查", "重启") if self.zh else ("Prepare", "Backup", "Install", "Check", "Restart")
+        index = {"waiting": 0, "checking": 0, "backup": 1, "installing": 2,
+                 "dependencies": 2, "checking_startup": 3, "restarting": 4}.get(stage)
+        if index is None:
+            return TEXT[stage][int(self.zh)]
+        trail = "  →  ".join(f"[{name}]" if i == index else name for i, name in enumerate(names))
+        if value is not None and stage in ("backup", "installing"):
+            trail += f"   ·   {round(max(0, min(1, value)) * 100)}%"
+        return trail
 
     def _attention(self):
         if self.attention and self.attention.exists():
@@ -119,7 +131,7 @@ class StatusWindow:
         px = lambda n: round(n * scale)
         common.InitCommonControls()
         title, heading, note = self._labels()
-        width, height = px(600), px(235)
+        width, height = px(660), px(310)
         x = max(0, (user.GetSystemMetrics(0) - width) // 2)
         y = max(0, (user.GetSystemMetrics(1) - height) // 2)
         # Native system colours/fonts are deliberate: this helper cannot depend on
@@ -147,20 +159,21 @@ class StatusWindow:
             font = gdi.CreateFontW(-px(15), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
 
             def label(text, top, h=32):
-                child = user.CreateWindowExW(0, "STATIC", text, 0x50000000, px(22), px(top), px(546), px(h),
+                child = user.CreateWindowExW(0, "STATIC", text, 0x50000000, px(26), px(top), px(602), px(h),
                                              window, None, None, None)
                 if not child:
                     raise c.WinError(c.get_last_error())
                 user.SendMessageW(child, 0x30, font, 1)
                 return child
 
-            label(heading, 20)
-            label(note, 52, 40)
-            status = label(TEXT["waiting"][int(self.zh)], 102)
-            progress = user.CreateWindowExW(0, "msctls_progress32", "", 0x50000008, px(22), px(151), px(546), px(18),
+            label("AVAS  /  " + heading, 22)
+            phases = label(self.phase_label("waiting"), 66, 45)
+            status = label(TEXT["waiting"][int(self.zh)], 122)
+            progress = user.CreateWindowExW(0, "msctls_progress32", "", 0x50000008, px(26), px(164), px(602), px(8),
                                             window, None, None, None)
             if not progress:
                 raise c.WinError(c.get_last_error())
+            label(note, 195, 55)
             user.SendMessageW(progress, 0x406, 0, 100)  # PBM_SETRANGE32
             user.SendMessageW(progress, 0x40A, 1, 40)   # PBM_SETMARQUEE
             user.ShowWindow(window, 5)
@@ -171,8 +184,9 @@ class StatusWindow:
                     user.TranslateMessage(c.byref(message))
                     user.DispatchMessageW(c.byref(message))
                 while not self.messages.empty():
-                    text, value = self.messages.get_nowait()
-                    user.SetWindowTextW(status, text)
+                    stage, value = self.messages.get_nowait()
+                    user.SetWindowTextW(status, TEXT[stage][int(self.zh)])
+                    user.SetWindowTextW(phases, self.phase_label(stage, value))
                     user.SetWindowLongW(progress, -16, 0x50000008 if value is None else 0x50000000)
                     user.SendMessageW(progress, 0x40A, int(value is None), 40)
                     if value is not None:
@@ -199,19 +213,22 @@ class StatusWindow:
             root.protocol("WM_DELETE_WINDOW", lambda: None)
             frame = ttk.Frame(root, padding=24)
             frame.pack()
-            ttk.Label(frame, text=heading).pack(anchor="w", pady=(0, 12))
-            ttk.Label(frame, text=note, wraplength=500).pack(anchor="w")
+            ttk.Label(frame, text="AVAS  /  " + heading).pack(anchor="w", pady=(0, 18))
+            phases = tk.StringVar(value=self.phase_label("waiting"))
+            ttk.Label(frame, textvariable=phases, wraplength=580).pack(anchor="w")
             text = tk.StringVar(value=TEXT["waiting"][int(self.zh)])
             ttk.Label(frame, textvariable=text).pack(anchor="w", pady=16)
-            bar = ttk.Progressbar(frame, length=500, mode="indeterminate")
+            bar = ttk.Progressbar(frame, length=580, mode="indeterminate")
             bar.pack()
+            ttk.Label(frame, text=note, wraplength=580).pack(anchor="w", pady=(22, 0))
             bar.start()
             root.update()
             self.ready.set()
             while not self.stopped.is_set():
                 while not self.messages.empty():
-                    label, value = self.messages.get_nowait()
-                    text.set(label)
+                    stage, value = self.messages.get_nowait()
+                    text.set(TEXT[stage][int(self.zh)])
+                    phases.set(self.phase_label(stage, value))
                     bar.stop()
                     bar.configure(mode="indeterminate" if value is None else "determinate")
                     if value is None:

@@ -162,6 +162,8 @@ def service(monkeypatch, tmp_path):
     monkeypatch.setattr(service, "_checked", 0)
     monkeypatch.setattr(service, "_prepared", None)
     monkeypatch.setattr(service, "_progress", None)
+    monkeypatch.setattr(service, "_cancel_event", None)
+    monkeypatch.setitem(app.state(), "update_exiting", False)
     monkeypatch.setattr(maintenance, "updating", False)
     monkeypatch.setitem(app.state(), "window", object())
     monkeypatch.setitem(app.state(), "settings", settings.Settings(str(tmp_path / "settings.json")))
@@ -189,7 +191,7 @@ def test_release_is_pinned_after_confirmation_and_cancel_releases_lock(service, 
     monkeypatch.setattr(updates, "check", lambda: info(A))
     installed = []
 
-    def stage(selected, current, progress):
+    def stage(selected, current, progress, cancel_event):
         monkeypatch.setattr(updates, "check", lambda: info(B))
         installed.append(copy.deepcopy(selected))
         return {"command": ["not-executed"]}
@@ -579,6 +581,7 @@ def test_archive_or_bundle_ahead_of_release_is_not_downgraded(monkeypatch, kind)
 def test_download_reports_bytes_speed_and_unknown_size(tmp_path, monkeypatch, length):
     import hashlib
     import io
+    monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
     payload = b"x" * 200000
     response = io.BytesIO(payload)
     response.headers = {} if length is None else {"Content-Length": str(length)}
@@ -595,11 +598,208 @@ def test_download_reports_bytes_speed_and_unknown_size(tmp_path, monkeypatch, le
 
 def test_truncated_download_is_not_complete(tmp_path, monkeypatch):
     import io
-    response = io.BytesIO(b"short")
-    response.headers = {"Content-Length": "100"}
-    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **kw: response)
+    def respond(*args, **kwargs):
+        response = io.BytesIO(b"short")
+        response.headers = {"Content-Length": "100"}
+        return response
+    monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
     with pytest.raises(ValueError, match="incomplete"):
         updates.download({"url": "https://example.invalid/update"}, tmp_path / "update.zip", require_checksum=False)
+
+
+@pytest.mark.parametrize("supports_range", [True, False])
+def test_download_retries_and_resumes_verified_asset(tmp_path, monkeypatch, supports_range):
+    import hashlib
+    import io
+    payload = b"complete archive"
+    requests = []
+
+    def respond(request, **kwargs):
+        requests.append(request)
+        if len(requests) == 1:
+            response = io.BytesIO(payload[:5])
+            response.headers = {"Content-Length": str(len(payload))}
+        else:
+            assert request.get_header("Range") == "bytes=5-"
+            response = io.BytesIO(payload[5:] if supports_range else payload)
+            response.status = 206 if supports_range else 200
+            response.headers = {"Content-Length": str(len(payload) - 5 if supports_range else len(payload))}
+            if supports_range:
+                response.headers["Content-Range"] = f"bytes 5-{len(payload)-1}/{len(payload)}"
+        return response
+
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
+    dest = tmp_path / "update.zip"
+    updates.download({"url": "https://example.invalid/update", "sha256": hashlib.sha256(payload).hexdigest()}, dest)
+    assert dest.read_bytes() == payload
+    assert len(requests) == 2
+
+
+def test_download_rejects_wrong_resume_range(tmp_path, monkeypatch):
+    import io
+    dest = tmp_path / "update.zip"
+    dest.write_bytes(b"first")
+    response = io.BytesIO(b"wrong")
+    response.status = 206
+    response.headers = {"Content-Range": "bytes 0-4/5", "Content-Length": "5"}
+    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **kw: response)
+    with pytest.raises(ValueError, match="byte range"):
+        updates._download({"url": "https://example.invalid/update"}, dest, True, lambda data: None, resume=True)
+    assert dest.read_bytes() == b"first"
+
+
+def test_low_space_stops_before_installation_changes(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    root, staged, backup = tmp_path / "root", tmp_path / "staged", tmp_path / "backup"
+    make_install(root, {"app.py": "old"})
+    make_install(staged, {"app.py": "new"}, commit=B)
+    monkeypatch.setattr(worker.shutil, "disk_usage", lambda path: SimpleNamespace(free=0))
+    with pytest.raises(ValueError, match="Not enough disk space"):
+        worker.replace_files(root, staged, backup)
+    assert (root / "app.py").read_text() == "old"
+    assert worker.read_manifest(root)["commit"] == A
+    assert not backup.exists()
+
+
+def test_low_space_stops_extraction_before_payload(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    package = tmp_path / "package.zip"
+    with zipfile.ZipFile(package, "w") as zf:
+        zf.writestr("app.py", "new")
+    monkeypatch.setattr(worker.shutil, "disk_usage", lambda path: SimpleNamespace(free=0))
+    with pytest.raises(ValueError, match="Not enough disk space"):
+        worker.unpack(package, tmp_path / "staged")
+    assert not (tmp_path / "staged/app.py").exists()
+
+
+def test_download_range_rejection_restarts_from_zero(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import urllib.error
+    payload = b"complete archive"
+    calls = []
+
+    def respond(request, **kwargs):
+        calls.append(request.get_header("Range"))
+        if len(calls) == 2:
+            raise urllib.error.HTTPError(request.full_url, 416, "range unavailable", {}, None)
+        response = io.BytesIO(payload[:5] if len(calls) == 1 else payload)
+        response.headers = {"Content-Length": str(len(payload))}
+        return response
+
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
+    dest = tmp_path / "update.zip"
+    updates.download({"url": "https://example.invalid/update", "sha256": hashlib.sha256(payload).hexdigest()}, dest)
+    assert calls == [None, "bytes=5-", None]
+    assert dest.read_bytes() == payload
+
+
+def test_cancelled_download_survives_next_prepare_and_reuses_complete_cache(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import threading
+    payload = b"a" * 65536 + b"remaining"
+    item = {"url": "https://example.invalid/version-a.zip", "sha256": hashlib.sha256(payload).hexdigest()}
+    event = threading.Event()
+    calls = []
+    class Interrupted(io.BytesIO):
+        def read(self, size=-1):
+            chunk = super().read(size)
+            event.set()
+            return chunk
+    def respond(request, **kwargs):
+        calls.append(request.get_header("Range"))
+        if len(calls) == 1:
+            response = Interrupted(payload)
+            response.headers = {"Content-Length": str(len(payload))}
+        else:
+            response = io.BytesIO(payload[65536:])
+            response.status = 206
+            response.headers = {"Content-Length": "9", "Content-Range": f"bytes 65536-{len(payload)-1}/{len(payload)}"}
+        return response
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    first, second = tmp_path / "first", tmp_path / "second"
+    token = updates._cancel_event.set(event)
+    try:
+        with pytest.raises(updates.UpdateCancelled):
+            updates.cached_download(item, first, lambda data: None)
+    finally:
+        updates._cancel_event.reset(token)
+    cached = next((tmp_path / "downloads").glob("*.zip"))
+    assert cached.stat().st_size == 65536
+    result = updates.cached_download(item, second, lambda data: None)
+    assert result.read_bytes() == payload
+    assert updates.cached_download(item, second, lambda data: None) == result
+    assert calls == [None, "bytes=65536-"]
+
+
+def test_changed_asset_does_not_resume_previous_cache(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    calls = []
+    def respond(request, **kwargs):
+        calls.append(request.get_header("Range"))
+        return io.BytesIO(b"payload")
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    checksum = hashlib.sha256(b"payload").hexdigest()
+    first = updates.cached_download({"url": "https://example.invalid/a", "sha256": checksum}, tmp_path / "first", lambda d: None)
+    second = updates.cached_download({"url": "https://example.invalid/b", "sha256": checksum}, tmp_path / "second", lambda d: None)
+    assert first != second and calls == [None, None]
+
+
+def test_bad_cached_prefix_is_replaced_after_checksum_failure(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    payload = b"complete"
+    dest = tmp_path / "partial.zip"
+    dest.write_bytes(b"bad")
+    calls = []
+    def respond(request, **kwargs):
+        calls.append(request.get_header("Range"))
+        response = io.BytesIO(payload[3:] if len(calls) == 1 else payload)
+        response.headers = {}
+        if len(calls) == 1:
+            response.status = 206
+            response.headers["Content-Range"] = "bytes 3-7/8"
+        return response
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(updates.time, "sleep", lambda seconds: None)
+    updates.download({"url": "https://example.invalid/a", "sha256": hashlib.sha256(payload).hexdigest()}, dest, resume=True)
+    assert dest.read_bytes() == payload and calls == ["bytes=3-", None]
+
+
+def test_download_low_space_is_not_retried_or_truncated(tmp_path, monkeypatch):
+    import io
+    from types import SimpleNamespace
+    calls = []
+    def respond(*args, **kwargs):
+        calls.append(1)
+        response = io.BytesIO(b"new")
+        response.headers = {"Content-Length": "3"}
+        return response
+    dest = tmp_path / "update.zip"
+    dest.write_bytes(b"existing")
+    monkeypatch.setattr(updates.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(worker.shutil, "disk_usage", lambda path: SimpleNamespace(free=0))
+    with pytest.raises(ValueError, match="Not enough disk space"):
+        updates.download({"url": "https://example.invalid/update"}, dest, require_checksum=False)
+    assert calls == [1]
+    assert dest.read_bytes() == b"existing"
+
+
+def test_install_space_combines_backup_and_target_on_same_volume(tmp_path, monkeypatch):
+    root, staged = tmp_path / "root", tmp_path / "staged"
+    root.mkdir()
+    staged.mkdir()
+    (root / "app").write_bytes(b"old")
+    (staged / "app").write_bytes(b"new file")
+    checks = []
+    monkeypatch.setattr(worker, "require_space", lambda path, needed: checks.append((path, needed)))
+    worker.install_space(root, staged, tmp_path / "backup", ["app"])
+    assert checks == [(root, 3 + 8 + 8)]
 
 
 def test_progress_rpc_returns_independent_snapshots(service, monkeypatch):
@@ -733,6 +933,83 @@ def test_helper_start_failure_keeps_gui_open_and_logs(service, tmp_path, monkeyp
         service.install()
     assert "cannot launch" in (tmp_path / "launcher.log").read_text(encoding="utf-8")
     assert not maintenance.updating
+
+
+def test_cancel_preparation_keeps_reservation_until_worker_stops(service, monkeypatch):
+    import threading
+    from avas.gui import maintenance
+    from avas.gui.bridge import UserError
+    monkeypatch.setattr(updates, "check", lambda: info(A))
+    entered, finish = threading.Event(), threading.Event()
+    results = []
+
+    def stage(selected, current, progress, event):
+        entered.set()
+        assert finish.wait(5)
+        assert event.is_set()
+        raise updates.UpdateCancelled()
+
+    monkeypatch.setattr(updates, "stage", stage)
+    thread = threading.Thread(target=lambda: results.append(service.prepare(A)))
+    thread.start()
+    try:
+        assert entered.wait(5)
+        service.cancel()
+        assert service.status()["cancelling"] and maintenance.updating
+        with pytest.raises(UserError, match="being prepared"):
+            service.prepare(A)
+    finally:
+        finish.set()
+        thread.join(5)
+    assert results == [{"changed": False, "cancelled": True}]
+    assert service.status()["phase"] == "idle" and not maintenance.updating
+    monkeypatch.setattr(updates, "stage", lambda *args: {"command": ["unused"]})
+    assert service.prepare(A) == {"changed": False}
+    service.cancel()
+
+
+def test_cancel_cannot_interrupt_installation(service):
+    from avas.gui import app
+    from avas.gui.bridge import UserError
+    app.state()["update_exiting"] = True
+    with pytest.raises(UserError, match="cannot be cancelled"):
+        service.cancel()
+
+
+def test_cancel_at_ready_boundary_never_publishes_install_plan(service, monkeypatch):
+    monkeypatch.setattr(updates, "check", lambda: info(A))
+    def stage(selected, current, progress, event):
+        service.cancel()
+        return {"command": ["must not run"]}
+    monkeypatch.setattr(updates, "stage", stage)
+    assert service.prepare(A)["cancelled"]
+    assert service._prepared is None
+
+
+def test_cancel_stops_preparation_subprocess(tmp_path):
+    import sys
+    checks = []
+    def check():
+        checks.append(1)
+        if len(checks) > 2:
+            raise updates.UpdateCancelled()
+    with pytest.raises(updates.UpdateCancelled):
+        worker.command([sys.executable, "-c", "import time; time.sleep(30)"], tmp_path,
+                       cancel_check=check, capture_output=True)
+
+
+def test_cancel_during_extraction_does_not_touch_installation(tmp_path):
+    package = tmp_path / "package.zip"
+    with zipfile.ZipFile(package, "w") as zf:
+        zf.writestr("app", b"x" * (2 * 1024**2))
+    checks = []
+    def check():
+        checks.append(1)
+        if len(checks) >= 3:
+            raise updates.UpdateCancelled()
+    with pytest.raises(updates.UpdateCancelled):
+        worker.unpack(package, tmp_path / "staged", check=check)
+    assert (tmp_path / "staged/app").stat().st_size == 1024**2
 
 
 def test_helper_must_acknowledge_before_gui_closes(service, tmp_path, monkeypatch):

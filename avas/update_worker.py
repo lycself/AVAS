@@ -27,6 +27,32 @@ else:  # copied outside the installation / frozen helper entry point
 
 MANIFEST = ".avas-install.json"
 FILE_RETRY_SECONDS = 15
+SPACE_RESERVE = 64 * 1024**2
+
+
+def require_space(path, needed):
+    """Keep a small reserve; check the actual volume even for not-yet-created paths."""
+    path = Path(path).resolve()
+    while not path.exists():
+        path = path.parent
+    free = shutil.disk_usage(path).free
+    if free < needed + SPACE_RESERVE:
+        raise ValueError(f"Not enough disk space at {path}: need {needed + SPACE_RESERVE} bytes, available {free} bytes")
+
+
+def install_space(root, staged, backup, names):
+    backup_size = sum((root / name).stat().st_size for name in names if (root / name).is_file())
+    sizes = [(staged / name).stat().st_size for name in names if (staged / name).is_file()]
+    # Conservative peak: all new changed files plus one atomic replacement copy.
+    target_size = sum(sizes) + max(sizes, default=0)
+    existing = backup.resolve()
+    while not existing.exists():
+        existing = existing.parent
+    if root.stat().st_dev == existing.stat().st_dev:
+        require_space(root, backup_size + target_size)
+    else:
+        require_space(root, target_size)
+        require_space(existing, backup_size)
 
 
 def open_update_log(path):
@@ -98,9 +124,15 @@ def copy_replace(src, dst):
 
 
 
-def digest(path):
+def digest(path, check=lambda: None):
     with open(path, "rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        result = hashlib.sha256()
+        while True:
+            check()
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                return result.hexdigest()
+            result.update(chunk)
 
 
 def safe_path(root, name):
@@ -128,14 +160,19 @@ def read_manifest(root):
     return data
 
 
-def unpack(archive, dest, source_commit=None):
+def unpack(archive, dest, source_commit=None, check=lambda: None):
     """Extract only regular, bounded paths; verify every payload file before use."""
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=False)
     with zipfile.ZipFile(archive) as zf:
+        expanded_size = sum(entry.file_size for entry in zf.infolist())
+        if expanded_size > 8 * 1024**3:
+            raise ValueError("Update archive is too large")
+        require_space(dest, expanded_size)
         seen = set()
         total = 0
         for entry in zf.infolist():
+            check()
             name = entry.filename
             if source_commit:
                 prefix = f"AVAS-{source_commit}/"
@@ -156,26 +193,29 @@ def unpack(archive, dest, source_commit=None):
             else:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(entry) as src, target.open("wb") as dst:
-                    shutil.copyfileobj(src, dst)
+                    while chunk := src.read(1024 * 1024):
+                        check()
+                        dst.write(chunk)
     if source_commit:
         marker = json.loads((dest / ".avas-source.json").read_text(encoding="utf-8"))
         if marker.get("commit") != source_commit:
             raise ValueError("Source baseline revision marker is invalid")
-        files = {p.relative_to(dest).as_posix(): digest(p) for p in dest.rglob("*") if p.is_file() and p.name != MANIFEST}
+        files = {p.relative_to(dest).as_posix(): digest(p, check) for p in dest.rglob("*") if p.is_file() and p.name != MANIFEST}
         (dest / MANIFEST).write_text(json.dumps({"kind": "source", "commit": source_commit, "files": files}), encoding="utf-8")
     data = read_manifest(dest)
     actual = {p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file()}
     if actual != set(data["files"]) | {MANIFEST}:
         raise ValueError("Update archive does not match its manifest")
     for name, expected in data["files"].items():
-        if digest(safe_path(dest, name)) != expected:
+        if digest(safe_path(dest, name), check) != expected:
             raise ValueError(f"Update checksum failed: {name}")
     return data
 
 
-def preflight(root, old, new):
+def preflight(root, old, new, check=lambda: None):
     """No changed/deleted managed file or new-file collision may be overwritten."""
     for name in old.keys() | new.keys():
+        check()
         path = safe_path(root, name)
         for parent in path.parents:
             if parent == Path(root).resolve():
@@ -183,7 +223,7 @@ def preflight(root, old, new):
             if parent.exists() and not parent.is_dir():
                 raise ValueError(f"Local file blocks an update directory: {name}")
         if name in old:
-            if not path.is_file() or digest(path) != old[name]:
+            if not path.is_file() or digest(path, check) != old[name]:
                 raise ValueError(f"Local file changed; update stopped: {name}")
         elif path.exists():
             raise ValueError(f"Local file would be overwritten: {name}")
@@ -200,6 +240,7 @@ def replace_files(root, staged, backup, progress=lambda stage, value=None: None)
     preflight(root, old, new)
     # Unchanged executables need no rewrite. Commit the version manifest last.
     names = sorted(name for name in old.keys() | new.keys() if old.get(name) != new.get(name)) + [MANIFEST]
+    install_space(root, staged, backup, names)
     progress("checking")
     for name in names:
         check_replaceable(safe_path(root, name))
@@ -248,17 +289,51 @@ def restore(root, backup, names):
         raise OSError("Some files need manual restoration from backup: " + "; ".join(errors))
 
 
-def command(args, cwd, **kwargs):
+def command(args, cwd, cancel_check=None, **kwargs):
     if not kwargs.get("capture_output"):
         kwargs.setdefault("stdout", sys.stdout)
         kwargs.setdefault("stderr", sys.stderr)
-    return subprocess.run(args, cwd=cwd, check=True, timeout=900,
-                          creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0, **kwargs)
+    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    if cancel_check is None:
+        return subprocess.run(args, cwd=cwd, check=True, timeout=900, creationflags=flags, **kwargs)
+    cancel_check()
+    if kwargs.pop("capture_output", False):
+        kwargs["stdout"] = kwargs["stderr"] = subprocess.PIPE
+    with subprocess.Popen(args, cwd=cwd, creationflags=flags, start_new_session=os.name != "nt", **kwargs) as process:
+        deadline = time.monotonic() + 900
+        try:
+            while True:
+                cancel_check()
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(args, 900)
+                try:
+                    stdout, stderr = process.communicate(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
+            if process.returncode:
+                raise subprocess.CalledProcessError(process.returncode, args, stdout, stderr)
+            return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+        except BaseException:
+            if process.poll() is None:
+                if os.name == "nt":
+                    try:
+                        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                       creationflags=flags, timeout=10)
+                    finally:
+                        process.kill()
+                else:
+                    import signal
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.kill()
+            process.communicate()
+            raise
 
 
-def git(root, *args):
+def git(root, *args, cancel_check=None):
     return command(["git", *args], root, capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL,
-                   env=dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")).stdout.strip()
+                   env=dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never"), cancel_check=cancel_check).stdout.strip()
 
 
 def git_preflight(root, before, target):

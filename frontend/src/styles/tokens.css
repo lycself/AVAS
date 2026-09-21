@@ -1,6 +1,11 @@
 /* Colour tokens (VS Code Light/Dark Modern), one set per theme. */
 :root {
   color-scheme: light;
+  --update-bg: #f5f9fc;
+  --update-surface: #ffffff;
+  --update-accent: #007c9c;
+  --update-grid: #e7f0f5;
+  --update-on-accent: #ffffff;
   --editor-bg: #ffffff;
   --sidebar-bg: #f8f8f8;
   --panel-bg: #f8f8f8;
@@ -73,6 +78,11 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --update-bg: #101923;
+  --update-surface: #14202c;
+  --update-accent: #5bd7ed;
+  --update-grid: #192936;
+  --update-on-accent: #102330;
   --editor-bg: #1f1f1f;
   --sidebar-bg: #181818;
   --panel-bg: #181818;
