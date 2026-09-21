@@ -6,9 +6,11 @@ from pathlib import Path
 import sys
 
 from avas.paths import PACKAGE_DIR, USER_DATA_DIR
-from avas.update_worker import InstallationLock
+from avas.update_guard import InstallationBusy, gate_paths, startup_lease, write_state
 
 _lease = None
+_restart_token = ""
+_restart_lock = None
 
 
 def lock_path(root=None):
@@ -19,8 +21,22 @@ def lock_path(root=None):
 
 
 def acquire():
-    global _lease
+    global _lease, _restart_token, _restart_lock
     if _lease is None and os.environ.get("AVAS_UPDATE_PROBE") != "1":
-        _lease = InstallationLock(lock_path())
-        _lease.__enter__()
+        path = lock_path()
+        try:
+            _lease, _restart_token = startup_lease(path, os.environ.pop("AVAS_UPDATE_RESTART", ""))
+        except InstallationBusy as exc:
+            if sys.stderr is not None:
+                print(str(exc), file=sys.stderr)
+            raise SystemExit(2) from None  # do not hold an executable open with a dialog
+        _restart_lock = path
         atexit.register(_lease.__exit__)
+
+
+def acknowledge_restart():
+    """Only the restarted window acknowledges; an import is not a successful restart."""
+    global _restart_token
+    if _restart_token and _restart_lock:
+        write_state(gate_paths(_restart_lock)["restarted"], {"token": _restart_token})
+        _restart_token = ""

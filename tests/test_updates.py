@@ -125,6 +125,7 @@ def service(monkeypatch, tmp_path):
     monkeypatch.setattr(service, "_cached", None)
     monkeypatch.setattr(service, "_checked", 0)
     monkeypatch.setattr(service, "_prepared", None)
+    monkeypatch.setattr(service, "_progress", None)
     monkeypatch.setattr(maintenance, "updating", False)
     monkeypatch.setitem(app.state(), "window", object())
     monkeypatch.setitem(app.state(), "settings", settings.Settings(str(tmp_path / "settings.json")))
@@ -248,7 +249,7 @@ def test_stage_and_install_fixed_archive(tmp_path, monkeypatch, kind):
     monkeypatch.setattr(updates, "USER_DATA_DIR", str(tmp_path / "state"))
     archive(new, tmp_path / "update.zip")
 
-    def download(item, dest):
+    def download(item, dest, **kwargs):
         assert f"avas-{B}/" in item["url"]
         worker.shutil.copy2(tmp_path / "update.zip", dest)
 
@@ -257,6 +258,12 @@ def test_stage_and_install_fixed_archive(tmp_path, monkeypatch, kind):
     prepared = updates.stage(release(B), {"root": str(root), "kind": kind, "commit": A})
     plan = json.loads(Path(prepared["directory"], "plan.json").read_text())
     assert plan["commit"] == B and (root / "app").read_text() == "old"
+    assert plan["handshake"] and plan["guarded"]
+    if kind == "frozen":
+        assert Path(prepared["directory"], "AVASUpdate.exe").read_text() == "new helper"
+    else:
+        assert all(Path(prepared["directory"], name).is_file()
+                   for name in ("update_worker.py", "update_guard.py", "update_status.py"))
     monkeypatch.setattr(worker, "command", lambda *a, **kw: None)  # no dependency installation in fixtures
     worker.execute(plan)
     assert (root / "app").read_text() == "new"
@@ -324,11 +331,24 @@ def test_result_is_reported_once_and_logs_are_kept(service, tmp_path):
     assert service.result() is None and path.exists()
 
 
+@pytest.mark.parametrize("exists", [True, False])
+def test_result_distinguishes_missing_log_from_saved_error_details(service, tmp_path, exists):
+    from avas.gui import app
+    log = tmp_path / "update.log"
+    if exists:
+        log.write_text("permission error")
+    path = tmp_path / "result.json"
+    path.write_text(json.dumps({"ok": False, "error": "permission error", "details": "saved traceback", "log": str(log)}))
+    app.app_settings().set("updates/result", str(path))
+    data = service.result()
+    assert data["logAvailable"] == exists and data["details"] == "saved traceback"
+
+
 def test_prepared_state_survives_page_reconnect(service, monkeypatch):
     monkeypatch.setattr(updates, "check", lambda: info())
     monkeypatch.setattr(updates, "stage", lambda *a: {"command": ["unused"]})
     service.prepare(A)
-    assert service.status() == {"phase": "ready", "commit": A}
+    assert service.status()["phase"] == "ready" and service.status()["commit"] == A
     service.cancel()
     assert service.status()["phase"] == "idle"
 
@@ -439,7 +459,7 @@ def test_github_source_zip_uses_exact_baseline_without_mutating_on_prepare(tmp_p
     monkeypatch.setattr(updates.sys, "prefix", str(root / ".venv"))
     monkeypatch.setattr(updates, "USER_DATA_DIR", str(tmp_path / "state"))
     monkeypatch.setattr(updates, "fetch_json", lambda url: release(A) if f"avas-{A}/" in url else pytest.fail(url))
-    monkeypatch.setattr(updates, "download", lambda item, dest: worker.shutil.copy2(
+    monkeypatch.setattr(updates, "download", lambda item, dest, **kwargs: worker.shutil.copy2(
         tmp_path / ("baseline.zip" if f"avas-{A}/" in item["url"] else "new.zip"), dest))
     current = updates.installation(root)
     assert current["commit"] == A and current["kind"] == "source"
@@ -476,3 +496,213 @@ def test_archive_or_bundle_ahead_of_release_is_not_downgraded(monkeypatch, kind)
     monkeypatch.setattr(updates, "installation", lambda: {"kind": kind, "commit": B})
     monkeypatch.setattr(updates, "fetch_json", lambda url: release(A) if url == updates.LATEST else {"status": "behind"})
     assert not updates.check()["available"]
+
+
+@pytest.mark.parametrize("length", [200000, None])
+def test_download_reports_bytes_speed_and_unknown_size(tmp_path, monkeypatch, length):
+    import hashlib
+    import io
+    payload = b"x" * 200000
+    response = io.BytesIO(payload)
+    response.headers = {} if length is None else {"Content-Length": str(length)}
+    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **kw: response)
+    events = []
+    updates.download({"url": "https://example.invalid/update", "sha256": hashlib.sha256(payload).hexdigest()},
+                     tmp_path / "update.zip", progress=events.append)
+    transfers = [e for e in events if e["stage"] == "download"]
+    assert transfers[0]["downloaded"] == 0 and transfers[-1]["downloaded"] == len(payload)
+    assert all(e["total"] == length for e in transfers)
+    assert transfers[-1]["speed"] > 0
+    assert events[-1]["stage"] == "verify"
+
+
+def test_truncated_download_is_not_complete(tmp_path, monkeypatch):
+    import io
+    response = io.BytesIO(b"short")
+    response.headers = {"Content-Length": "100"}
+    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **kw: response)
+    with pytest.raises(ValueError, match="incomplete"):
+        updates.download({"url": "https://example.invalid/update"}, tmp_path / "update.zip", require_checksum=False)
+
+
+def test_progress_rpc_returns_independent_snapshots(service, monkeypatch):
+    from avas.gui import bridge
+    events = []
+    monkeypatch.setattr(bridge, "emit", lambda name, data: events.append(data))
+    data = {"stage": "download", "message": "Downloading the update...", "downloaded": 1024, "total": 4096, "speed": 512}
+    service._report_progress(data)
+    data["downloaded"] = 9999
+    snapshot = service.status()
+    assert snapshot["progress"]["downloaded"] == 1024
+    snapshot["progress"]["downloaded"] = 8888
+    assert service.status()["progress"]["downloaded"] == events[0]["downloaded"] == 1024
+
+
+def test_failed_prepare_keeps_real_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(updates, "USER_DATA_DIR", str(tmp_path))
+    with pytest.raises(RuntimeError, match="update.log"):
+        updates.stage({}, {})
+    logs = list(tmp_path.glob("updates/update-*/update.log"))
+    assert len(logs) == 1
+    assert "Invalid official update metadata" in logs[0].read_text(encoding="utf-8")
+
+
+def test_failed_copy_never_truncates_destination(tmp_path, monkeypatch):
+    src, dst = tmp_path / "source", tmp_path / "destination"
+    src.write_text("new")
+    dst.write_text("old")
+
+    def fail(source, target):
+        Path(target).write_text("partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(worker.shutil, "copy2", fail)
+    with pytest.raises(OSError, match="disk full"):
+        worker.copy_replace(src, dst)
+    assert dst.read_text() == "old"
+    assert not list(tmp_path.glob(".avas-update-*"))
+
+
+@pytest.mark.skipif(worker.os.name != "nt", reason="Windows file sharing")
+@pytest.mark.parametrize("released", [True, False])
+def test_windows_occupied_executable(tmp_path, monkeypatch, released):
+    import ctypes
+    from ctypes import wintypes
+    import threading
+    old, new = tmp_path / "old", tmp_path / "new"
+    make_install(old, {"AVASGui.exe": "old", "a.txt": "old"})
+    make_install(new, {"AVASGui.exe": "new", "a.txt": "new"}, B)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                                  wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.CreateFileW(str(old / "AVASGui.exe"), 0x80000000, 1, None, 3, 0, None)
+    assert handle != wintypes.HANDLE(-1).value
+    if released:
+        timer = threading.Timer(0.3, lambda: kernel.CloseHandle(handle))
+        timer.start()
+        try:
+            worker.replace_files(old, new, tmp_path / "backup")
+        finally:
+            timer.join()
+        assert (old / "AVASGui.exe").read_text() == "new"
+    else:
+        monkeypatch.setattr(worker, "FILE_RETRY_SECONDS", 0)
+        try:
+            with pytest.raises(PermissionError, match="Close other AVAS"):
+                worker.replace_files(old, new, tmp_path / "backup")
+        finally:
+            kernel.CloseHandle(handle)
+        assert (old / "a.txt").read_text() == "old"
+        assert worker.read_manifest(old)["commit"] == A
+        assert not (tmp_path / "backup").exists()
+
+
+def test_log_fallback_and_invalid_plan_are_reported(tmp_path, monkeypatch):
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "update.log").mkdir()  # normal log path cannot be opened as a file
+    (work / "plan.json").write_text("invalid json")
+    monkeypatch.setattr(worker.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(worker.sys, "argv", ["updater", str(work / "plan.json")])
+    errors = []
+    monkeypatch.setattr(worker, "notify_failure", errors.append)
+    worker.main()
+    result = json.loads((work / "result.json").read_text(encoding="utf-8"))
+    assert not result["ok"] and "JSONDecodeError" in result["details"]
+    log = Path(result["log"])
+    assert log.parent == tmp_path and "Could not open" in log.read_text(encoding="utf-8")
+    assert errors and errors[0]["log"] == str(log)
+
+
+def test_logs_and_result_are_flushed_before_restart(tmp_path, monkeypatch):
+    plan = {"pid": 123, "commit": B, "root": str(tmp_path), "restart": ["fixture"], "backup": "backup", "handshake": True}
+    (tmp_path / "plan.json").write_text(json.dumps(plan))
+    monkeypatch.setattr(worker.sys, "argv", ["updater", str(tmp_path / "plan.json")])
+    monkeypatch.setattr(worker, "wait_for_exit", lambda *a: None)
+    monkeypatch.setattr(worker, "execute", lambda *a: (_ for _ in ()).throw(PermissionError("occupied executable")))
+    restarted = []
+
+    def restart(*a, **kw):
+        data = json.loads((tmp_path / "result.json").read_text(encoding="utf-8"))
+        assert "occupied executable" in Path(data["log"]).read_text(encoding="utf-8")
+        assert (tmp_path / "ready.json").is_file()
+        restarted.append(True)
+
+    monkeypatch.setattr(worker.subprocess, "Popen", restart)
+    monkeypatch.setattr(worker, "notify_failure", lambda *a: pytest.fail("GUI already reports the failure"))
+    worker.main()
+    assert restarted
+
+
+def test_no_restart_when_parent_has_not_exited(tmp_path, monkeypatch):
+    (tmp_path / "plan.json").write_text(json.dumps({"pid": 123, "root": str(tmp_path), "restart": ["unused"], "silent": True}))
+    monkeypatch.setattr(worker.sys, "argv", ["updater", str(tmp_path / "plan.json")])
+    monkeypatch.setattr(worker, "wait_for_exit", lambda *a: (_ for _ in ()).throw(TimeoutError("still running")))
+    monkeypatch.setattr(worker.subprocess, "Popen", lambda *a, **kw: pytest.fail("parent is still alive"))
+    worker.main()
+    assert "still running" in json.loads((tmp_path / "result.json").read_text())["error"]
+
+
+def test_helper_start_failure_keeps_gui_open_and_logs(service, tmp_path, monkeypatch):
+    from avas.gui import app, maintenance
+    from avas.gui.bridge import UserError
+    monkeypatch.setattr(service, "_prepared", {"directory": str(tmp_path), "command": ["missing-helper"]})
+    monkeypatch.setattr(maintenance, "updating", True)
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *a, **kw: (_ for _ in ()).throw(OSError("cannot launch")))
+    monkeypatch.setattr(app, "request_close", lambda *a: pytest.fail("must keep GUI open"))
+    with pytest.raises(UserError, match="launcher.log"):
+        service.install()
+    assert "cannot launch" in (tmp_path / "launcher.log").read_text(encoding="utf-8")
+    assert not maintenance.updating
+
+
+def test_helper_must_acknowledge_before_gui_closes(service, tmp_path, monkeypatch):
+    from avas.gui import app, maintenance
+    (tmp_path / "plan.json").write_text("{}")
+    app.app_settings().set("ui/language", "zh_CN")
+    monkeypatch.setattr(service, "_prepared", {"directory": str(tmp_path), "command": ["fixture"]})
+    monkeypatch.setattr(maintenance, "updating", True)
+    monkeypatch.setitem(app.state(), "update_exiting", False)
+    closed = []
+
+    class Process:
+        def poll(self):
+            assert not app.state().get("update_exiting")
+            (tmp_path / "ready.json").write_text("{}")
+            return None
+
+    class Timer:
+        def __init__(self, delay, callback):
+            assert (tmp_path / "ready.json").is_file()
+
+        def start(self):
+            closed.append(True)
+
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *a, **kw: Process())
+    monkeypatch.setattr(service.threading, "Timer", Timer)
+    assert service.install() and closed and app.state()["update_exiting"]
+    assert json.loads((tmp_path / "plan.json").read_text())["language"] == "zh_CN"
+
+
+def test_helper_start_timeout_stops_its_process_tree(service, tmp_path, monkeypatch):
+    from avas.gui import proctree, maintenance, app
+    from avas.gui.bridge import UserError
+    monkeypatch.setattr(service, "_prepared", {"directory": str(tmp_path), "command": ["fixture"]})
+    monkeypatch.setattr(maintenance, "updating", True)
+    ticks = iter([0, 31])
+    monkeypatch.setattr(service.time, "monotonic", lambda: next(ticks))
+    killed = []
+
+    class Process:
+        def poll(self):
+            return None
+
+    process = Process()
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *a, **kw: process)
+    monkeypatch.setattr(proctree, "kill", killed.append)
+    monkeypatch.setattr(app, "request_close", lambda *a: pytest.fail("must keep AVAS open"))
+    with pytest.raises(UserError, match="did not become ready"):
+        service.install()
+    assert killed == [process] and not maintenance.updating

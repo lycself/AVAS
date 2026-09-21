@@ -20,6 +20,9 @@ import sys
 import time
 
 from avas import __version__
+from avas.installation_lock import acquire
+
+acquire()  # console-script / python -m entry: guard before loading application dependencies
 
 from avas.post.plot.dataset_plots import DATASET_PLOTS, DST_PLOTS, LATTICE_PLOTS   # plot type registry (no matplotlib)
 

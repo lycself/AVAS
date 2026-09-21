@@ -59,7 +59,8 @@ hiddenimports = (
 )
 
 common = dict(pathex=[ROOT], binaries=binaries, datas=datas, hiddenimports=hiddenimports, hookspath=[],
-              hooksconfig={}, runtime_hooks=[], excludes=["avas.gpu", "PyQt5", "PySide6", "tkinter"],
+              hooksconfig={}, runtime_hooks=[os.path.join(ROOT, "packaging", "runtime_update_guard.py")],
+              excludes=["avas.gpu", "PyQt5", "PySide6", "tkinter"],
               noarchive=False)
 
 cli = Analysis([os.path.join(ROOT, "packaging", "avas_cli.py")], **common)

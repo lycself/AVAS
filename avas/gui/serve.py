@@ -17,6 +17,10 @@ import argparse
 import os
 import time
 
+from avas.installation_lock import acquire
+
+acquire()
+
 
 def add_arguments(ap):
     """The ``avas serve`` options (shared with the CLI's sub-parser)."""

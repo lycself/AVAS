@@ -4,58 +4,98 @@ The same file is built as AVASUpdate.exe for frozen installations. No applicatio
 the installed package and its dependencies may be replaced while this process is alive.
 """
 import hashlib
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import traceback
 import zipfile
 
 
+if __package__:
+    from .update_guard import InstallationLock, UpdateGate
+    from .update_status import StatusWindow
+else:  # copied outside the installation / frozen helper entry point
+    from update_guard import InstallationLock, UpdateGate
+    from update_status import StatusWindow
+
+
 MANIFEST = ".avas-install.json"
+FILE_RETRY_SECONDS = 15
 
 
-class InstallationLock:
-    """Shared lifetime leases for AVAS processes; exclusive lease for replacement."""
-    def __init__(self, path, exclusive=False):
-        self.path = Path(path)
-        self.exclusive = exclusive
-        self.file = None
+def open_update_log(path):
+    """Create a real log before doing work, with a writable temporary fallback."""
+    path = Path(path)
+    try:
+        return path.open("a", encoding="utf-8", buffering=1), path
+    except OSError as exc:
+        fd, fallback = tempfile.mkstemp(prefix="avas-update-", suffix=".log")
+        log = os.fdopen(fd, "a", encoding="utf-8", buffering=1)
+        print(f"Could not open {path}: {exc}", file=log, flush=True)
+        return log, Path(fallback)
 
-    def __enter__(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.file = self.path.open("a+b")
+
+def flush_log(log):
+    log.flush()
+    os.fsync(log.fileno())
+
+
+def retry_file(operation, path):
+    """Allow Windows image teardown / scanner handles time to be released."""
+    deadline = time.monotonic() + FILE_RETRY_SECONDS
+    while True:
         try:
-            if os.name == "nt":
-                import ctypes
-                import msvcrt
-                from ctypes import wintypes
+            return operation()
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in (5, 32, 33):
+                raise
+            if time.monotonic() >= deadline:
+                raise PermissionError(f"Cannot replace {path}. Close other AVAS windows and check file permissions "
+                                      f"or security software, then retry. Windows error: {exc}") from exc
+            time.sleep(0.25)
 
-                class OVERLAPPED(ctypes.Structure):
-                    _fields_ = [("Internal", ctypes.c_size_t), ("InternalHigh", ctypes.c_size_t),
-                                ("Offset", wintypes.DWORD), ("OffsetHigh", wintypes.DWORD), ("hEvent", wintypes.HANDLE)]
 
-                self.overlapped = OVERLAPPED()
-                kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-                kernel.LockFileEx.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
-                                             wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(OVERLAPPED)]
-                flags = 1 | (2 if self.exclusive else 0)  # fail immediately; exclusive or shared
-                if not kernel.LockFileEx(msvcrt.get_osfhandle(self.file.fileno()), flags, 0, 1, 0,
-                                         ctypes.byref(self.overlapped)):
-                    raise OSError("Close other AVAS processes using this installation before updating.")
-            else:
-                import fcntl
-                fcntl.flock(self.file, (fcntl.LOCK_EX if self.exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
-        except Exception:
-            self.file.close()
-            raise
-        return self
+def check_replaceable(path):
+    """Probe existing Windows files without truncating them or changing permissions."""
+    if os.name != "nt" or not path.exists():
+        return
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                                  wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
 
-    def __exit__(self, *args):
-        self.file.close()  # OS releases the lease, including on abnormal process termination
+    def probe():
+        # GENERIC_WRITE | DELETE, share read/write/delete, OPEN_EXISTING.
+        handle = kernel.CreateFileW(str(path), 0x40010000, 7, None, 3, 0, None)
+        if handle == wintypes.HANDLE(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        kernel.CloseHandle(handle)
+
+    retry_file(probe, path)
+
+
+def copy_replace(src, dst):
+    """Copy completely before replacing a destination; failed copies leave it intact."""
+    fd, name = tempfile.mkstemp(prefix=".avas-update-", dir=dst.parent)
+    os.close(fd)
+    temp = Path(name)
+    try:
+        retry_file(lambda: shutil.copy2(src, temp), temp)
+        retry_file(lambda: os.replace(temp, dst), dst)
+    finally:
+        if temp.exists():
+            temp.unlink()
+
+
 
 
 def digest(path):
@@ -149,7 +189,8 @@ def preflight(root, old, new):
             raise ValueError(f"Local file would be overwritten: {name}")
 
 
-def replace_files(root, staged, backup):
+def replace_files(root, staged, backup, progress=lambda stage, value=None: None):
+    progress("checking")
     root, staged, backup = Path(root), Path(staged), Path(backup)
     old = read_manifest(root)["files"]
     new = read_manifest(staged)["files"]
@@ -157,10 +198,15 @@ def replace_files(root, staged, backup):
         if digest(safe_path(staged, name)) != expected:
             raise ValueError(f"Staged update checksum failed: {name}")
     preflight(root, old, new)
-    names = sorted(old.keys() | new.keys() | {MANIFEST})
+    # Unchanged executables need no rewrite. Commit the version manifest last.
+    names = sorted(name for name in old.keys() | new.keys() if old.get(name) != new.get(name)) + [MANIFEST]
+    progress("checking")
+    for name in names:
+        check_replaceable(safe_path(root, name))
     backup.mkdir(parents=True, exist_ok=False)
     # Complete backups before the first mutation. A journal survives interruption.
-    for name in names:
+    for index, name in enumerate(names):
+        progress("backup", index / len(names))
         src = safe_path(root, name)
         if src.is_file():
             dst = safe_path(backup, name)
@@ -169,15 +215,17 @@ def replace_files(root, staged, backup):
     (backup.parent / "journal.json").write_text(json.dumps({"root": str(root), "files": names}), encoding="utf-8")
     changed = []
     try:
-        for name in names:
+        for index, name in enumerate(names):
+            progress("installing", index / len(names))
             dst = safe_path(root, name)
             changed.append(name)
             if name in new or name == MANIFEST:
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(safe_path(staged, name), dst)
+                copy_replace(safe_path(staged, name), dst)
             elif dst.exists():
-                dst.unlink()
+                retry_file(dst.unlink, dst)
     except Exception:
+        progress("restoring")
         restore(root, backup, changed)
         raise
 
@@ -191,9 +239,9 @@ def restore(root, backup, names):
                 if dst.is_file() and digest(src) == digest(dst):
                     continue  # a locked file that never changed needs no rewrite
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
+                copy_replace(src, dst)
             elif dst.is_file():
-                dst.unlink()
+                retry_file(dst.unlink, dst)
         except OSError as exc:
             errors.append(f"{name}: {exc}")
     if errors:
@@ -255,11 +303,13 @@ def wait_for_exit(pid, timeout=120):
         raise TimeoutError("AVAS did not exit; no files were changed")
 
 
-def execute(plan):
+def execute(plan, progress=lambda stage, value=None: None):
+    progress("checking")
     root = Path(plan["root"])
     backup = Path(plan["backup"])
     if plan["kind"] == "git":
         git_preflight(root, plan["before"], plan["commit"])
+        progress("installing")
         git(root, "merge", "--ff-only", plan["commit"])
     else:
         if plan.get("baseline") and not (root / MANIFEST).exists():
@@ -268,54 +318,125 @@ def execute(plan):
             shutil.copy2(plan["baseline"], root / MANIFEST)
         if plan.get("before") and read_manifest(root).get("commit") != plan["before"]:
             raise ValueError("The installed version changed; check for updates again.")
-        replace_files(root, plan["staged"], backup)
+        replace_files(root, plan["staged"], backup, progress)
     # Dependencies may have changed; the existing venv is intentionally preserved.
     if plan["kind"] != "frozen":
+        progress("dependencies")
         command([plan["python"], "-m", "pip", "install", "-e", "."], root)
         command([plan["python"], "-m", "pip", "check"], root)
-        command([plan["python"], "-c", "import avas.gui.app; import avas.gui.services"], root)
+        progress("checking_startup")
+        command([plan["python"], "-c", "import avas.gui.app; import avas.gui.services"], root,
+                env=dict(os.environ, AVAS_UPDATE_PROBE="1"))
     else:
         try:
+            progress("checking_startup")
             command([str(root / "AVAS.exe"), "info"], root, env=dict(os.environ, AVAS_UPDATE_PROBE="1"))
         except Exception:
+            progress("restoring")
             journal = json.loads((backup.parent / "journal.json").read_text(encoding="utf-8"))
             restore(root, backup, journal["files"])
             raise
 
 
-def main():
-    plan_path = Path(sys.argv[1]).resolve()
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+def save_result(path, outcome):
+    temp = path.with_suffix(".tmp")
+    with temp.open("w", encoding="utf-8") as stream:
+        json.dump(outcome, stream, ensure_ascii=False, indent=2)
+        flush_log(stream)
+    os.replace(temp, path)
+
+
+def notify_failure(outcome):
+    message = "AVAS update failed / 更新失败\n" + outcome["error"] + "\n" + outcome.get("log", "")
+    if os.name == "nt":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, message, "AVAS", 0x10)
+    elif sys.stderr is not None:
+        print(message, file=sys.stderr)
+
+
+def run_logged(plan_path, log, log_path):
+    with ExitStack() as session:
+        _run_logged(plan_path, log, log_path, session)
+
+
+def _run_logged(plan_path, log, log_path, session):
+    plan = {}
+    gate = None
+    status = None
+    parent_exited = False
     result = plan_path.with_name("result.json")
-    with plan_path.with_name("update.log").open("a", encoding="utf-8") as log, redirect_stdout(log), redirect_stderr(log):
+    try:
+        print(f"Reading update plan: {plan_path}", flush=True)
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        if plan.get("guarded"):
+            gate = session.enter_context(UpdateGate(plan["lock"]))
+        status = session.enter_context(StatusWindow(plan.get("language", "en"),
+            gate.paths["attention"] if gate else None, enabled=bool(gate) and not plan.get("silent")))
+        status.set("waiting")
+        if plan.get("handshake"):
+            flush_log(log)
+            save_result(plan_path.with_name("ready.json"), {"pid": os.getpid(), "log": str(log_path)})
+        print(f"Waiting for AVAS process {plan['pid']} to exit", flush=True)
+        wait_for_exit(plan["pid"])
+        parent_exited = True
+        print(f"Installing {plan['commit']} into {plan['root']}", flush=True)
+        if plan.get("lock"):
+            with InstallationLock(plan["lock"], exclusive=True):
+                execute(plan, status.set)
+        else:
+            execute(plan, status.set)
+        outcome = {"ok": True, "commit": plan["commit"], "log": str(log_path)}
+    except Exception as exc:
+        if status:
+            status.set("failed")
+        traceback.print_exc()
+        outcome = {"ok": False, "error": str(exc), "details": traceback.format_exc(),
+                   "log": str(log_path), "backup": plan.get("backup", "")}
+    flush_log(log)  # visible on disk before the restarted GUI reads the result
+    saved = False
+    try:
+        save_result(result, outcome)
+        saved = True
+    except OSError as exc:
+        outcome = {**outcome, "ok": False, "error": outcome.get("error", "") + f"\nCannot save {result}: {exc}"}
+        print(outcome["error"], flush=True)
+
+    restarted = False
+    if parent_exited and plan.get("restart") and plan.get("root"):
         try:
-            wait_for_exit(plan["pid"])
-            # Child command logs are directed to this file explicitly by command().
-            if plan.get("lock"):
-                with InstallationLock(plan["lock"], exclusive=True):
-                    execute(plan)
-            else:
-                execute(plan)
-            outcome = {"ok": True, "commit": plan["commit"]}
-        except Exception as exc:
-            import traceback
+            if status:
+                status.set("restarting")
+            process = subprocess.Popen(plan["restart"], cwd=plan["root"],
+                                       env=gate.restart_env() if gate else None,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            if gate:
+                gate.wait_restarted(process)
+            restarted = True
+        except OSError as exc:
             traceback.print_exc()
-            outcome = {"ok": False, "error": str(exc), "log": str(plan_path.with_name("update.log")),
-                       "backup": plan["backup"]}
-        result.write_text(json.dumps(outcome, ensure_ascii=False, indent=2), encoding="utf-8")
-        try:
-            subprocess.Popen(plan["restart"], cwd=plan["root"],
-                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        except OSError:
-            import traceback
-            traceback.print_exc()
-            outcome = {"ok": False, "error": "Could not restart AVAS. See the update log.",
-                       "log": str(plan_path.with_name("update.log")), "backup": plan["backup"]}
-            result.write_text(json.dumps(outcome, ensure_ascii=False, indent=2), encoding="utf-8")
-        if not outcome["ok"] and os.name == "nt" and not plan.get("silent"):
-            import ctypes
-            ctypes.windll.user32.MessageBoxW(None, "AVAS update failed / 更新失败\n" + outcome["error"]
-                                            + "\n" + outcome["log"], "AVAS", 0x10)
+            outcome = {**outcome, "ok": False, "error": outcome.get("error", "") + f"\nCould not restart AVAS: {exc}"}
+            try:
+                save_result(result, outcome)
+            except OSError:
+                traceback.print_exc()
+    flush_log(log)
+    # A restarted GUI reports persisted failures. Native fallback is for cases where
+    # that reporting channel is unavailable, avoiding two identical error dialogs.
+    if not outcome["ok"] and not (saved and restarted) and not plan.get("silent"):
+        notify_failure(outcome)
+
+
+def main():
+    try:
+        plan_path = Path(sys.argv[1]).resolve()
+        log, log_path = open_update_log(plan_path.with_name("update.log"))
+        with log, redirect_stdout(log), redirect_stderr(log):
+            run_logged(plan_path, log, log_path)
+    except Exception as exc:
+        # Even missing/invalid plans and failures creating either log get a direct
+        # diagnostic; never direct the user to a file we failed to create.
+        notify_failure({"ok": False, "error": f"{exc}\n{traceback.format_exc()}"})
 
 
 if __name__ == "__main__":

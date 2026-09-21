@@ -9,3 +9,6 @@
   border-top: 1px solid var(--border);
 }
 .update-notice > span { flex: 1; }
+.update-progress { flex: 1; min-width: 180px; }
+.update-progress-label { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; margin-bottom: 6px; }
+.update-transfer { display: flex; flex-wrap: wrap; gap: 6px 16px; font-variant-numeric: tabular-nums; }

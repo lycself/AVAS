@@ -108,6 +108,8 @@ def main(argv=None):
     dist = os.path.join(ROOT, "dist", "AVAS")
     # This executable must remain independent of the installed _internal directory.
     run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--name", "AVASUpdate",
+         "--exclude-module", "tkinter",  # Windows updater uses native controls; no Tcl runtime needed
+         "--paths", os.path.join(ROOT, "avas"),  # standalone sibling modules copied with source updates
          "--distpath", dist, "--workpath", os.path.join(ROOT, "build", "updater"),
          "--specpath", os.path.join(ROOT, "build", "updater"),
          os.path.join(ROOT, "avas", "update_worker.py")], cwd=ROOT)

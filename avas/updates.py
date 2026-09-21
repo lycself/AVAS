@@ -6,6 +6,8 @@ import re
 import shutil
 import sys
 import tempfile
+import time
+import traceback
 import urllib.request
 import urllib.error
 
@@ -81,28 +83,71 @@ def check():
     return {"current": current, "release": release, "available": available}
 
 
-def download(item, dest, require_checksum=True):
+def download(item, dest, require_checksum=True, progress=lambda data: None):
     req = urllib.request.Request(item["url"], headers={"User-Agent": "AVAS-Updater"})
     total = 0
+    started = last_report = time.monotonic()
     with urllib.request.urlopen(req, timeout=60) as response, open(dest, "wb") as stream:
-        while chunk := response.read(1024 * 1024):
+        try:
+            length = int(response.headers.get("Content-Length", 0)) or None
+        except (AttributeError, TypeError, ValueError):
+            length = None
+        if length is not None and length < 0:
+            length = None
+
+        def report():
+            progress({"message": "Downloading the update...", "stage": "download", "downloaded": total,
+                      "total": length, "speed": total / max(time.monotonic() - started, 0.001)})
+
+        report()
+        while chunk := response.read(64 * 1024):
             total += len(chunk)
             if total > 4 * 1024**3:
                 raise ValueError("Update download is too large")
             stream.write(chunk)
+            if time.monotonic() - last_report >= 0.25:
+                report()
+                last_report = time.monotonic()
+        report()
+    if length is not None and total != length:
+        raise ValueError("The update download is incomplete. Please try again.")
+    progress({"message": "Verifying the update checksum...", "stage": "verify"})
     if require_checksum and worker.digest(dest) != item["sha256"]:
         raise ValueError("Update download checksum failed")
 
 
-def stage(release, current, progress=lambda message: None):
+def stage(release, current, progress=lambda data: None):
+    cache = Path(USER_DATA_DIR) / "updates"
+    cache.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="update-", dir=cache))
+    log, log_path = worker.open_update_log(work / "update.log")
+    with log:
+        previous = None
+
+        def report(data):
+            nonlocal previous
+            if data["message"] != previous:
+                print(data["message"], file=log, flush=True)
+                previous = data["message"]
+            progress({**data, "log": str(log_path)})
+
+        try:
+            report({"message": "Preparing the confirmed update...", "stage": "prepare"})
+            result = _stage(release, current, work, report)
+            result["log"] = str(log_path)
+            return result
+        except Exception as exc:
+            traceback.print_exc(file=log)
+            worker.flush_log(log)
+            raise RuntimeError(f"{exc}\n{log_path}") from exc
+
+
+def _stage(release, current, work, progress):
     """Freeze the confirmed release. Never reread the latest pointer here."""
     validate_release(release)
     root = Path(current["root"])
     if not current["commit"]:
         raise ValueError("This installation has no update baseline. Download a new official package first.")
-    cache = Path(USER_DATA_DIR) / "updates"
-    cache.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="update-", dir=cache))
     kind = current["kind"]
     python = root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     if kind != "frozen":
@@ -113,18 +158,18 @@ def stage(release, current, progress=lambda message: None):
         if python_version() not in SpecifierSet(release["requires_python"]):
             raise ValueError("The update requires a different Python version; update Python manually first.")
     if kind == "git":
-        progress("Fetching the confirmed Git revision...")
+        progress({"message": "Fetching the confirmed Git revision...", "stage": "fetch"})
         if worker.git(root, "remote", "get-url", "origin").removesuffix(".git").rstrip("/") not in (
                 f"https://github.com/{REPOSITORY}", f"git@github.com:{REPOSITORY}"):
             raise ValueError("The Git origin is not the official AVAS repository.")
         worker.git(root, "fetch", "--no-tags", f"https://github.com/{REPOSITORY}.git", release["commit"])
         worker.git_preflight(root, current["commit"], release["commit"])
     else:
-        progress("Downloading and verifying the update...")
         asset = release["assets"]["windows" if kind == "frozen" else "source"]
         if kind == "frozen" and sys.platform != "win32":
             raise ValueError("Automatic packaged updates currently support Windows only.")
-        download(asset, work / "update.zip")
+        download(asset, work / "update.zip", progress=progress)
+        progress({"message": "Extracting and verifying update files...", "stage": "extract"})
         new = worker.unpack(work / "update.zip", work / "staged")
         if new["commit"] != release["commit"] or new["kind"] != kind:
             raise ValueError("The update package does not match the confirmed version")
@@ -139,31 +184,38 @@ def stage(release, current, progress=lambda message: None):
                 # Download ZIP may be from an intermediate commit whose publish job
                 # was superseded. Its exact official GitHub archive is still a baseline.
                 download({"url": f"https://github.com/{REPOSITORY}/archive/{current['commit']}.zip"},
-                         work / "baseline.zip", require_checksum=False)
+                         work / "baseline.zip", require_checksum=False, progress=progress)
+                progress({"message": "Checking the installed files...", "stage": "preflight"})
                 old = worker.unpack(work / "baseline.zip", work / "baseline", source_commit=current["commit"])
             else:
                 if baseline["commit"] != current["commit"]:
                     raise ValueError("Invalid baseline version")
-                download(baseline["assets"]["source"], work / "baseline.zip")
+                download(baseline["assets"]["source"], work / "baseline.zip", progress=progress)
+                progress({"message": "Checking the installed files...", "stage": "preflight"})
                 old = worker.unpack(work / "baseline.zip", work / "baseline")
             worker.preflight(root, old["files"], new["files"])
         else:
+            progress({"message": "Checking the installed files...", "stage": "preflight"})
             worker.preflight(root, worker.read_manifest(root)["files"], new["files"])
     if kind == "frozen":
-        shutil.copy2(root / "AVASUpdate.exe", work / "AVASUpdate.exe")
+        # Use the helper from the checksum-verified target package, so updater fixes
+        # are not postponed until the following update.
+        shutil.copy2(work / "staged" / "AVASUpdate.exe", work / "AVASUpdate.exe")
         helper = [str(work / "AVASUpdate.exe")]
         restart = [str(root / "AVASGui.exe")]
     else:
-        shutil.copy2(Path(PACKAGE_DIR) / "update_worker.py", work / "update_worker.py")
+        for name in ("update_worker.py", "update_guard.py", "update_status.py"):
+            shutil.copy2(Path(PACKAGE_DIR) / name, work / name)
         helper = [str(python), str(work / "update_worker.py")]
         restart = [str(python), "-m", "avas", "gui"]
     plan = {"root": str(root), "kind": kind, "before": current["commit"], "commit": release["commit"],
             "pid": os.getpid(), "python": str(python), "staged": str(work / "staged"),
-            "backup": str(work / "backup"), "restart": restart}
+            "backup": str(work / "backup"), "restart": restart, "handshake": True, "guarded": True}
     from avas.installation_lock import lock_path
     plan["lock"] = str(lock_path(root))
     if (work / "baseline" / worker.MANIFEST).exists():
         plan["baseline"] = str(work / "baseline" / worker.MANIFEST)
     plan_path = work / "plan.json"
     plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+    progress({"message": "The confirmed update is ready to install.", "stage": "ready"})
     return {"command": [*helper, str(plan_path)], "directory": str(work)}

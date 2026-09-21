@@ -12,6 +12,10 @@ import multiprocessing
 import os
 import sys
 
+from avas.installation_lock import acquire
+
+acquire()  # avas-gui entry: refuse a duplicate launch before importing the GUI runtime
+
 from avas.gui import bridge, server, settings as settings_mod, webview2
 
 log = logging.getLogger("avas.gui")
@@ -94,6 +98,8 @@ def set_zoom(factor):
 
 # --------------------------------------------------------------------------- window events
 def _on_shown():
+    from avas.installation_lock import acknowledge_restart
+    acknowledge_restart()
     set_title_bar_dark(resolve_theme(app_settings().get("ui/theme")) == "dark")
 
 
