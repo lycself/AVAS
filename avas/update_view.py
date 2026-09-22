@@ -259,6 +259,7 @@ def handoff_scene(model):
     commands.append(("text", (width-55*unit, header[1]+10*unit, width-15*unit, header[3]), colours["muted"], "—", 15*unit, "center"))
     nodes = layout["nodes"]
     labels = ["下载", "校验", "准备", "安装", "重启"] if model["zh"] else ["Download", "Verify", "Prepare", "Install", "Restart"]
+    centres = [(r[0]+r[2])/2 for r in nodes]
     cy = (nodes[0][1]+nodes[0][3])/2
     for previous, following in zip(nodes, nodes[1:]):
         if following[0] > previous[2]:
@@ -270,7 +271,16 @@ def handoff_scene(model):
             commands.append(("ellipse", (r[0]+1, r[1]+1, r[2]-1, r[3]-1), colours["bg"]))
         commands.append(("text", (r[0], r[1]+5*unit, r[2], r[3]), colours["onAccent"] if active else colours["accent"] if index < model["step"] else colours["muted"],
                          "✓" if index < model["step"] else str(index+1), 12*unit, "center"))
-        commands.append(("text", layout["labels"][index], colours["text"] if active else colours["muted"], labels[index], 12*unit, "center"))
+        # The captured browser span is only as wide as its text. At high DPI
+        # the native font can be one pixel wider, which made DrawText wrap a
+        # two-character Chinese label and clip its second line. Give the
+        # native renderer the whole stage column while retaining the captured
+        # vertical position.
+        captured = layout["labels"][index]
+        left = layout["body"][0] if index == 0 else (centres[index-1]+centres[index])/2
+        right = layout["body"][2] if index == len(nodes)-1 else (centres[index]+centres[index+1])/2
+        commands.append(("text", (left, captured[1], right, captured[3]),
+                         colours["text"] if active else colours["muted"], labels[index], 12*unit, "center"))
     message = model["message"]
     if model["value"] is not None:
         message += f"   {round(model['value']*100)}%"

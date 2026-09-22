@@ -104,6 +104,17 @@ def test_handoff_keeps_local_timestamp_line_positions_and_only_animates_track():
     assert not any(cmd[0] == "activity" for cmd in installing)
 
 
+def test_handoff_stage_labels_use_columns_instead_of_tight_text_bounds():
+    layout = panel_layout()
+    layout["labels"] = [[72+i*120, 289, 96+i*120, 306] for i in range(5)]
+    status = StatusWindow("zh_CN", enabled=False, presentation={"layout": layout})
+    commands = scene(status.model(), 680, 610)
+    labels = {cmd[3]: cmd for cmd in commands if cmd[0] == "text" and cmd[3] in ("下载", "校验", "准备", "安装", "重启")}
+    assert set(labels) == {"下载", "校验", "准备", "安装", "重启"}
+    assert all(cmd[1][2]-cmd[1][0] >= 120 for cmd in labels.values())
+    assert [(cmd[1][1], cmd[1][3]) for cmd in labels.values()] == [(289, 306)]*5
+
+
 def test_invalid_handoff_falls_back_without_executing_or_drawing_unbounded_content():
     for key, bad in [("width", math.inf), ("track", [1, 2, -1, 4]), ("grid", 0),
                      ("nodes", []), ("commands", [["html", [], "", "<script>"]])]:

@@ -1163,6 +1163,11 @@ def test_metadata_retry_policy(monkeypatch, caplog, failure):
                 updates.fetch_json(updates.LATEST)
             assert not sleeps and len(calls) == 1
     assert "release metadata" in caplog.text and "elapsed=" in caplog.text
+    starts = [record for record in caplog.records if record.message.startswith("Update request:")]
+    assert starts and all(record.hide_from_gui_log for record in starts)
+    completed = [record for record in caplog.records if record.message.startswith("Update request completed:")]
+    if completed:
+        assert completed[-1].hide_from_gui_log == (failure not in ("timeout", "read", "503"))
 
 
 def test_metadata_retry_exhaustion(monkeypatch):

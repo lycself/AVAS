@@ -70,7 +70,9 @@ def fetch_json(url):
     for attempt in range(METADATA_ATTEMPTS):
         started = time.monotonic()
         phase = "connect"
-        log.info("Update request: %s, attempt %d/%d, url=%s", stage, attempt + 1, METADATA_ATTEMPTS, url)
+        log.info("Update request: %s, attempt %d/%d, url=%s",
+                 stage, attempt + 1, METADATA_ATTEMPTS, url,
+                 extra={"hide_from_gui_log": True})
         try:
             with open_url(req, timeout=20) as response:
                 phase = "read"
@@ -95,7 +97,8 @@ def fetch_json(url):
             time.sleep(2 ** attempt)
         else:
             log.info("Update request completed: %s, attempt %d/%d, elapsed=%.2fs",
-                     stage, attempt + 1, METADATA_ATTEMPTS, time.monotonic() - started)
+                     stage, attempt + 1, METADATA_ATTEMPTS, time.monotonic() - started,
+                     extra={"hide_from_gui_log": attempt == 0})
             return result
 
 

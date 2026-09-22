@@ -12,6 +12,8 @@ _lock = threading.Lock()
 
 class PageHandler(logging.Handler):
     def emit(self, record):
+        if getattr(record, "hide_from_gui_log", False):
+            return
         try:
             msg = record.getMessage()
             if record.exc_info:
