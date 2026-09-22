@@ -2,11 +2,13 @@
 import json
 import http.client
 import hashlib
+import logging
 from contextvars import ContextVar
 import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import sys
 import tempfile
 import time
@@ -23,6 +25,7 @@ BASE = f"https://github.com/{REPOSITORY}/releases/download"
 LATEST = BASE + "/avas-latest/update.json"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DOWNLOAD_ATTEMPTS = 4
+METADATA_ATTEMPTS = 3
 _cancel_event = ContextVar("update_cancel_event", default=None)
 
 
@@ -62,11 +65,38 @@ def root_path():
 
 def fetch_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "AVAS-Updater", "Cache-Control": "no-cache"})
-    with open_url(req, timeout=20) as response:
-        raw = response.read(1024 * 1024 + 1)
-    if len(raw) > 1024 * 1024:
-        raise ValueError("Update metadata is too large")
-    return json.loads(raw)
+    log = logging.getLogger("avas.gui")
+    stage = "release metadata" if url == LATEST else "version comparison"
+    for attempt in range(METADATA_ATTEMPTS):
+        started = time.monotonic()
+        phase = "connect"
+        log.info("Update request: %s, attempt %d/%d, url=%s", stage, attempt + 1, METADATA_ATTEMPTS, url)
+        try:
+            with open_url(req, timeout=20) as response:
+                phase = "read"
+                raw = response.read(1024 * 1024 + 1)
+            phase = "parse"
+            if len(raw) > 1024 * 1024:
+                raise ValueError("Update metadata is too large")
+            result = json.loads(raw)
+        except Exception as exc:
+            reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+            transient = isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException))
+            if isinstance(exc, urllib.error.HTTPError):
+                transient = exc.code in (408, 429, 500, 502, 503, 504)
+            if isinstance(reason, ssl.SSLError) and not isinstance(reason, TimeoutError):
+                transient = False
+            retry = transient and attempt + 1 < METADATA_ATTEMPTS
+            log.log(logging.INFO if retry else logging.WARNING,
+                    "Update request failed: %s, phase=%s, attempt %d/%d, elapsed=%.2fs, retry=%s: %s",
+                    stage, phase, attempt + 1, METADATA_ATTEMPTS, time.monotonic() - started, retry, exc)
+            if not retry:
+                raise
+            time.sleep(2 ** attempt)
+        else:
+            log.info("Update request completed: %s, attempt %d/%d, elapsed=%.2fs",
+                     stage, attempt + 1, METADATA_ATTEMPTS, time.monotonic() - started)
+            return result
 
 
 def open_url(request, timeout):

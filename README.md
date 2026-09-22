@@ -230,7 +230,7 @@ AI / 开发者提交前主动维护 [变更记录](docs/changes/README.md)，CI 
 
 更新阶段的连接线仅显示在相邻圆圈之间，不穿过圆圈或数字。更新时间与“关于 AVAS”使用同一本地时间格式，并注明 UTC 偏移；无时区的旧记录明确标注时区未知。Windows 独立更新器接收主面板的实际位置、尺寸、文字换行与字距，保留版本和可见更新说明，切换时原位衔接。等待动效缓存静态页面，仅重画进度条，按 60 帧目标调度；实际流畅度取决于显示器与系统负载。
 
-更新检查与每次下载重试都会重新读取当前代理配置；软件启动后再开启或切换系统代理，可直接重新检查更新，无需重启。独立安装窗口继承当前主题和动效设置，Windows 文字按显示器 DPI 清晰绘制，图形边缘平滑处理。等待进度与主程序一致，以 1.2 秒周期从左向右循环，未知总量不显示百分比；关闭动效时保持静止，最小化时暂停绘制。源码 ZIP、Git 和打包版更新窗口统一使用 AVAS 图标。
+更新检测遇到临时网络错误最多尝试 3 次，间隔 1／2 秒；日志记录请求阶段、次数及耗时，联网等待不阻塞更新状态查询。更新检查与每次下载重试都会重新读取当前代理配置；软件启动后再开启或切换系统代理，可直接重新检查更新，无需重启。独立安装窗口继承当前主题和动效设置，Windows 文字按显示器 DPI 清晰绘制，图形边缘平滑处理。等待进度与主程序一致，以 1.2 秒周期从左向右循环，未知总量不显示百分比；关闭动效时保持静止，最小化时暂停绘制。源码 ZIP、Git 和打包版更新窗口统一使用 AVAS 图标。
 
 独立安装窗口延续更新面板的浅／深色配色、网格背景、版本信息及阶段图。Windows 交接时尽量沿用面板位置与大小，并适配界面缩放和显示器工作区；窗口可拖动、最小化。安装开始后不能取消，完成后自动重启。窗口首次绘制成功后主程序才退出。
 
@@ -418,7 +418,7 @@ Update downloads show a progress bar, percentage, downloaded/total size and aver
 
 Update stage connectors run only between adjacent circles, without crossing their numbers or checkmarks. Update timestamps use the same local-time format as About AVAS, including the UTC offset; legacy values without a timezone are labelled explicitly. On Windows, the independent updater receives the panel’s actual position, dimensions, line breaks and character spacing, preserving versions and visible release notes through the handoff. Waiting animations cache the static page and repaint only the progress strip, targeting 60 frames per second; actual smoothness depends on the display and system load.
 
-Update checks and each download retry read the current proxy configuration again, so enabling or changing the system proxy after launch only requires another update check. The independent installer inherits the active theme and motion settings. Windows text renders at native monitor DPI with smoothed geometry. Unknown progress matches the main application: a 1.2-second left-to-right loop without a percentage. Motion stays still when disabled and rendering pauses while minimized. Source ZIP, Git and packaged update windows use the AVAS icon.
+Update metadata requests retry transient network failures up to three attempts with 1/2-second delays. Logs include the request stage, attempt and elapsed time; network waits do not block update status queries. Update checks and each download retry read the current proxy configuration again, so enabling or changing the system proxy after launch only requires another update check. The independent installer inherits the active theme and motion settings. Windows text renders at native monitor DPI with smoothed geometry. Unknown progress matches the main application: a 1.2-second left-to-right loop without a percentage. Motion stays still when disabled and rendering pauses while minimized. Source ZIP, Git and packaged update windows use the AVAS icon.
 
 The independent installation window continues the update panel’s light/dark palette, grid background, version details and stage indicators. On Windows it carries over the panel position and size where possible, accounting for UI scaling and the monitor work area. It can be moved or minimized. Installation cannot be cancelled and AVAS restarts automatically. The main application exits only after the independent window has painted successfully.
 

@@ -14,6 +14,7 @@ from avas.gui import app, bridge, maintenance
 from avas.gui.bridge import UserError, rpc
 
 _lock = threading.RLock()
+_check_lock = threading.Lock()
 _cached = None
 _checked = 0
 _prepared = None
@@ -55,15 +56,21 @@ def result():
 @rpc("updates.check")
 def check(force=False):
     global _cached, _checked
-    with _lock:
-        if force or _cached is None or time.monotonic() - _checked > 6 * 3600:
+    # Serialize discovery separately: status/progress/cancellation must not wait for networking.
+    with _check_lock:
+        with _lock:
+            refresh = force or _cached is None or time.monotonic() - _checked > 6 * 3600
+        if refresh:
             try:
-                _cached = updates.check()
-                _checked = time.monotonic()
+                fresh = updates.check()
             except Exception as exc:
                 logging.getLogger("avas.gui").warning("Update check failed: %s", exc)
                 raise UserError("Could not check for updates. Check your connection to GitHub and try again.") from exc
-        result = copy.deepcopy(_cached)
+            with _lock:
+                _cached = fresh
+                _checked = time.monotonic()
+        with _lock:
+            result = copy.deepcopy(_cached)
         result["canInstall"] = app.state().get("window") is not None
         result["ignored"] = app.app_settings().get("updates/ignored") == result["release"]["commit"]
         return result

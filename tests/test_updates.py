@@ -17,6 +17,7 @@ A, B, C = "a" * 40, "b" * 40, "c" * 40
 def test_update_request_refreshes_proxy_after_failure_and_after_disabling(monkeypatch):
     import io
     import urllib.error
+    monkeypatch.setattr(updates, "METADATA_ATTEMPTS", 1)
     proxies = {}
     seen = []
     monkeypatch.setattr(updates.urllib.request, "getproxies", lambda: dict(proxies))
@@ -1127,3 +1128,105 @@ def test_helper_start_timeout_stops_its_process_tree(service, tmp_path, monkeypa
     with pytest.raises(UserError, match="did not become ready"):
         service.install()
     assert killed == [process] and not maintenance.updating
+
+
+@pytest.mark.parametrize("failure", ["timeout", "read", "503", "404", "certificate", "json"])
+def test_metadata_retry_policy(monkeypatch, caplog, failure):
+    import io
+    import logging
+    import ssl
+    import urllib.error
+    import http.client
+    errors = {
+        "timeout": urllib.error.URLError(TimeoutError("handshake timed out")),
+        "read": http.client.IncompleteRead(b"partial"),
+        "503": urllib.error.HTTPError(updates.LATEST, 503, "unavailable", {}, None),
+        "404": urllib.error.HTTPError(updates.LATEST, 404, "missing", {}, None),
+        "certificate": urllib.error.URLError(ssl.SSLCertVerificationError("invalid certificate")),
+        "json": ValueError("invalid JSON"),
+    }
+    calls, sleeps = [], []
+    def respond(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise errors[failure]
+        return io.BytesIO(b'{"ok": true}')
+    monkeypatch.setattr(updates, "open_url", respond)
+    monkeypatch.setattr(updates.time, "sleep", sleeps.append)
+    with caplog.at_level(logging.INFO, logger="avas.gui"):
+        if failure in ("timeout", "read", "503"):
+            assert updates.fetch_json(updates.LATEST) == {"ok": True}
+            assert sleeps == [1] and len(calls) == 2
+            assert "completed" in caplog.text
+        else:
+            with pytest.raises(type(errors[failure])):
+                updates.fetch_json(updates.LATEST)
+            assert not sleeps and len(calls) == 1
+    assert "release metadata" in caplog.text and "elapsed=" in caplog.text
+
+
+def test_metadata_retry_exhaustion(monkeypatch):
+    calls, sleeps = [], []
+    def fail(*args, **kwargs):
+        calls.append(1)
+        raise TimeoutError("handshake timed out")
+    monkeypatch.setattr(updates, "open_url", fail)
+    monkeypatch.setattr(updates.time, "sleep", sleeps.append)
+    with pytest.raises(TimeoutError):
+        updates.fetch_json(updates.LATEST)
+    assert len(calls) == 3 and sleeps == [1, 2]
+
+
+def test_check_does_not_block_status_and_serializes_requests(service, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from avas.gui.services import updates as api
+    entered, release_request = threading.Event(), threading.Event()
+    calls = []
+    def discover():
+        calls.append(1)
+        entered.set()
+        assert release_request.wait(5)
+        return {"release": release(), "available": False}
+    monkeypatch.setattr(updates, "check", discover)
+    monkeypatch.setattr(api, "_cached", None)
+    monkeypatch.setattr(api, "_checked", 0)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        first = pool.submit(api.check)
+        try:
+            assert entered.wait(2)
+            second = pool.submit(api.check)
+            assert pool.submit(api.status).result(timeout=2)["phase"] == "idle"
+        finally:
+            release_request.set()
+        assert first.result(timeout=2) == second.result(timeout=2)
+    assert len(calls) == 1
+
+
+def test_metadata_read_failure_reopens_and_logs_phase(monkeypatch, caplog):
+    import io
+    import logging
+    import http.client
+    class BrokenResponse(io.BytesIO):
+        def read(self, *args):
+            raise http.client.IncompleteRead(b"partial")
+    broken = BrokenResponse()
+    responses = iter([broken, io.BytesIO(b'{"ok": true}')])
+    monkeypatch.setattr(updates, "open_url", lambda *a, **kw: next(responses))
+    monkeypatch.setattr(updates.time, "sleep", lambda _: None)
+    with caplog.at_level(logging.INFO, logger="avas.gui"):
+        assert updates.fetch_json("https://api.github.com/repos/lycself/AVAS/compare/a...b") == {"ok": True}
+    assert broken.closed
+    assert "phase=read" in caplog.text and "version comparison" in caplog.text
+
+
+def test_invalid_json_is_not_retried(monkeypatch):
+    import io
+    calls = []
+    def respond(*args, **kwargs):
+        calls.append(1)
+        return io.BytesIO(b"not json")
+    monkeypatch.setattr(updates, "open_url", respond)
+    with pytest.raises(json.JSONDecodeError):
+        updates.fetch_json(updates.LATEST)
+    assert len(calls) == 1
