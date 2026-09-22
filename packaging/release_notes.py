@@ -14,8 +14,16 @@ def collect(root, base=None, head="HEAD"):
     if base:
         git(root, "merge-base", "--is-ancestor", base, head)
         changed = git(root, "diff", "--name-only", base, head, "--", folder).splitlines()
-        if any(p in previous and p.endswith(".md") and not p.endswith("/README.md") for p in changed):
-            raise ValueError("Keep existing change records immutable; add a new fragment instead")
+        for name in changed:
+            if name not in previous or not name.endswith(".md") or name.endswith("/README.md"):
+                continue
+            # Repair an accidentally edited record without making subsequent
+            # CI runs permanently unfixable. Only its original Git blob qualifies.
+            additions = git(root, "log", "--format=%H", "--diff-filter=A", base, "--", name).splitlines()
+            if (name in current and additions
+                    and git(root, "rev-parse", f"{head}:{name}") == git(root, "rev-parse", f"{additions[-1]}:{name}")):
+                continue
+            raise ValueError(f"Keep existing change records immutable; add a new fragment instead: {name}")
     entries = []
     for name in sorted(set(current) - previous):
         if not name.endswith(".md") or name.endswith("/README.md"):

@@ -50,3 +50,27 @@ def test_readme_is_not_a_release_entry(repo):
     commit(repo, "README.md", "Author instructions")
     with pytest.raises(ValueError, match="Add a reviewed"):
         notes.collect(repo)
+
+
+def test_restore_original_record_and_move_addition_to_new_fragment(repo):
+    original = commit(repo, "old.md", "• Original\n")
+    damaged = commit(repo, "old.md", "• Original\n• Added later\n")
+    commit(repo, "old.md", "• Original\n")
+    with pytest.raises(ValueError, match="Add a reviewed"):
+        notes.collect(repo, damaged)
+    commit(repo, "repair.md", "• Added later")
+    assert notes.collect(repo, damaged) == "• Added later"
+    assert notes.collect(repo, original) == "• Added later"
+
+
+def test_repair_requires_exact_original_blob_and_rejects_deletion(repo):
+    commit(repo, "old.md", "• Original\n")
+    damaged = commit(repo, "old.md", "• Edited\n")
+    commit(repo, "repair.md", "• Repair description")
+    commit(repo, "old.md", "• Original\n\n")
+    with pytest.raises(ValueError, match="immutable.*old.md"):
+        notes.collect(repo, damaged)
+    notes.git(repo, "rm", "docs/changes/old.md")
+    notes.git(repo, "commit", "-m", "delete fixture")
+    with pytest.raises(ValueError, match="immutable.*old.md"):
+        notes.collect(repo, damaged)
