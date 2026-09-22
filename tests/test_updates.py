@@ -515,6 +515,50 @@ def test_publisher_uploads_pointer_only_after_fixed_release_is_ready(tmp_path, m
     assert short_create[short_create.index("--target") + 1] == A
 
 
+def test_setup_pointer_uses_immutable_installer_and_complete_history(tmp_path, monkeypatch):
+    import configparser
+    publisher = load_publisher()
+    data = release(A)
+    data["installer"] = {"name": "AVAS-2.0.0-setup.exe", "sha256": "a" * 64}
+    monkeypatch.setattr(publisher.worker, "git", lambda root, *args: "false" if args[0] == "rev-parse" else "123")
+    path = tmp_path / "setup-latest.ini"
+    publisher.write_setup_pointer(data, path)
+    parser = configparser.ConfigParser()
+    parser.read(path, encoding="ascii")
+    assert dict(parser["Setup"]) == {"schema": "1", "commit": A, "revision": "123",
+                                     "name": "AVAS-2.0.0-setup.exe", "sha256": "a" * 64}
+    monkeypatch.setattr(publisher.worker, "git", lambda *args: "true")
+    with pytest.raises(ValueError, match="complete Git history"):
+        publisher.write_setup_pointer(data, path)
+
+
+@pytest.mark.parametrize("field,value", [("name", "../bad.exe"), ("name", "evil.exe\nSchema=1"),
+                                       ("sha256", ""), ("sha256", "z" * 64)])
+def test_setup_pointer_rejects_unsafe_installer(tmp_path, field, value):
+    publisher = load_publisher()
+    data = release(A)
+    data["installer"] = {"name": "AVAS-2.0.0-setup.exe", "sha256": "a" * 64, field: value}
+    with pytest.raises(ValueError, match="Invalid installer metadata"):
+        publisher.write_setup_pointer(data, tmp_path / "pointer.ini")
+
+
+def test_setup_pointer_published_after_both_fixed_releases(tmp_path, monkeypatch):
+    publisher = load_publisher()
+    data = release(A)
+    data["installer"] = {"name": "AVAS-2.0.0-setup.exe", "sha256": "a" * 64}
+    (tmp_path / "update.json").write_text(json.dumps(data))
+    monkeypatch.setattr(publisher, "release_info", lambda tag: None)
+    monkeypatch.setattr(publisher.worker, "git", lambda root, *args:
+                        "false" if args[0] == "rev-parse" else "123" if args[0] == "rev-list" else "")
+    calls = []
+    monkeypatch.setattr(publisher, "gh", lambda *args, **kwargs: calls.append(args))
+    publisher.publish(tmp_path)
+    assert calls[-2][:3] == ("release", "upload", "avas-latest")
+    assert calls[-2][3] == str(tmp_path / "setup-latest.ini")
+    ready = next(i for i, args in enumerate(calls) if args[:3] == ("release", "edit", f"avas-{A[:7]}"))
+    assert ready < len(calls) - 2
+
+
 @pytest.mark.parametrize("draft", [True, False])
 def test_short_release_collision_never_overwrites_assets(monkeypatch, draft):
     publisher = load_publisher()

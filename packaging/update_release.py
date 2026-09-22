@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import re
 import shutil
 from pathlib import Path
 import subprocess
@@ -195,7 +196,28 @@ def publish(output):
            "--notes", "供 AVAS 自动更新使用，普通用户无需下载。请到正式版本下载 Windows 安装包。 / Update metadata for AVAS. Download applications from a versioned release: https://github.com/lycself/AVAS/releases", "--prerelease", "--latest=false")
     gh("release", "edit", "avas-latest", "--notes",
        f"供程序自动更新使用，无需手动下载。 / For automatic updates only.\n\n下载程序 / Download: https://github.com/{REPOSITORY}/releases/tag/{public_tag}")
+    # Derive from the immutable release metadata, including publisher retries.
+    if data.get("installer"):
+        write_setup_pointer(data, output / "setup-latest.ini")
+        gh("release", "upload", "avas-latest", str(output / "setup-latest.ini"), "--clobber")
     gh("release", "upload", "avas-latest", str(output / "update.json"), "--clobber")
+
+
+def write_setup_pointer(data, path):
+    """Stable ASCII protocol for old Inno installers; fixed assets are ready first."""
+    commit = data["commit"]
+    item = data["installer"]
+    if (not re.fullmatch(r"[0-9a-f]{40}", commit)
+            or not re.fullmatch(r"AVAS-[0-9A-Za-z.+_-]+-setup\.exe", item["name"])
+            or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"])):
+        raise ValueError("Invalid installer metadata")
+    if worker.git(ROOT, "rev-parse", "--is-shallow-repository") != "false":
+        raise ValueError("Installer publishing requires complete Git history")
+    revision = int(worker.git(ROOT, "rev-list", "--count", commit))
+    if revision <= 0:
+        raise ValueError("Invalid installer revision")
+    path.write_text(f"[Setup]\nSchema=1\nCommit={commit}\nRevision={revision}\n"
+                    f"Name={item['name']}\nSHA256={item['sha256']}\n", encoding="ascii")
 
 
 def main():

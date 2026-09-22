@@ -129,7 +129,15 @@ def main(argv=None):
         print("Inno Setup (ISCC.exe) not found: the installer was not built. Install Inno Setup 6 "
               "(https://jrsoftware.org/isinfo.php, or 'winget install JRSoftware.InnoSetup') and run again.")
         return 0
-    run([iscc, f"/DAppVersion={__version__}", f"/DSourceDir={dist}", f"/DOutputDir={os.path.join(ROOT, 'dist', 'installer')}",
+    # A shallow checkout cannot supply a comparable installer revision.
+    revision = "0"
+    try:
+        if subprocess.check_output(["git", "rev-parse", "--is-shallow-repository"], cwd=ROOT, text=True).strip() == "false":
+            revision = subprocess.check_output(["git", "rev-list", "--count", commit], cwd=ROOT, text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    run([iscc, f"/DAppVersion={__version__}", f"/DAppCommit={commit}", f"/DAppRevision={revision}",
+         f"/DSourceDir={dist}", f"/DOutputDir={os.path.join(ROOT, 'dist', 'installer')}",
          os.path.join(ROOT, "packaging", "avas.iss")])
     if not Path(ROOT, "dist", "installer", f"AVAS-{__version__}-setup.exe").is_file():
         raise RuntimeError("Inno Setup did not produce the expected installer")

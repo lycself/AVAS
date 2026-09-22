@@ -210,6 +210,8 @@ avas serve --open
 
 ### 软件更新
 
+Windows 安装包在欢迎页点击“下一步”时检查最新版；发现新版可下载、校验后直接交给新版安装器，保留所选语言和安装范围。检查、下载或启动失败会显示具体原因，可重试、选择“忽略”安装内置版本，或退出；断网不会阻止用户选择内置安装。取消新版下载同样返回选择，不会自动安装旧版。`/NOCHECKUPDATE` 或静默安装跳过检查，固定安装包内版本。只有包含此功能的新 setup 才支持安装前检查；发布服务可用且协议兼容时，同一个文件可持续获取最新版。内置 AVAS 可离线安装，缺少 WebView2 时仍需联网安装该运行时。
+
 更新检查仅获取版本关系摘要，避免大体积文件差异导致检查失败。旧版若提示 `Update metadata is too large`，请关闭 AVAS，从官方发布页手动安装新版一次；便携版请将新版完整解压到新目录。
 
 Windows 安装包支持英文和简体中文；首次启动且尚无语言偏好时，软件跟随安装器所选语言，升级或重装保留已保存的语言设置。简体中文安装翻译随源码提供，构建时无需另外下载语言包。双击 `AVAS.exe`（不带参数）也会打开界面；带参数时仍执行命令行功能，例如 `AVAS.exe run --help`。`AVASGui.exe` 是无控制台的界面入口。
@@ -397,6 +399,8 @@ avas serve --open
 `avas serve` runs the back end without a window and prints a URL (with a random access token) to open in any modern browser; `--open` opens it, `--port` / `--host` choose the address (the default binds to this machine only; `--host 0.0.0.0` exposes it to the network, where the token is the only protection because there is no user management yet). In a browser the native file dialogs are replaced by the page's own folder / file chooser, "open folder" shows the folder with download buttons, "open file" and plot export download the file, and links open in a new tab; the Exit entry is absent (close the tab). Everything else, including the live run display and the assistant, is identical.
 
 ### Software updates
+
+Windows Setup checks for the latest installer when you click Next on the welcome page. A newer installer can be downloaded, checksum-verified and launched with the selected language and installation scope. Check, download or launch failures display the actual error and offer Retry, Ignore (install the bundled version), or Abort. Cancelling the download also returns to this choice. `/NOCHECKUPDATE` and silent installation skip discovery and install the bundled version. Only newly built installers containing this feature support these checks; a shared installer can keep obtaining current releases while the publishing service and protocol remain available. The bundled AVAS installs offline, although a missing WebView2 runtime still requires a network download.
 
 The Windows installer supports English and Simplified Chinese. On first launch without a saved language preference, AVAS adopts the installer language; upgrades and reinstalls preserve the saved preference. Running `AVAS.exe` without arguments opens the GUI; arguments still invoke the CLI, for example `AVAS.exe run --help`. `AVASGui.exe` opens the GUI without a console. The Chinese installer translation ships with the source, so builds need no separate language-pack download.
 

@@ -10,6 +10,12 @@
 #ifndef AppVersion
   #define AppVersion "2.0.0"
 #endif
+#ifndef AppCommit
+  #define AppCommit ""
+#endif
+#ifndef AppRevision
+  #define AppRevision "0"
+#endif
 #ifndef SourceDir
   #define SourceDir "..\dist\AVAS"
 #endif
@@ -27,6 +33,7 @@ AppComments=Advanced Virtual Accelerator Software
 DefaultDirName={autopf}\AVAS
 DefaultGroupName=AVAS
 DisableProgramGroupPage=yes
+DisableWelcomePage=no
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#OutputDir}
@@ -54,6 +61,20 @@ en.RunAvas=Start AVAS
 zh.RunAvas=启动 AVAS
 en.WebView2=Installing Microsoft Edge WebView2 runtime...
 zh.WebView2=正在安装 Microsoft Edge WebView2 运行时……
+en.CheckSetup=Checking for the latest AVAS installer...
+zh.CheckSetup=正在检查最新版 AVAS 安装包……
+en.SetupDownload=Downloading the verified installer
+zh.SetupDownload=下载并校验安装包
+en.SetupAvailable=A newer installer is available: %1.%nIncluded version: %2.%n%nDownload and install it now? Choose No to install the included version.
+zh.SetupAvailable=发现新版安装包：%1。%n内置版本：%2。%n%n是否下载并安装新版？选择“否”安装内置版本。
+en.SetupFailed=Could not check, download, or start the latest installer.%n%n%1%n%nRetry: try again. Ignore: install the included version (it may be outdated). Abort: exit setup.
+zh.SetupFailed=检查、下载或启动最新版安装包失败。%n%n%1%n%n重试：重新尝试。忽略：安装内置版本（可能不是最新版）。中止：退出安装。
+en.SetupInvalid=The official installer metadata is invalid or incompatible.
+zh.SetupInvalid=官方安装包信息无效或不兼容。
+en.SetupUnknown=This installer has no comparable build revision. The latest version could not be determined.
+zh.SetupUnknown=此安装包缺少可比较的构建标识，无法判断是否为最新版。
+en.SetupChildFailed=The downloaded installer exited with code %1. The included version has not been installed.
+zh.SetupChildFailed=下载的安装器已退出，退出码为 %1。尚未安装内置版本。
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:DesktopIcon}"
@@ -80,6 +101,7 @@ Filename: "{app}\_internal\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent
 Filename: "{app}\AVASGui.exe"; Description: "{cm:RunAvas}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+#include "setup_update.iss"
 function InitialLanguage(Param: String): String;
 begin
   if ActiveLanguage = 'zh' then

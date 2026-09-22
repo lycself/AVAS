@@ -161,6 +161,10 @@ parameter descriptions in the manual come from the English/Chinese pairs in `ava
 
 ### Automatic update publishing
 
+安装器更新入口 `avas-latest/setup-latest.ini` 使用稳定的 ASCII schema 1（Schema、Commit、Revision、Name、SHA256）。Revision 为完整历史 `git rev-list --count`，构建传入同一计数与完整提交；官方 CI 必须完整检出。发布从固定版本元数据生成入口，在完整／短标签附件就绪后上传，随后更新应用内 `update.json`。两个入口短暂不同步只会选择各自完整发布的版本。无需更改旧安装器即可继续读取该协议。`/NOCHECKUPDATE` 和静默安装固定使用内置内容。
+
+`.venv\Scripts\python.exe packaging/test_setup_installer.py --iscc <ISCC.exe>` 编译原始中英文安装脚本，并在临时安装器中以脚本化下载、对话框和子进程执行边界验证 Pascal 流程；不安装 AVAS、不访问发布服务。发布 CI 在正式打包前运行它。交接时若指定 `/LOG=文件`，子安装器写入 `文件.latest.log`，避免占用父安装器日志。
+
 AI / 开发者在每次提交前新增 `docs/changes/*.md`，内容要求和汇总规则见 [变更记录](docs/changes/README.md)。不要修改已提交的条目，不手动维护生成的 `docs/update-notes.md`。CI 检查新增非空条目；发布从上次成功发布提交汇总，因此失败构建的说明不会丢失。
 
 Before committing, add a reviewed change fragment under `docs/changes/`. Keep committed fragments immutable. CI checks for new nonempty entries; publishing collects all entries since the last successful release without an AI service or a generated Git commit.
