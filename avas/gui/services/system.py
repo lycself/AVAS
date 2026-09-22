@@ -1,5 +1,7 @@
 """Application-level calls: info, preferences, native dialogs, shell integration."""
 import os
+import platform
+import struct
 import subprocess
 import sys
 
@@ -7,6 +9,23 @@ import avas
 from avas.gui import app as gui_app
 from avas.gui import bridge, logbridge, webview2
 from avas.gui.bridge import UserError, rpc
+
+
+def runtime_platform_label():
+    """Human-readable OS and process architecture; ``sys.platform`` says win32 even for 64-bit Python."""
+    if sys.platform == "win32":
+        system = "Windows"
+    elif sys.platform == "darwin":
+        system = "macOS"
+    else:
+        system = platform.system() or sys.platform
+    bits = struct.calcsize("P") * 8
+    machine = platform.machine().lower()
+    if bits == 64:
+        architecture = "ARM64" if machine in ("arm64", "aarch64") else "x64"
+    else:
+        architecture = "x86" if bits == 32 else f"{bits}-bit"
+    return f"{system} {architecture}"
 
 
 @rpc("app.info")
@@ -17,7 +36,7 @@ def info():
         "version": avas.__version__,
         "build": build_info(),
         "python": sys.version.split()[0],
-        "platform": sys.platform,
+        "platform": runtime_platform_label(),
         "baseUrl": gui_app.state()["base_url"],
         "host": "webview" if gui_app.state()["window"] is not None else "browser",
         "settings": s.all(),

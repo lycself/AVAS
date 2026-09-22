@@ -110,4 +110,18 @@ def test_app_info_exposes_revision(installation, monkeypatch):
     monkeypatch.setattr(system.gui_app, "state", lambda: {"base_url": "", "window": None})
     monkeypatch.setattr(system.gui_app, "system_prefers_dark", lambda: False)
     monkeypatch.setattr(system.webview2, "installed_version", lambda: None)
-    assert system.info()["build"]["commit"] == SHA
+    result = system.info()
+    assert result["build"]["commit"] == SHA
+    assert result["platform"] == system.runtime_platform_label()
+
+
+def test_app_info_uses_clear_windows_process_architecture(monkeypatch):
+    from avas.gui.services import system
+    monkeypatch.setattr(system.sys, "platform", "win32")
+    monkeypatch.setattr(system.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(system.struct, "calcsize", lambda _format: 8)
+    assert system.runtime_platform_label() == "Windows x64"
+    monkeypatch.setattr(system.platform, "machine", lambda: "ARM64")
+    assert system.runtime_platform_label() == "Windows ARM64"
+    monkeypatch.setattr(system.struct, "calcsize", lambda _format: 4)
+    assert system.runtime_platform_label() == "Windows x86"
