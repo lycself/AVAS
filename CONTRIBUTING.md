@@ -11,7 +11,7 @@ For developers changing code, debugging the interface or packaging a release. Th
 
 ### 环境
 
-先按 [README「安装」](README.md#安装在项目目录下手动创建-venv)建好 `.venv`，开发再装一组额外依赖：
+先按 [README「源码安装」](README.md#源码安装)建好 `.venv`，开发再装一组额外依赖：
 
 ```bash
 pip install -e .[dev]
@@ -81,7 +81,7 @@ pytest
 
 ### Environment
 
-Build `.venv` as in [README's Install section](README.md#install-create-venv-in-the-project-directory) first, then add the development extras:
+Build `.venv` as in [README's Source installation section](README.md#source-installation) first, then add the development extras:
 
 ```bash
 pip install -e .[dev]
