@@ -104,7 +104,7 @@ def test_handoff_keeps_local_timestamp_line_positions_and_only_animates_track():
     assert not any(cmd[0] == "activity" for cmd in installing)
 
 
-def test_handoff_stage_labels_use_columns_instead_of_tight_text_bounds():
+def test_handoff_stage_labels_use_node_centred_columns_instead_of_tight_text_bounds():
     layout = panel_layout()
     layout["labels"] = [[72+i*120, 289, 96+i*120, 306] for i in range(5)]
     status = StatusWindow("zh_CN", enabled=False, presentation={"layout": layout})
@@ -113,6 +113,10 @@ def test_handoff_stage_labels_use_columns_instead_of_tight_text_bounds():
     assert set(labels) == {"下载", "校验", "准备", "安装", "重启"}
     assert all(cmd[1][2]-cmd[1][0] >= 120 for cmd in labels.values())
     assert [(cmd[1][1], cmd[1][3]) for cmd in labels.values()] == [(289, 306)]*5
+    nodes = layout["nodes"]
+    for index, label in enumerate(("下载", "校验", "准备", "安装", "重启")):
+        label_rect, node_rect = labels[label][1], nodes[index]
+        assert (label_rect[0]+label_rect[2])/2 == (node_rect[0]+node_rect[2])/2
 
 
 def test_invalid_handoff_falls_back_without_executing_or_drawing_unbounded_content():

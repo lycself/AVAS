@@ -260,6 +260,9 @@ def handoff_scene(model):
     nodes = layout["nodes"]
     labels = ["下载", "校验", "准备", "安装", "重启"] if model["zh"] else ["Download", "Verify", "Prepare", "Install", "Restart"]
     centres = [(r[0]+r[2])/2 for r in nodes]
+    label_edges = [centres[0]-(centres[1]-centres[0])/2]
+    label_edges.extend((left+right)/2 for left, right in zip(centres, centres[1:]))
+    label_edges.append(centres[-1]+(centres[-1]-centres[-2])/2)
     cy = (nodes[0][1]+nodes[0][3])/2
     for previous, following in zip(nodes, nodes[1:]):
         if following[0] > previous[2]:
@@ -277,9 +280,7 @@ def handoff_scene(model):
         # native renderer the whole stage column while retaining the captured
         # vertical position.
         captured = layout["labels"][index]
-        left = layout["body"][0] if index == 0 else (centres[index-1]+centres[index])/2
-        right = layout["body"][2] if index == len(nodes)-1 else (centres[index]+centres[index+1])/2
-        commands.append(("text", (left, captured[1], right, captured[3]),
+        commands.append(("text", (label_edges[index], captured[1], label_edges[index+1], captured[3]),
                          colours["text"] if active else colours["muted"], labels[index], 12*unit, "center"))
     message = model["message"]
     if model["value"] is not None:
