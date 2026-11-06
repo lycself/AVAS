@@ -728,7 +728,7 @@ def build_tools(host):
         path = p.input_file("ini.ini")
         dirty = host.front("pages.dirty", {}, timeout=2) or []
         if "settings" in dirty:
-            raise ToolError("The settings page has unsaved changes. Ask the user to save or discard them first.")
+            raise ToolError("The Simulation settings page has unsaved changes. Ask the user to save or discard them first.")
         text = read_text(path) if os.path.isfile(path) else ""
         cfg = configparser.ConfigParser()
         cfg.optionxform = str

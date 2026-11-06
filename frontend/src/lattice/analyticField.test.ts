@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crossSection, fieldAt, type ElementField } from "./analyticField";
+import { bendField, crossSection, fieldAt, type ElementField } from "./analyticField";
 
 const quad: ElementField = { kind: "quadrupole", g: 12 };
 
@@ -15,17 +15,53 @@ describe("fieldAt", () => {
 
   it("keeps a dipole flat without a field index and tilts it with one", () => {
     const flat: ElementField = { kind: "dipole", b: 1, index: 0, rho: 0.5, vertical: false };
-    expect(fieldAt(flat, 0.02, 0)).toEqual({ bx: 0, by: 1, bz: 0 });
-    expect(fieldAt(flat, -0.02, 0)).toEqual({ bx: 0, by: 1, bz: 0 });
+    expect(fieldAt(flat, 0.02, 0.01)).toEqual({ bx: -0, by: 1, bz: 0 });
+    expect(fieldAt(flat, -0.02, -0.01).by).toBe(1);
     const tilted: ElementField = { ...flat, index: 0.5 };
+    // By > 0 bends a positive particle to -x: the outside is +x, where N > 0 weakens the field
     expect(fieldAt(tilted, 0.05, 0).by).toBeCloseTo(1 - (0.5 * 0.05) / 0.5);
     expect(fieldAt(tilted, -0.05, 0).by).toBeGreaterThan(fieldAt(tilted, 0.05, 0).by);
-    // a vertical bend carries Bx instead, and reads the index across y
-    const vertical: ElementField = { ...tilted, vertical: true };
-    expect(fieldAt(vertical, 0.05, 0)).toEqual({ bx: 1, by: 0, bz: 0 });
-    expect(fieldAt(vertical, 0, 0.05).bx).toBeCloseTo(1 - (0.5 * 0.05) / 0.5);
     // rho = 0 would divide by zero; the field stays flat instead
-    expect(fieldAt({ ...tilted, rho: 0 }, 0.05, 0).by).toBe(1);
+    expect(fieldAt({ ...tilted, rho: 0 }, 0.05, 0.05)).toEqual({ bx: -0, by: 1, bz: 0 });
+  });
+
+  // dBy/dx and dBx/dy by central differences
+  const grad = (f: ElementField) => {
+    const h = 1e-4;
+    return {
+      dBydx: (fieldAt(f, h, 0).by - fieldAt(f, -h, 0).by) / (2 * h),
+      dBxdy: (fieldAt(f, 0, h).bx - fieldAt(f, 0, -h).bx) / (2 * h),
+      dBxdx: (fieldAt(f, h, 0).bx - fieldAt(f, -h, 0).bx) / (2 * h),
+      dBydy: (fieldAt(f, 0, h).by - fieldAt(f, 0, -h).by) / (2 * h),
+    };
+  };
+  const cases = [-60, 30].flatMap((angle) => [false, true].map((vertical) => ({ angle, vertical })));
+
+  it.each(cases)("satisfies Maxwell across the bore (angle $angle, vertical $vertical)", ({ angle, vertical }) => {
+    const g = grad(bendField(angle, 0.7, 1.3, vertical));
+    expect(g.dBxdy).toBeCloseTo(g.dBydx, 9); // curl B = 0
+    expect(g.dBxdx + g.dBydy).toBeCloseTo(0, 9); // div B = 0 (no Bz)
+    expect(Math.abs(g.dBydx)).toBeCloseTo(0.7 / 1.3, 9);
+  });
+
+  it.each(cases)("focuses out of the bending plane for N > 0 whichever way it bends (angle $angle, vertical $vertical)", ({ angle, vertical }) => {
+    // force on a positive particle along +z: Fx = -By, Fy = +Bx; N > 0 focuses across the bending plane
+    const f = bendField(angle, 0.5, 1, vertical);
+    if (vertical) expect(-fieldAt(f, 0.01, 0).by).toBeLessThan(0);
+    else expect(fieldAt(f, 0, 0.01).bx).toBeLessThan(0);
+    // and weakens the field on the outside of the bend
+    const out = vertical ? Math.sign(fieldAt(f, 0, 0).bx) * -1 : Math.sign(fieldAt(f, 0, 0).by);
+    const onAxis = Math.hypot(fieldAt(f, 0, 0).bx, fieldAt(f, 0, 0).by);
+    const outside = vertical ? fieldAt(f, 0, 0.02 * out).bx : fieldAt(f, 0.02 * out, 0).by;
+    expect(Math.abs(outside)).toBeLessThan(onAxis);
+  });
+
+  it("bends a positive angle to -x, or to -y when vertical, as the preview's bend matrix does", () => {
+    // Fx = -By, Fy = +Bx for a positive particle along +z
+    expect(-fieldAt(bendField(30, 0, 1, false), 0, 0).by).toBeLessThan(0);
+    expect(fieldAt(bendField(30, 0, 1, true), 0, 0).bx).toBeLessThan(0);
+    expect(-fieldAt(bendField(-30, 0, 1, false), 0, 0).by).toBeGreaterThan(0);
+    expect(fieldAt(bendField(-30, 0, 1, true), 0, 0).bx).toBeGreaterThan(0);
   });
 
   it("gives a corrector the same field everywhere", () => {

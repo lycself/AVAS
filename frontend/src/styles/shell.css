@@ -24,24 +24,35 @@ body.dragging .sash-v, body.dragging { cursor: col-resize; }
 /* ---------------------------------------------------------------- body */
 .shell-body { flex: 1 1 auto; display: flex; min-height: 0; }
 .sidebar-wrap { flex: none; min-width: 0; overflow: hidden; background: var(--sidebar-bg); }
-.sidebar { display: flex; flex-direction: column; height: 100%; }
+.sidebar-wrap.animate { transition: width .18s ease; }
+[data-motion="off"] .sidebar-wrap.animate { transition: none; }
+.sidebar { display: flex; flex-direction: column; height: 100%; min-width: 48px; }
 .sidebar-header {
   min-height: 35px; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; padding: 4px 14px;
-  font-size: 11px; font-weight: 600; color: var(--fg-muted);
+  font-size: 11px; font-weight: 600; color: var(--fg-muted); white-space: nowrap; transition: opacity .12s ease;
 }
+.sidebar.collapsed .sidebar-header { opacity: 0; pointer-events: none; }
 .version-stamp { display: inline-flex; flex-wrap: wrap; gap: 0 6px; }
 .version-stamp > span { white-space: nowrap; }
+/* the icon sits in a fixed 46 px column, so collapsing only narrows the sidebar and the labels slide under its edge */
 .nav-item {
-  position: relative; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border: 0;
+  position: relative; display: flex; align-items: center; gap: 2px; height: 36px; padding: 0; border: 0;
   border-left: 2px solid transparent; background: transparent; color: var(--fg-muted); cursor: pointer; text-align: left; white-space: nowrap;
 }
+.nav-icon { flex: none; width: 46px; display: inline-flex; justify-content: center; }
 .nav-item .codicon { font-size: 20px; }
 .nav-item .nav-paused { color: var(--warning); }
 .nav-item:hover { background: var(--list-hover); color: var(--fg-strong); }
 .nav-item.active { background: var(--list-active); color: var(--fg-strong); border-left-color: var(--accent); }
 .nav-item.dim:not(.active) { color: var(--fg-soft); }
-.sidebar.collapsed .nav-item { justify-content: center; padding: 0; }
-.nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; transition: opacity .12s ease; }
+.sidebar.collapsed .nav-label { opacity: 0; }
+.nav-sep { flex: none; height: 1px; margin: 6px 10px; background: var(--border); }
+/* the collapse button stays at the bottom, below whatever space is left */
+.nav-bottom { margin-top: auto; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+.sidebar-toggle { height: 32px; color: var(--fg-soft); }
+.sidebar-toggle .codicon { font-size: 16px; }
+.sidebar-toggle .nav-label { font-size: 12px; }
 .nav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-muted); flex: none; }
 .sidebar.collapsed .nav-dot { position: absolute; right: 9px; top: 9px; }
 

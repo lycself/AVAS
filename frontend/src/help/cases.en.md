@@ -206,7 +206,7 @@ Preserve the original LATTICE structure; do not treat it as current multi-partic
 
 1. Prepare the beam. When importing a dst, inspect the distribution and parameters in Beam. The old “Import all beam parameters from file” button workflow no longer applies. To generate a new Twiss distribution, switch back to generated distribution and confirm parameters; deleting a path alone is insufficient.
 2. Choose the study plane and initial emittance. The original suggests enlarging that emittance to sample the acceptance boundary; choose the magnitude for your beamline.
-3. In Settings, set “Output every N steps (plt)” above zero, for example 1. Particle dumps may consume substantial disk space.
+3. On the Simulation settings page, set “Output every N steps (plt)” above zero, for example 1. Particle dumps may consume substantial disk space.
 4. After simulation, select its output in Results, open Acceptance and choose x-x′, y-y′, z-z′ or φ-E.
 5. Inspect the ellipse, emittance, normalized emittance and position/angle together with losses. All particles passing or missing dumps may prevent computation; an error is not zero acceptance.
 

@@ -11,6 +11,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLE_INPUT = os.path.join(ROOT, "examples", "hwr010", "InputFile")
 sys.path.insert(0, ROOT)
 
+from avas.model import tracker  # noqa: E402
 from avas.sim import linear_optics as lo  # noqa: E402
 
 PROTON = 938.272088
@@ -220,6 +221,117 @@ def test_uniform_solenoid_map_matches_hard_edge_solenoid(tmp_path):
     by_matrix = lo.linear_preview(f"start\nsolenoid {length} 0.03 0 {field}\ndrift 0.2 0.03 0\nend\n", beam, [])
     assert by_map["rms_x"][-1] == pytest.approx(by_matrix["rms_x"][-1], rel=1e-2)
     assert by_map["rms_y"][-1] == pytest.approx(by_matrix["rms_y"][-1], rel=1e-2)
+
+
+def _transverse_period(lattice, beam, dirs):
+    """4×4 product of the preview steps with the momentum gain taken out (canonical-like x', y')."""
+    _doc, tracker, _warn = lo._track(lattice, beam, dirs)
+    m = np.eye(6)
+    for step in tracker.arrays()["mats"]:
+        m = step @ m
+    gain = lo._kin(tracker.w, tracker.mass)[3] / lo._kin(beam["energy"], tracker.mass)[3]
+    return np.diag([1, gain, 1, gain]) @ m[:4, :4]
+
+
+def _symplectic_error4(m):
+    j = np.kron(np.eye(2), np.array([[0, 1], [-1, 0]]))
+    return np.abs(m.T @ j @ m - j).max()
+
+
+def test_solenoid_fringe_comes_from_bz_not_from_inconsistent_transverse_components(tmp_path):
+    # a bell-shaped solenoid whose Bx, By are 0.7 times the Maxwell value -r/2·dBz/dz (like the noisy
+    # example map sol): the preview must use Bz for the fringe and give the same optics as Bz alone
+    length, b0, w = 0.3, 1.2, 0.04
+    bz = lambda z: b0 / (1 + ((z - length / 2) / w) ** 4)                            # noqa: E731
+    dbz = lambda z: -4 * b0 * (z - length / 2) ** 3 / w ** 4 / (1 + ((z - length / 2) / w) ** 4) ** 2  # noqa: E731
+    write_map(tmp_path / "bell.bsz", lambda z, y, x: bz(z) + 0 * x, length, 150)
+    write_map(tmp_path / "bad.bsz", lambda z, y, x: bz(z) + 0 * x, length, 150)
+    write_map(tmp_path / "bad.bsx", lambda z, y, x: -0.35 * x * dbz(z), length, 150)
+    write_map(tmp_path / "bad.bsy", lambda z, y, x: -0.35 * y * dbz(z), length, 150)
+    beam = make_beam(energy=1.527)
+    lattice = "start\nfield {L} 0.02 0 3 0 0 0 1 {name}\ndrift 0.2 0.02 0\nend\n"
+    good = _transverse_period(lattice.format(L=length, name="bell"), beam, [str(tmp_path)])
+    bad = _transverse_period(lattice.format(L=length, name="bad"), beam, [str(tmp_path)])
+    assert np.allclose(good, bad, atol=1e-12)
+    assert _symplectic_error4(good) < 1e-10
+
+
+def test_example_solenoid_period_is_symplectic():
+    # examples/hwr010 sol: its own Bx, By disagree with -1/2 dBz/dz; before the fringe came from Bz the
+    # period matrix had eigenvalue moduli 0.983 / 1.017 (with the cavity 0.950 / 1.053)
+    if not os.path.exists(os.path.join(EXAMPLE_INPUT, "sol.bsz")):
+        pytest.skip("example field maps not installed")
+    beam = lo.read_beam(EXAMPLE_INPUT)
+    sol = "field 0.35 0.02 0 3 0 0 0 0.35 sol\n"
+    m = _transverse_period("start\n" + sol + "drift 0.1 0.02 0\nend\n", beam, [EXAMPLE_INPUT])
+    assert _symplectic_error4(m) < 1e-9
+    assert np.allclose(np.abs(np.linalg.eigvals(m)), 1, atol=1e-9)
+    # with the HWR the RF part is only approximately symplectic in (x, x') with the gain taken out
+    period = ("start\n" + sol + "drift 0.1 0.02 0\nfield 0.21 0.02 0 1 162.5e6 -30 1.36 -1.36 hwr010\n"
+              "drift 0.1 0.02 0\nend\n")
+    moduli = np.abs(np.linalg.eigvals(_transverse_period(period, beam, [EXAMPLE_INPUT])))
+    assert np.all(np.abs(moduli - 1) < 3e-3)
+
+
+@pytest.mark.parametrize("energy", [0.5, 1.1, 1.527, 4.727])
+def test_v3_0_phase_is_self_consistent_where_it_exists(energy, monkeypatch):
+    if not os.path.exists(os.path.join(EXAMPLE_INPUT, "hwr010.edz")):
+        pytest.skip("example field maps not installed")
+    beam = lo.read_beam(EXAMPLE_INPUT)
+    beam["energy"] = energy
+    lattice = "start\ndrift 0.05 0.02 0\nfield 0.21 0.02 0 1 162.5e6 -30 1.36 -1.36 hwr010\ndrift 0.2 0.02 0\nend\n"
+    runs = []
+    for iterations in (20, 200):
+        monkeypatch.setattr(tracker, "MAX_ITER", iterations)
+        res = lo.linear_preview(lattice, beam, [EXAMPLE_INPUT], space_charge=False)
+        cav = [e for e in res["elements"] if e["phase_rf"] is not None][0]
+        assert cav["phase_s"] == pytest.approx(-30.0, abs=1e-6)
+        assert res["warnings"] == []
+        runs.append((cav["phase_rf"], res["energy"][-1]))
+    assert runs[0] == pytest.approx(runs[1], abs=1e-5)
+
+
+@pytest.mark.parametrize("energy,reach", [(0.3, 65.1), (1.0, 14.0)])
+def test_v3_0_without_solution_uses_the_closest_phase_and_warns(energy, reach, monkeypatch):
+    # far below the HWR's design beta the cavity's net accelerating vector nearly cancels: phi_s(phi_0)
+    # covers only part of the circle (0.3 MeV: about 65..107 deg) and -30 deg cannot be reached; the
+    # fixed point then wandered (0.073 MeV at 0.3 MeV, more than the 0.032 MeV of the crest)
+    if not os.path.exists(os.path.join(EXAMPLE_INPUT, "hwr010.edz")):
+        pytest.skip("example field maps not installed")
+    beam = lo.read_beam(EXAMPLE_INPUT)
+    beam["energy"] = energy
+    lattice = "start\ndrift 0.05 0.02 0\nfield 0.21 0.02 0 1 162.5e6 -30 1.36 -1.36 hwr010\ndrift 0.2 0.02 0\nend\n"
+    runs = []
+    for iterations in (20, 200):
+        monkeypatch.setattr(tracker, "MAX_ITER", iterations)
+        res = lo.linear_preview(lattice, beam, [EXAMPLE_INPUT], space_charge=False)
+        cav = [e for e in res["elements"] if e["phase_rf"] is not None][0]
+        assert cav["phase_s"] == pytest.approx(reach, abs=0.1)
+        assert "no RF phase gives the synchronous phase -30" in texts(res)
+        runs.append((cav["phase_rf"], res["energy"][-1]))
+    assert runs[0] == pytest.approx(runs[1], abs=1e-6)
+    # the result is a real trajectory: re-running it with that entry phase (V3 = 1) gives the same energy
+    fixed = lattice.replace(" 0 1 162.5e6 -30 ", f" 0 1 162.5e6 {runs[0][0]!r} ").replace("field 0.21 0.02 0 ", "field 0.21 0.02 1 ")
+    again = lo.linear_preview(fixed, beam, [EXAMPLE_INPUT], space_charge=False)
+    assert again["energy"][-1] == pytest.approx(runs[0][1], abs=1e-6)
+
+
+@pytest.mark.parametrize("energy,entry,gain", [(0.7, -107.7, -0.1129)])
+def test_v3_0_takes_the_decelerating_solution_like_the_engine(energy, entry, gain):
+    # 0.7 MeV, phi_s = -30 deg: no accelerating solution; the engine (Windows, 2026-11-02) ran with the entry
+    # phase -107.7 deg, wrote phi_s = -29.92 deg to synData.txt and its synchronous particle lost 0.1129 MeV:
+    # the solution 180 deg away (atan2 gives 150 deg), on the rising branch of phi_s(phi_0)
+    if not os.path.exists(os.path.join(EXAMPLE_INPUT, "hwr010.edz")):
+        pytest.skip("example field maps not installed")
+    beam = lo.read_beam(EXAMPLE_INPUT)
+    beam["energy"] = energy
+    lattice = "start\ndrift 0.05 0.02 0\nfield 0.21 0.02 0 1 162.5e6 -30 1.36 -1.36 hwr010\ndrift 0.2 0.02 0\nend\n"
+    res = lo.linear_preview(lattice, beam, [EXAMPLE_INPUT], space_charge=False)
+    cav = [e for e in res["elements"] if e["phase_rf"] is not None][0]
+    assert cav["phase_rf"] == pytest.approx(entry, abs=0.5)
+    assert cav["phase_s"] == pytest.approx(150.0, abs=1e-6)
+    assert res["energy"][-1] - energy == pytest.approx(gain, rel=5e-3)
+    assert "180° away" in texts(res) and "decelerates" in texts(res)
 
 
 def test_missing_field_map_is_a_warning_not_an_exception(tmp_path):

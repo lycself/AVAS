@@ -77,6 +77,12 @@
 .md li { margin: 2px 0; }
 .md code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; background: var(--panel-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; }
 .md code.md-math { font-style: italic; }
+/* formulas: temml's MathML (components/MathView.tsx) */
+math { font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", math; }
+.math-display { display: block; overflow-x: auto; overflow-y: hidden; margin: 10px 0 12px; padding: 4px 0; }
+.math-display math { font-size: 1.12em; }
+.math-inline math { font-size: 1.05em; }
+.md-math-block { margin: 8px 0; }
 .md-code { position: relative; background: var(--panel-bg); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; overflow: auto; margin: 0 0 8px; font-size: 12px; }
 .md-code code { background: none; border: 0; padding: 0; white-space: pre; }
 .md-lang { position: absolute; top: 2px; right: 6px; font-size: 10px; color: var(--fg-soft); }
@@ -127,3 +133,12 @@
 .as-option.readonly { cursor: default; }
 .as-option-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 12px; }
 .as-option-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--fg); }
+
+/* the thinking, notes and quick tool calls before an answer (steps.ts), folded */
+.as-steps { border-left: 2px solid var(--border-strong); padding-left: 8px; font-size: 12px; }
+.as-steps-head { display: flex; align-items: center; gap: 5px; color: var(--fg-muted); cursor: pointer; min-width: 0; }
+.as-steps-head .codicon { font-size: 13px; flex: none; }
+.as-steps-title { flex: none; }
+.as-steps-head .ellipsis { flex: 1 1 auto; min-width: 0; }
+.as-steps-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.as-steps-note { color: var(--fg-soft); }

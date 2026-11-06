@@ -61,13 +61,13 @@ function roleDescription(f: FileEntry, latticeName: string) {
     case "beam":
       return t("Initial beam; also edited on the Beam page.");
     case "input":
-      return t("Tracking options; also edited on the Settings page.");
+      return t("Tracking options; also edited on the Simulation settings page.");
     case "boundary":
-      return t("Loss boundary, used when boundary is 1 in input.txt; lattice apertures are then ignored.");
+      return t("Loss boundary, used when boundary is 1 in input.txt; lattice apertures are then ignored. Also edited on the Simulation settings page.");
     case "scandata":
-      return t("Entry phase and time of every RF cavity, read when scanphase is 2.");
+      return t("Entry phase and time of every RF cavity, read when scanphase is 2. Also edited on the Simulation settings page.");
     case "separticle":
-      return t("Secondary particles, read when secondarybeam is 1.");
+      return t("Secondary particles, read when secondarybeam is 1. Also edited on the Beam page.");
     case "gui_ini":
       return t("Run mode, error study, lattice file and field-map directory.");
     case "particles":
@@ -385,7 +385,7 @@ export default function FilesPage() {
   const renderContent = () => {
     if (!opened) return <div className="empty-state soft">{tt("Choose a file on the left.")}</div>;
     if (opened.view === "info") {
-      if (opened.kind === "particles" || opened.kind === "particles_ext") return <ParticlesView path={opened.path} onUseAsBeam={locked ? undefined : () => useAsBeam(opened.name)} />;
+      if (opened.kind === "particles" || opened.kind === "particles_ext") return <ParticlesView path={opened.path} ellipses onUseAsBeam={locked ? undefined : () => useAsBeam(opened.name)} />;
       if (opened.kind === "fieldmap") return <FieldMapView path={opened.path} />;
       const why = opened.tooLarge ? tt("Larger than {size} - open it with an external editor.", { size: "2.0 MB" }) : roleDescription(opened, listing.latticeName);
       return (
@@ -412,9 +412,9 @@ export default function FilesPage() {
     else if (opened.kind === "input") table = <KeywordTable {...tprops} file="input" />;
     else if (opened.kind === "gui_ini") table = <IniTable {...tprops} />;
     else if (opened.kind === "boundary")
-      table = <TokenTable {...tprops} columns={BOUNDARY_COLUMNS} wrapStartEnd hint={tt("Used when 'Apply boundary' is enabled in Settings; lattice apertures are then ignored.")} />;
+      table = <TokenTable {...tprops} columns={BOUNDARY_COLUMNS} wrapStartEnd hint={tt("Used when 'Apply boundary' is enabled on the Simulation settings page; lattice apertures are then ignored.")} />;
     else if (opened.kind === "scandata")
-      table = <TokenTable {...tprops} columns={scanDataColumns()} rowLabels={cavities} hint={tt("Read when phase scan mode is 2 (Settings); rows follow the RF cavities in lattice order.")} />;
+      table = <TokenTable {...tprops} columns={scanDataColumns()} rowLabels={cavities} hint={tt("Read when phase scan mode is 2 (Simulation settings page); rows follow the RF cavities in lattice order.")} />;
     else if (opened.kind === "separticle")
       table = <TokenTable {...tprops} columns={schema.separticle.map((c) => ({ caption: c.unit ? `${pick(c.label)} (${c.unit})` : pick(c.label), tip: pick(c.label) }))} hint={tt("Secondary particles, read when secondarybeam is 1 in input.txt.")} />;
     else if (opened.kind === "tracewin_lattice") table = <TraceWinTable text={text} schema={schema} />;
@@ -515,8 +515,8 @@ export default function FilesPage() {
                   {tt("Use for the run")}
                 </Button>
               )}
-              {opened.kind === "beam" && <Button onClick={() => setPage("beam")}>{tt("Open Beam page")}</Button>}
-              {(opened.kind === "input" || opened.kind === "gui_ini") && <Button onClick={() => setPage("settings")}>{tt("Open Settings page")}</Button>}
+              {(opened.kind === "beam" || opened.kind === "separticle") && <Button onClick={() => setPage("beam")}>{tt("Open Beam page")}</Button>}
+              {["input", "gui_ini", "boundary", "scandata"].includes(opened.kind) && <Button onClick={() => setPage("settings")}>{tt("Open Simulation settings page")}</Button>}
               <IconButton icon="ellipsis" tip={tt("More actions")} onClick={(e) => contextMenu(e as any, opened)} />
               <Button variant="ghost" icon="refresh" onClick={async () => (await confirmLeave()) && openFile(opened.path, true)}>
                 {tt("Reload")}

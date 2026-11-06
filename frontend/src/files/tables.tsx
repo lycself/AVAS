@@ -209,7 +209,7 @@ export function IniTable({ text, editable, onChange, schema }: TableProps) {
           onChange(finish(out));
         }}
       />
-      <p className="hint">{tt("Settings used by the GUI and by 'avas run' (run mode, error study, lattice file, field-map directory). Most are also set on the Settings and Lattice pages.")}</p>
+      <p className="hint">{tt("Settings used by the GUI and by 'avas run' (run mode, error study, lattice file, field-map directory). Most are also set on the Simulation settings and Lattice pages.")}</p>
     </div>
   );
 }

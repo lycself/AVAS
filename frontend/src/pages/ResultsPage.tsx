@@ -3,7 +3,7 @@ import { archiveRun, deleteRunRecord } from "../actions";
 import { call, on } from "../bridge";
 import { openPath, pickFile, pickFolder } from "../host";
 import { reportError, toast } from "../components/overlays";
-import { Button, cx, Empty, Icon, IconButton, Radio, Select, Spinner, Tabs, TextInput } from "../components/ui";
+import { Button, Checkbox, cx, Empty, Icon, IconButton, Radio, Select, Spinner, Tabs, TextInput } from "../components/ui";
 import { runStatusLabel } from "../format";
 import { useT } from "../i18n";
 import { AcceptanceFooter, PlotTab } from "../results/PlotTab";
@@ -83,6 +83,7 @@ const TREE: { group: string; items: { key: ItemKey; label: string; icon: string 
   },
 ];
 
+const LINEAR_TYPES = ["rms_x", "rms_y", "rms_xy", "c_x", "c_y", "c_xy", "energy", "emittance_x", "emittance_y", "emittance_z"];
 const ENVELOPE = ["rms_x", "rms_y", "rms_xy", "max_x", "max_y", "max_xy", "c_x", "c_y", "c_xy", "phi", "beta_x", "beta_y", "beta_z", "beta_xyz", "alpha_x"];
 
 type Tab = { id: string; key: ItemKey; title: string };
@@ -127,6 +128,7 @@ function TabContent({ tab, ov, refreshKey }: { tab: Tab; ov: Overview; refreshKe
   const t = useT();
   const out = ov.outputDir;
   const [type, setType] = useState(tab.key === "emittance" ? "emittance_x" : tab.key === "loss" ? "loss" : tab.key === "energy" ? "energy" : "rms_x");
+  const [linear, setLinear] = useState(false);
   const [unit, setUnit] = useState("period");
   const [ratios, setRatios] = useState<Record<string, string>>({});
   const [appliedRatios, setAppliedRatios] = useState<Record<string, string>>({});
@@ -147,16 +149,26 @@ function TabContent({ tab, ov, refreshKey }: { tab: Tab; ov: Overview; refreshKe
       return (
         <PlotTab
           plot="dataset"
-          params={{ type }}
+          params={{ type, linear: linear && LINEAR_TYPES.includes(type) }}
           outputDir={out}
           title={type}
           refreshKey={refreshKey}
           options={
-            choices.length > 1 && (
-              <Opt label={t("Quantity")}>
-                <Select value={type} options={choices.map((c) => ({ value: c, label: c }))} onChange={setType} />
-              </Opt>
-            )
+            <>
+              {choices.length > 1 && (
+                <Opt label={t("Quantity")}>
+                  <Select value={type} options={choices.map((c) => ({ value: c, label: c }))} onChange={setType} />
+                </Opt>
+              )}
+              {LINEAR_TYPES.includes(type) && (
+                <Checkbox
+                  checked={linear}
+                  onChange={setLinear}
+                  label={t("Linear model")}
+                  tip={t("Dashed: the linear model of this run's own inputs (its inputs/ snapshot), to see what the multi-particle simulation adds.")}
+                />
+              )}
+            </>
           }
         />
       );
@@ -329,7 +341,7 @@ function TabContent({ tab, ov, refreshKey }: { tab: Tab; ov: Overview; refreshKe
         <PhaseViewer source={{ kind: "plt", files: ov.plt }} outputDir={out} refreshKey={refreshKey} />
       ) : (
         <Empty icon="info" title={t("No .plt file in the results folder")}>
-          {t("Set 'Output every N steps (plt)' to a value > 0 on the Settings page and run the simulation again.")}
+          {t("Set 'Output every N steps (plt)' to a value > 0 on the Simulation settings page and run the simulation again.")}
         </Empty>
       );
     case "expand":

@@ -14,6 +14,7 @@ import "./styles/pages.css";
 import "./styles/lattice.css";
 import "./styles/assistant.css";
 import "./styles/scan.css";
+import "temml/dist/Temml-Local.css";
 import { initAssistant } from "./assistant/store";
 import { initFrontRequests } from "./assistant/front";
 

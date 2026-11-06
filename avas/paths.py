@@ -95,6 +95,24 @@ def lattice_source_path(input_dir):
     name = lattice_source_name(input_dir)
     return name if os.path.isabs(name) else os.path.join(input_dir, name)
 
+def field_dirs(input_dir):
+    """Where field maps are looked up: ``[project] fieldSource`` of ini.ini, InputFile and InputFile/field
+    (the existing ones, in this order)."""
+    dirs = [input_dir, os.path.join(input_dir, "field")]
+    ini = os.path.join(input_dir, "ini.ini")
+    if os.path.isfile(ini):
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.optionxform = str
+        try:
+            cfg.read(ini, encoding="utf-8")
+            src = cfg.get("project", "fieldSource", fallback="").strip()
+        except configparser.Error:
+            src = ""
+        if src:
+            dirs.insert(0, src if os.path.isabs(src) else os.path.join(input_dir, src))
+    return [d for d in dirs if os.path.isdir(d)]
+
 
 def set_lattice_source(input_dir, name):
     """Store *name* as ``[lattice] source`` in ``ini.ini``, keeping everything else."""

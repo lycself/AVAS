@@ -96,7 +96,7 @@ def _lines_from_2d(obj):
 
 
 # --------------------------------------------------------------------------- plots
-def _dataset(p, input_dir, out, type="rms_x", interval=1):
+def _dataset(p, input_dir, out, type="rms_x", interval=1, linear=False):
     from avas.post.plot.plotdataset import PlotDataSet
     path = os.path.join(out, "DataSet.txt")
     if not os.path.isfile(path):
@@ -108,7 +108,62 @@ def _dataset(p, input_dir, out, type="rms_x", interval=1):
     obj.get_x_y()
     fig = _lines_from_2d(obj)
     fig["yPlain"] = True
+    if linear and type in LINEAR_OVERLAY:
+        fig["traces"] += _linear_traces(p, input_dir, out, type)
+        fig["legend"] = True
+        for tr in fig["traces"]:
+            tr["legend"] = tr.get("legend") or bool(tr.get("name"))
     return obj, fig
+
+
+# quantities the linear model can draw over a DataSet plot: (model quantity, plane, scale to the plot's unit, label)
+LINEAR_OVERLAY = {
+    "rms_x": [("rms", "x", 1e3, "linear model rms x")], "rms_y": [("rms", "y", 1e3, "linear model rms y")],
+    "rms_xy": [("rms", "x", 1e3, "linear model rms x"), ("rms", "y", 1e3, "linear model rms y")],
+    "c_x": [("centroid", "x", 1e3, "linear model centroid x")], "c_y": [("centroid", "y", 1e3, "linear model centroid y")],
+    "c_xy": [("centroid", "x", 1e3, "linear model centroid x"), ("centroid", "y", 1e3, "linear model centroid y")],
+    "energy": [("energy", None, 1.0, "linear model (reference particle)")],
+    "emittance_x": [("emit", "x", 1e6, "linear model εx")], "emittance_y": [("emit", "y", 1e6, "linear model εy")],
+    "emittance_z": [("emit", "z", 1e6, "linear model εz")],
+}
+
+
+def _run_inputs(input_dir, out):
+    """The inputs a run used: its ``inputs/`` snapshot, else *input_dir*."""
+    cand = os.path.join(out, "inputs")
+    return cand if os.path.isfile(os.path.join(cand, "beam.txt")) else input_dir
+
+
+def _linear_traces(p, input_dir, out, type):
+    """Dashed traces of the linear model for the run's own inputs (its snapshot), on the plot's units."""
+    from avas import paths
+    from avas.model import LinearModel, PreviewError
+    inp = _run_inputs(input_dir, out)
+    try:
+        model = LinearModel.from_project(inp)
+        model.field_dirs = model.field_dirs + [d for d in paths.field_dirs(p.input_dir) if d not in model.field_dirs]
+        space = None
+        with open(os.path.join(inp, "input.txt"), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                parts = line.split("!", 1)[0].split()
+                if len(parts) >= 2 and parts[0].lower() == "spacecharge" and parts[1] == "0":
+                    space = False
+        res = model.evaluate(space_charge=space)
+    except (OSError, PreviewError, ValueError) as exc:
+        raise UserError(f"The linear model of this run's inputs failed: {exc}") from exc
+    traces = []
+    for kind, plane, scale, label in LINEAR_OVERLAY[type]:
+        if kind == "rms":
+            y = res.rms(plane)
+        elif kind == "centroid":
+            y = res.centroid[:, {"x": 0, "y": 2}[plane]]
+        elif kind == "energy":
+            y = res.energy
+        else:
+            y = res.emittance(plane, True)
+        traces.append({"x": _arr(res.z), "y": _arr(y * scale), "color": None, "name": label, "markers": False,
+                       "legend": True, "dash": True})
+    return traces
 
 
 def _phase_advance(p, input_dir, out, unit="period"):
@@ -379,7 +434,7 @@ def plt_info(path):
     steps = obj.get_step()
     if obj.numofp <= 0 or steps <= 0:
         raise UserError(f"{os.path.basename(path)} contains no particle dumps. Set 'Output every N steps (plt)' "
-                        "to a value > 0 on the Settings page and run the simulation again.")
+                        "to a value > 0 on the Simulation settings page and run the simulation again.")
     headers = obj.get_all_dict()
     return {"steps": steps, "particles": obj.numofp,
             "items": [{"step": i, "index": h.get("index"), "location": h.get("location"), "time": h.get("time"),

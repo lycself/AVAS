@@ -1,5 +1,4 @@
 """The currently open AVAS project (a directory with InputFile/ and OutputFile/)."""
-import configparser
 import json
 import os
 import threading
@@ -57,21 +56,7 @@ class Project:
 
     def field_dirs(self):
         """Where field maps are looked up: ini.ini's fieldSource, InputFile and InputFile/field."""
-        if not self.is_open:
-            return []
-        dirs = [self.input_dir, os.path.join(self.input_dir, "field")]
-        ini = os.path.join(self.input_dir, "ini.ini")
-        if os.path.isfile(ini):
-            cfg = configparser.ConfigParser()
-            cfg.optionxform = str
-            try:
-                cfg.read(ini, encoding="utf-8")
-                src = cfg.get("project", "fieldSource", fallback="").strip()
-            except configparser.Error:
-                src = ""
-            if src:
-                dirs.insert(0, src if os.path.isabs(src) else os.path.join(self.input_dir, src))
-        return [d for d in dirs if os.path.isdir(d)]
+        return paths.field_dirs(self.input_dir) if self.is_open else []
 
     # ------------------------------------------------------------------ open / create
     def require(self):

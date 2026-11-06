@@ -7,7 +7,7 @@ import { call } from "../bridge";
 import { cx, Icon, IconButton } from "../components/ui";
 import { pick, useT } from "../i18n";
 import type { FieldSource } from "../files/FieldSlice";
-import { crossSection, type ElementField } from "./analyticField";
+import { bendField, crossSection, type ElementField } from "./analyticField";
 import { useFieldWindow } from "./FieldWindow";
 import { elementShape, fieldMapShape, polarity, type Shape } from "./glyphs";
 import { elementType } from "./elementType";
@@ -392,7 +392,7 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
     if (st.key === "quad") return pn(3) ? analytic({ kind: "quadrupole", g: pn(3) }, L) : null;
     if (st.key === "solenoid") return pn(3) ? analytic({ kind: "solenoid", b: pn(3) }, L) : null;
     if (st.key === "bend")
-      return analytic({ kind: "dipole", b: Math.sign(pn(3)) || 1, index: pn(5), rho: Math.max(1e-6, pn(4)), vertical: p(6) === "1" }, Math.abs(pn(3)) * (Math.PI / 180) * Math.max(1e-6, pn(4)));
+      return analytic(bendField(pn(3), pn(5), Math.max(1e-6, pn(4)), p(6) === "1"), Math.abs(pn(3)) * (Math.PI / 180) * Math.max(1e-6, pn(4)));
     // a corrector has no length of its own: only its cross-section means anything
     if (st.key === "steerer") return pn(3) || pn(4) ? analytic({ kind: "steerer", bx: pn(3), by: pn(4) }, 0, p(5) === "1" ? "V/m" : "T") : null;
     return null;
@@ -703,7 +703,7 @@ export function ComponentView({ st, kw, fieldDirs, readOnly, energy, onDraft, on
           <rect x={bcx - 54} y={bcy - 74} width={108} height={22} rx={3} style={{ fill: colorVar("--el-bend") }} className="cv-body translucent" />
           <rect x={bcx - 54} y={bcy + 52} width={108} height={22} rx={3} style={{ fill: colorVar("--el-bend") }} className="cv-body translucent" />
           <circle cx={bcx} cy={bcy} r={bcr} className="cv-bore" />
-          <FieldGrid cx={bcx} cy={bcy} rPix={bcr} rM={R} field={{ kind: "dipole", b: Math.sign(alpha) || 1, index: pn(5), rho, vertical: p(6) === "1" }} colour={colorVar("--el-bend")} />
+          <FieldGrid cx={bcx} cy={bcy} rPix={bcr} rM={R} field={bendField(alpha, pn(5), rho, p(6) === "1")} colour={colorVar("--el-bend")} />
           <BeamOut cx={bcx} cy={bcy} />
           <text x={bcx} y={bcy + 90} textAnchor="middle" className="cv-schematic">
             {/* N acts over rho, so across an aperture it is usually a per-cent effect: say how much, rather than let the eye hunt for it */}

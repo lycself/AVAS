@@ -1,4 +1,4 @@
-"""Beam page: ``InputFile/beam.txt``.
+"""Beam page: ``InputFile/beam.txt``, and the secondary beam (``secondarybeam`` in input.txt and its particle file).
 
 Saving rewrites only the keywords the page manages, in place; every other
 line (``randomseed``, ``initpos``, comments ...) is kept as it was.
@@ -6,13 +6,16 @@ line (``randomseed``, ``initpos``, comments ...) is kept as it was.
 import logging
 import os
 import shutil
+import tempfile
 
 from avas.api.qt.api import cal_beam_parameter
+from avas.data import filekinds
+from avas.data.lattice_edit import keyword_line, set_keyword_value
 from avas.utils.beamconfig import BeamConfig
 from avas.gui import context
 from avas.gui.bridge import UserError, rpc
 from avas.gui.locks import require_unlocked
-from avas.gui.textio import read_text, write_text
+from avas.gui.textio import normalized_write_text, read_text, write_text
 
 log = logging.getLogger("avas.gui")
 
@@ -31,17 +34,7 @@ def _s(v):
     return str(v)
 
 
-@rpc("beam.load")
-def load():
-    p = context.project().require()
-    path = p.input_file("beam.txt")
-    if not os.path.isfile(path):
-        params = {}
-    else:
-        try:
-            params = BeamConfig().create_from_file(p.item())["data"]["beamParams"]
-        except Exception as exc:  # noqa: BLE001 - a malformed file is reported, not fatal
-            raise UserError(f"beam.txt: {exc}") from exc
+def _form(params):
     dist_x = _s(params.get("distribution_x")) or "GS"
     dist_y = _s(params.get("distribution_y")) or "GS"
     form = {
@@ -59,9 +52,55 @@ def load():
     }
     for k in TWISS_KEYS:
         form[k] = _s(params.get(k))
-    return {"form": form, "path": path, "exists": os.path.isfile(path),
+    return form
+
+
+def _params(item):
+    try:
+        return BeamConfig().create_from_file(item)["data"]["beamParams"]
+    except Exception as exc:  # noqa: BLE001 - a malformed file is reported, not fatal
+        raise UserError(f"beam.txt: {exc}") from exc
+
+
+def _secondary_path(p):
+    """The secondary-particle file in InputFile (the engine reads SeParticle.txt)."""
+    if os.path.isdir(p.input_dir):
+        for name in sorted(os.listdir(p.input_dir), key=str.lower):
+            path = p.input_file(name)
+            if os.path.isfile(path) and filekinds.detect(path) == filekinds.KIND_SEPARTICLE:
+                return path
+    return p.input_file("SeParticle.txt")
+
+
+def _secondary(p):
+    input_path = p.input_file("input.txt")
+    _, parts = keyword_line(read_text(input_path), "secondarybeam") if os.path.isfile(input_path) else (None, None)
+    path = _secondary_path(p)
+    exists = os.path.isfile(path)
+    return {"on": bool(parts) and len(parts) > 1 and parts[1] == "1", "path": path, "name": os.path.basename(path),
+            "exists": exists, "text": read_text(path) if exists else ""}
+
+
+@rpc("beam.load")
+def load():
+    p = context.project().require()
+    path = p.input_file("beam.txt")
+    exists = os.path.isfile(path)
+    return {"form": _form(_params(p.item()) if exists else {}), "path": path, "exists": exists,
+            "text": read_text(path) if exists else "", "inputDir": p.input_dir, "inputPath": p.input_file("input.txt"),
+            "secondary": _secondary(p),
             "dstFiles": sorted((n for n in os.listdir(p.input_dir) if n.lower().endswith((".dst", ".edst"))), key=str.lower)
             if os.path.isdir(p.input_dir) else []}
+
+
+@rpc("beam.parse")
+def parse(text):
+    """The page's form for a beam.txt text (a version from the file history), without writing anything."""
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, "InputFile"))
+        with open(os.path.join(tmp, "InputFile", "beam.txt"), "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return _form(_params({"projectPath": tmp}))
 
 
 def _line_key(line):
@@ -122,7 +161,7 @@ def _format_lines(form):
 
 
 @rpc("beam.save")
-def save(form):
+def save(form, secondary=None, restoredFrom=None):
     require_unlocked()
     p = context.project().require()
     path = p.input_file("beam.txt")
@@ -147,9 +186,28 @@ def save(form):
     for key in MANAGED:
         if key not in written and new[key] is not None:
             result.append(new[key])
-    write_text(path, "\n".join(result), source="beam")
+    write_text(path, "\n".join(result), source="beam", restored_from=restoredFrom or None)
     log.info("saved %s", os.path.basename(path))
+    if secondary is not None:
+        _save_secondary(p, secondary)
     return load()
+
+
+def _save_secondary(p, secondary):
+    """``secondarybeam`` in input.txt (only that line) and the secondary-particle file, where they changed."""
+    now = _secondary(p)
+    on = bool(secondary.get("on"))
+    if on != now["on"]:
+        input_path = p.input_file("input.txt")
+        text = read_text(input_path) if os.path.isfile(input_path) else ""
+        line_no, _ = keyword_line(text, "secondarybeam")
+        if on or line_no is not None:
+            write_text(input_path, set_keyword_value(text, "secondarybeam", 1 if on else 0), source="beam")
+    text = secondary.get("text")
+    changed = text is not None and normalized_write_text(text) != normalized_write_text(now["text"])
+    if changed and (now["exists"] or text.strip()):
+        write_text(now["path"], text, source="beam")
+        log.info("saved %s", now["name"])
 
 
 @rpc("beam.importDst")

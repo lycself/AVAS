@@ -1,10 +1,14 @@
 // The component view's field, in a window big enough to read: same slices as the
 // files page, but non-modal, so the parameter sliders underneath stay usable and
 // the field redraws while a gradient or a length is dragged.
+import { useEffect, useState } from "react";
 import { create } from "zustand";
+import { call } from "../bridge";
 import { FloatingWindow, fitRect, viewport, type Rect } from "../components/FloatingWindow";
+import { Icon } from "../components/ui";
 import { FieldSliceView, type FieldSource } from "../files/FieldSlice";
-import { useT } from "../i18n";
+import { fmtG } from "../format";
+import { pick, useT } from "../i18n";
 
 type State = { source: FieldSource | null; title: string; show: (source: FieldSource, title: string) => void; close: () => void };
 
@@ -39,7 +43,82 @@ function FieldWindow({ source }: { source: FieldSource }) {
         {/* a different element starts the view over; changing its parameters must not,
             or dragging a slider would reset the plane and the component being shown */}
         <FieldSliceView key={title} source={source} />
+        {source.kind === "map" && <MapFiles name={source.name} fieldDirs={source.fieldDirs} />}
       </div>
     </FloatingWindow>
+  );
+}
+
+type MapFile = {
+  ext: string;
+  meaning: [string, string];
+  path: string;
+  error?: string;
+  binary?: boolean;
+  nz?: number;
+  nx?: number;
+  ny?: number;
+  points?: number;
+  xRange?: [number, number];
+  yRange?: [number, number];
+  norm?: number;
+};
+
+/** Where each file of the map was found and how it is stored (lattice.fieldInfo); collapsed by default. */
+function MapFiles({ name, fieldDirs }: { name: string; fieldDirs: string[] | null }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [files, setFiles] = useState<MapFile[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const dirs = JSON.stringify(fieldDirs);
+  useEffect(() => {
+    setFiles(null);
+    setError(null);
+  }, [name, dirs]);
+  useEffect(() => {
+    if (!open || files || error) return;
+    call<{ components: MapFile[] }>("lattice.fieldInfo", { name, fieldDirs })
+      .then((r) => setFiles(r.components))
+      .catch((e) => setError(e.message));
+  }, [open, files, error, name, dirs]);
+  return (
+    <div className="map-files">
+      <button className="map-files-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Icon name={open ? "chevron-down" : "chevron-right"} />
+        {t("Field-map files of '{name}'", { name })}
+      </button>
+      {open && (error ? <div className="danger-text">{error}</div> : !files ? <div className="muted">…</div> : (
+        <table className="mini-table map-files-table selectable">
+          <thead>
+            <tr>
+              <th>{t("Component")}</th>
+              <th>{t("Grid")}</th>
+              <th>{t("Transverse range")}</th>
+              <th>{t("Normalisation")}</th>
+              <th>{t("Storage")}</th>
+              <th>{t("File")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {files.map((f) => (
+              <tr key={f.ext}>
+                <td data-tip={pick(f.meaning)}>.{f.ext}</td>
+                {f.error ? (
+                  <td colSpan={4} className="danger-text">{f.error}</td>
+                ) : (
+                  <>
+                    <td>{`Nz ${f.nz} · Nx ${f.nx} · Ny ${f.ny}`}</td>
+                    <td>{`x ${fmtG(f.xRange![0])}…${fmtG(f.xRange![1])}, y ${fmtG(f.yRange![0])}…${fmtG(f.yRange![1])} m`}</td>
+                    <td>{fmtG(f.norm!)}</td>
+                    <td>{f.binary ? t("binary (float32)") : t("text")}</td>
+                  </>
+                )}
+                <td className="soft ellipsis" data-tip={f.path}>{f.path}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </div>
   );
 }

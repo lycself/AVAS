@@ -287,6 +287,31 @@ def field_profile(name, fieldDirs=None, points=400):
     return {"name": name, "components": _cached(("field", name, int(points)), stamp, compute)}
 
 
+@rpc("lattice.fieldInfo")
+def field_info(name, fieldDirs=None):
+    """Where each file of a field map was found and how it is stored (grid, range, normalisation)."""
+    from avas.data.fieldmap import FieldMap, components
+    comps = components(_field_dirs(fieldDirs), name)
+    if not comps:
+        raise UserError(f"Field map '{name}' not found.")
+
+    def compute():
+        out = []
+        for ext, path in sorted(comps.items()):
+            item = {"ext": ext, "meaning": list(EXT_MEANING.get(ext, ("", ""))), "path": path}
+            try:
+                fm = FieldMap(path).read()
+            except (OSError, ValueError) as exc:
+                item["error"] = str(exc)
+            else:
+                item.update(binary=fm.binary, length=fm.length, nz=fm.nz, nx=fm.nx, ny=fm.ny, points=fm.points,
+                            xRange=list(fm.x_range), yRange=list(fm.y_range), norm=fm.norm)
+            out.append(item)
+        return out
+    stamp = tuple(_stamp(p) for _e, p in sorted(comps.items()))
+    return {"name": name, "components": _cached(("fieldInfo", name), stamp, compute)}
+
+
 @rpc("lattice.fieldSlice")
 def field_slice(name, fieldDirs=None, plane="zx", at=None, limit=None, ext=None):
     """One plane of the map an element refers to, for the component view's field window.

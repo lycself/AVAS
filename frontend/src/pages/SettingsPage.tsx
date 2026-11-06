@@ -7,6 +7,10 @@ import { useInputsLocked } from "../store/app";
 import { NoProject, PageHeader, FormRow, RunLockBanner, useProjectOpen } from "./common";
 import { useEditable } from "./useEditable";
 import { PathPicker, isFloat, isInt } from "./widgets";
+import { useEffect, useState } from "react";
+import { reportError } from "../components/overlays";
+import { FileHistoryButton } from "../files/FileHistory";
+import { BOUNDARY_COLUMNS, scanDataColumns, TokenTable } from "../files/tables";
 
 type Form = {
   sim_type: string;
@@ -30,25 +34,36 @@ type Form = {
   error_seed: string;
 };
 type Meta = { device: string; hadThreadsKey: boolean; hasScanData: boolean; inputPath: string; iniPath: string };
-type Data = { form: Form; meta: Meta };
+type Companion = { path: string; name: string; exists: boolean; text: string };
+type Data = {
+  form: Form;
+  meta: Meta;
+  /** input.txt as saved (the history dialog compares versions with it) */
+  text: string;
+  /** boundary.txt (read when boundary is on) and scanData.txt (read when scanphase is 2) */
+  companions: { boundary: Companion; scanData: Companion };
+  /** the history version the form was restored from, until the next save */
+  restoredFrom?: string;
+};
 
 function validate(d: Data): string[] {
   const f = d.form;
   const errors: string[] = [];
-  if (!f.steppercycle.trim()) errors.push(t("Settings: steps per βλ is missing"));
-  else if (!isInt(f.steppercycle) || Number(f.steppercycle) < 1) errors.push(t("Settings: steps per βλ must be a positive integer"));
+  if (!f.steppercycle.trim()) errors.push(t("Simulation settings: steps per βλ is missing"));
+  else if (!isInt(f.steppercycle) || Number(f.steppercycle) < 1) errors.push(t("Simulation settings: steps per βλ must be a positive integer"));
   if (f.dumpperiodicity.trim() && (!isInt(f.dumpperiodicity) || Number(f.dumpperiodicity) < 0))
-    errors.push(t("Settings: 'Output every N steps' must be an integer ≥ 0"));
+    errors.push(t("Simulation settings: 'Output every N steps' must be an integer ≥ 0"));
   for (const [vals, name] of [
     [f.numofgrid, "numofgrid"],
     [f.meshrms, "meshrms"],
   ] as const) {
     const filled = vals.map((v) => v.trim());
-    if (filled.some(Boolean) && !filled.every(Boolean)) errors.push(t("Settings: {name} needs all three values (or none)", { name }));
-    else if (filled.every(Boolean) && !filled.every((v) => (name === "numofgrid" ? isInt(v) : isFloat(v)))) errors.push(t("Settings: {name} has an invalid value", { name }));
+    if (filled.some(Boolean) && !filled.every(Boolean)) errors.push(t("Simulation settings: {name} needs all three values (or none)", { name }));
+    else if (filled.every(Boolean) && !filled.every((v) => (name === "numofgrid" ? isInt(v) : isFloat(v)))) errors.push(t("Simulation settings: {name} has an invalid value", { name }));
   }
-  if (f.scanphase === "2" && !d.meta.hasScanData) errors.push(t("Settings: phase scan mode 2 needs InputFile/scanData.txt"));
-  if (f.error_type && !f.error_seed.trim()) errors.push(t("Settings: error seed is missing"));
+  if (f.scanphase === "2" && !d.companions.scanData.text.trim()) errors.push(t("Simulation settings: phase scan mode 2 needs the entry phases in scanData.txt"));
+  if (f.boundary && !d.companions.boundary.text.trim()) errors.push(t("Simulation settings: 'Apply boundary' is on but boundary.txt is empty"));
+  if (f.error_type && !f.error_seed.trim()) errors.push(t("Simulation settings: error seed is missing"));
   return errors;
 }
 
@@ -61,14 +76,24 @@ export default function SettingsPage() {
     label: () => "input.txt / ini.ini",
     load: () => call<Data>("settings.load"),
     save: async (d) => {
-      const res = await call<Data>("settings.save", { form: d.form, meta: d.meta });
-      fileSaved(d.meta.inputPath, "settings");
-      fileSaved(d.meta.iniPath, "settings");
+      const res = await call<Data>("settings.save", {
+        form: d.form,
+        meta: d.meta,
+        companions: { boundary: d.companions.boundary.text, scanData: d.companions.scanData.text },
+        restoredFrom: d.restoredFrom ?? null,
+      });
+      for (const path of [d.meta.inputPath, d.meta.iniPath, d.companions.boundary.path, d.companions.scanData.path]) fileSaved(path, "settings");
       return res;
     },
     validate,
-    files: (d) => (d ? [d.meta.inputPath, d.meta.iniPath] : []),
+    files: (d) => (d ? [d.meta.inputPath, d.meta.iniPath, d.companions.boundary.path, d.companions.scanData.path] : []),
   });
+  // rows of scanData.txt follow the RF cavities of the run lattice
+  const [cavities, setCavities] = useState<string[]>([]);
+  const wantCavities = ed.value?.form.scanphase === "2";
+  useEffect(() => {
+    if (wantCavities) call<string[]>("files.rfCavities").then(setCavities).catch(() => setCavities([]));
+  }, [wantCavities]);
 
   if (!open) return <div className="page"><div className="page-inner"><PointerSettings /><NoProject /></div></div>;
   if (!ed.value) return <div className="empty-state">{ed.error ? <span className="danger-text">{ed.error}</span> : <Spinner size={24} />}</div>;
@@ -82,6 +107,19 @@ export default function SettingsPage() {
       return { ...d, form: { ...d.form, [k]: arr } };
     });
   const sc = f.spacecharge;
+  const comp = ed.value.companions;
+  const setCompanion = (key: "boundary" | "scanData", text: string) =>
+    ed.setValue((d) => ({ ...d, companions: { ...d.companions, [key]: { ...d.companions[key], text } } }));
+  const restore = async (text: string, revision: string) => {
+    if (locked) return;
+    try {
+      const form = await call<Form>("settings.parse", { text });
+      ed.setValue((d) => ({ ...d, form, restoredFrom: revision }));
+    } catch (e) {
+      reportError(e);
+    }
+  };
+  const missing = (c: Companion) => (c.exists ? undefined : tt("{name} does not exist yet; it is created when you save.", { name: c.name }));
 
   return (
     <div className="page">
@@ -91,6 +129,7 @@ export default function SettingsPage() {
           hint={tt("Tracking options written to input.txt, and the run mode stored in ini.ini.")}
           actions={
             <>
+              <FileHistoryButton path={ed.value.meta.inputPath} getText={() => ed.value?.text ?? ""} onRestore={restore} />
               {(ed.canUndo || ed.canRedo) && (
                 <>
                   <IconButton icon="discard" tip={`${tt("Undo")}  (Ctrl+Z)`} disabled={!ed.canUndo || locked} onClick={ed.undo} />
@@ -154,14 +193,22 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </FormRow>
-                {f.scanphase === "2" && !ed.value.meta.hasScanData && (
-                  <FormRow>
-                    <span className="warning-text">
-                      <Icon name="warning" /> {tt("InputFile/scanData.txt does not exist.")}
-                    </span>
-                  </FormRow>
-                )}
               </div>
+              {f.scanphase === "2" && (
+                <div className="companion-table">
+                  <div className="companion-title">
+                    <Icon name="table" /> {tt("Cavity entry phases ({name})", { name: comp.scanData.name })}
+                  </div>
+                  <TokenTable
+                    text={comp.scanData.text}
+                    editable={!locked}
+                    onChange={(text) => setCompanion("scanData", text)}
+                    columns={scanDataColumns()}
+                    rowLabels={cavities}
+                    hint={missing(comp.scanData) ?? tt("One row per RF cavity, in lattice order.")}
+                  />
+                </div>
+              )}
             </Section>
 
             <Section title={tt("Space charge")} icon="zap">
@@ -219,6 +266,18 @@ export default function SettingsPage() {
                 <FormRow>
                   <Checkbox checked={f.boundary} onChange={(v) => set("boundary", v)} label={tt("Apply boundary (boundary.txt)")} />
                 </FormRow>
+                {f.boundary && (
+                  <div className="companion-table">
+                    <TokenTable
+                      text={comp.boundary.text}
+                      editable={!locked}
+                      onChange={(text) => setCompanion("boundary", text)}
+                      columns={BOUNDARY_COLUMNS}
+                      wrapStartEnd
+                      hint={missing(comp.boundary) ?? tt("Loss boundary; the lattice apertures are ignored while it is applied.")}
+                    />
+                  </div>
+                )}
                 <FormRow>
                   <Checkbox checked={f.pchistogram_start} onChange={(v) => set("pchistogram_start", v)} label={tt("Write density file")} />
                 </FormRow>

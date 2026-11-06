@@ -232,13 +232,19 @@ def test_visual_editor_data(project):
 
 
 def test_files_page(project):
+    # runs generate lattice.txt in <output>/inputs since 2026-09-20; older versions left one in InputFile,
+    # which the Files page must still recognise (and refuse to save)
+    leftover = os.path.join(project["inputDir"], "lattice.txt")
+    with open(leftover, "w", encoding="utf-8") as fh:
+        fh.write("start\nend\n")
     listing = ok("files.list")
     roles = {f["name"]: f["role"] for f in listing["files"]}
     assert roles["beam.txt"] == "beam" and roles["lattice_mulp.txt"] == "lattice_run"
     assert roles["lattice.txt"] == "generated" and roles["part_rfq.dst"] == "particles"
     opened = ok("files.open", path=os.path.join(project["inputDir"], "input.txt"))
     assert opened["view"] == "text" and "steppercycle" in opened["text"]
-    assert rpc("files.save", path=os.path.join(project["inputDir"], "lattice.txt"), text="x")["ok"] is False
+    assert rpc("files.save", path=leftover, text="x")["ok"] is False
+    os.remove(leftover)
     assert rpc("files.open", path=os.path.join(ROOT, "README.md"))["ok"] is False      # outside InputFile
     new = ok("files.create", name="notes.txt")
     renamed = ok("files.rename", path=new, newName="notes2.txt")
@@ -351,6 +357,7 @@ def test_pause_resume_and_segment_run(project):
     """Pause freezes the engine and the clock; a segment run from the full run's particle file matches the full run."""
     import time
     from avas.gui import context
+    from avas.data import segment
     from avas.gui.services import runner, segments
     work = os.path.join(WORK, "segment_project")
     shutil.rmtree(work, ignore_errors=True)
@@ -358,6 +365,13 @@ def test_pause_resume_and_segment_run(project):
     os.makedirs(os.path.join(work, "OutputFile"))
     with open(os.path.join(work, "InputFile", "lattice_mulp.txt"), "w", encoding="utf-8") as fh:
         fh.write(SEGMENT_LATTICE)
+    # a fixed seed makes the full run and the LEBT segment sample the same particles (the segment stages
+    # copy input.txt as is), so the comparisons below do not depend on two independent samplings
+    input_path = os.path.join(work, "InputFile", "input.txt")
+    with open(input_path, encoding="utf-8") as fh:
+        input_text = fh.read()
+    with open(input_path, "w", encoding="utf-8") as fh:
+        fh.write(segment.set_keywords(input_text, {"randomseed": "12345"}))
     ok("project.open", path=work)
     r = runner.runner()
     try:
@@ -409,6 +423,9 @@ def test_pause_resume_and_segment_run(project):
         _wait_for_job(r)
         assert job2.ok, job2.message
         assert job2.meta["entry"]["source"] == os.path.basename(lebt.root)
+        for staged in (lebt.root, job2.root):
+            with open(os.path.join(staged, "InputFile", "input.txt"), encoding="utf-8") as fh:
+                assert segment.keyword_value(fh.read(), "randomseed") == ["12345"]
         part2 = _last_dataset_row(job2.output_dir)
         assert part2[0] == pytest.approx(full[0], rel=2e-3) and part2[16] == pytest.approx(full[16], rel=0.05)
         # a changed beam upstream makes the LEBT result unusable
