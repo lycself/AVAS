@@ -140,7 +140,7 @@ export function VisualEditor({ doc, schema, selected, onSelect, onEdits, onRange
   const liveBand = useLive((s) => s.band);
   const livePrevious = useLive((s) => s.previous);
   const liveVersion = useLive((s) => s.version);
-  const liveHere = runResults !== false && !!liveRun && liveRun.kind !== "assistant" && (!liveRun.project || samePath(liveRun.project, projectPath));
+  const liveHere = runResults !== false && !!liveRun && (liveRun.kind === "project" || liveRun.kind === "segment") && (!liveRun.project || samePath(liveRun.project, projectPath));
   const liveRunning = liveHere && liveRun!.running;
   const projectRunning = liveRunning && liveRun!.kind === "project";
   const live = useMemo<EnvelopeCurves | null>(

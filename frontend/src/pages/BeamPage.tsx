@@ -1,14 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { call } from "../bridge";
 import { pickFile } from "../host";
 import { confirmDialog, DialogFrame, reportError, showDialog, toast } from "../components/overlays";
 import { Plot, seriesColor } from "../components/Plot";
 import { Button, Checkbox, IconButton, Section, Select, Spinner, TextInput } from "../components/ui";
 import { fmtG } from "../format";
-import { t, useT } from "../i18n";
+import { pick, t, useT } from "../i18n";
 import { useApp, useInputsLocked } from "../store/app";
 import { fileSaved } from "../store/pages";
 import { FormRow, NoProject, PageHeader, RunLockBanner, useProjectOpen } from "./common";
+import { FileHistoryButton } from "../files/FileHistory";
+import { TokenTable } from "../files/tables";
+import { ParticlesView } from "../files/views";
+import { loadSchema, type Schema } from "../lattice/types";
+import { joinPath } from "../util";
 import { useEditable } from "./useEditable";
 import { isFloat, isInt } from "./widgets";
 
@@ -19,7 +24,21 @@ type Form = Record<string, any> & {
   distribution_x: string;
   distribution_y: string;
 };
-type Data = { form: Form; path: string; exists: boolean; dstFiles: string[] };
+type Secondary = { on: boolean; path: string; name: string; exists: boolean; text: string };
+type Data = {
+  form: Form;
+  path: string;
+  exists: boolean;
+  dstFiles: string[];
+  /** beam.txt as saved (the history dialog compares versions with it) */
+  text: string;
+  inputDir: string;
+  inputPath: string;
+  /** secondarybeam in input.txt and its particle file */
+  secondary: Secondary;
+  /** the history version the form was restored from, until the next save */
+  restoredFrom?: string;
+};
 
 const DISTRIBUTIONS = ["GS", "WB", "PB", "KV"];
 const PLANES = ["x", "y", "z"] as const;
@@ -29,6 +48,7 @@ function validate(d: Data): string[] {
   const errors: string[] = [];
   if (!String(f.numofcharge).trim()) errors.push(t("Beam: charge is missing"));
   if (f.use_dst && !f.dst.trim()) errors.push(t("Beam: no particle file selected"));
+  if (d.secondary.on && !d.secondary.text.trim()) errors.push(t("Beam: the secondary beam is on but {name} has no particles", { name: d.secondary.name }));
   if (!f.use_dst) {
     const n = Number(f.particlenumber);
     if (!Number.isFinite(n) || n < 2) errors.push(t("Beam: multi-particle tracking needs at least 2 particles (currently {n})", { n: f.particlenumber || 0 }));
@@ -137,19 +157,25 @@ export default function BeamPage() {
   const inputDir = useApp((s) => s.project.inputDir);
   const [busy, setBusy] = useState(false);
   const [showEllipse, setShowEllipse] = useState(false);
+  const [schema, setSchema] = useState<Schema | null>(null);
   const locked = useInputsLocked();
   const ed = useEditable<Data>({
     id: "beam",
     label: () => "beam.txt",
     load: () => call<Data>("beam.load"),
     save: async (d) => {
-      const res = await call<Data>("beam.save", { form: d.form });
+      const res = await call<Data>("beam.save", { form: d.form, secondary: { on: d.secondary.on, text: d.secondary.text }, restoredFrom: d.restoredFrom ?? null });
       fileSaved(d.path, "beam");
+      fileSaved(d.inputPath, "beam");
+      fileSaved(d.secondary.path, "beam");
       return res;
     },
     validate,
-    files: (d) => (d ? [d.path] : []),
+    files: (d) => (d ? [d.path, d.inputPath, d.secondary.path] : []),
   });
+  useEffect(() => {
+    loadSchema().then(setSchema).catch(reportError);
+  }, []);
 
   if (!open) return <NoProject />;
   if (!ed.value) return <div className="empty-state">{ed.error ? <span className="danger-text">{ed.error}</span> : <Spinner size={24} />}</div>;
@@ -193,6 +219,18 @@ export default function BeamPage() {
   );
 
   const dstOptions = [...new Set([...(f.dst ? [f.dst] : []), ...ed.value.dstFiles])];
+  const sec = ed.value.secondary;
+  const setSecondary = (patch: Partial<Secondary>) => ed.setValue((d) => ({ ...d, secondary: { ...d.secondary, ...patch } }));
+  const dstShown = f.use_dst && !!f.dst && ed.value.dstFiles.includes(f.dst);
+  const restore = async (text: string, revision: string) => {
+    if (locked) return;
+    try {
+      const form = await call<Form>("beam.parse", { text });
+      ed.setValue((d) => ({ ...d, form, restoredFrom: revision }));
+    } catch (e) {
+      reportError(e);
+    }
+  };
 
   return (
     <div className="page">
@@ -202,6 +240,7 @@ export default function BeamPage() {
           hint={tt("Initial beam: either generated from the parameters below or read from a particle (.dst) file.")}
           actions={
             <>
+              <FileHistoryButton path={ed.value.path} getText={() => ed.value?.text ?? ""} onRestore={restore} />
               {(ed.canUndo || ed.canRedo) && (
                 <>
                   <IconButton icon="discard" tip={`${tt("Undo")}  (Ctrl+Z)`} disabled={!ed.canUndo || locked} onClick={ed.undo} />
@@ -260,6 +299,29 @@ export default function BeamPage() {
                   <Checkbox checked={f.cw} onChange={(v) => set("cw", v)} label={tt("CW (DC) beam - no longitudinal Twiss")} />
                 </FormRow>
               </fieldset>
+            </Section>
+            <Section title={tt("Secondary beam")} icon="combine">
+              <fieldset className="lockable form" disabled={locked}>
+                <FormRow>
+                  <Checkbox
+                    checked={sec.on}
+                    onChange={(v) => setSecondary({ on: v })}
+                    label={tt("Transport secondary particles (secondarybeam)")}
+                    tip={tt("Writes secondarybeam 1 in input.txt; the engine then also reads {name}. The synchronous particle still comes from the parameters above.", { name: sec.name })}
+                  />
+                </FormRow>
+              </fieldset>
+              {sec.on && schema && (
+                <div className="companion-table">
+                  <TokenTable
+                    text={sec.text}
+                    editable={!locked}
+                    onChange={(text) => setSecondary({ text })}
+                    columns={schema.separticle.map((c) => ({ caption: c.unit ? `${pick(c.label)} (${c.unit})` : pick(c.label), tip: pick(c.label) }))}
+                    hint={sec.exists ? tt("One particle per row, saved to {name}.", { name: sec.name }) : tt("{name} does not exist yet; it is created when you save.", { name: sec.name })}
+                  />
+                </div>
+              )}
             </Section>
           </div>
           <div>
@@ -322,6 +384,11 @@ export default function BeamPage() {
             </Section>
           </div>
         </div>
+        {dstShown && (
+          <Section title={tt("Particle distribution: {name}", { name: f.dst })} icon="graph-scatter">
+            <ParticlesView path={joinPath(ed.value.inputDir, f.dst)} plotHeight={320} ellipses />
+          </Section>
+        )}
         {showEllipse && (
           <Section title={tt("rms ellipses")} icon="circle-large">
             <EllipsePreview form={f} />

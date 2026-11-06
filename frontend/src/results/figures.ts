@@ -1,7 +1,7 @@
 // Turn the backend's figure descriptions (avas/gui/services/results.py) into Plotly data/layout.
 import { seriesColor } from "../components/Plot";
 
-export type Trace = { x: ArrayLike<number>; y: ArrayLike<number>; color?: string | null; name?: string | null; markers?: boolean; legend?: boolean; y2?: boolean };
+export type Trace = { x: ArrayLike<number>; y: ArrayLike<number>; color?: string | null; name?: string | null; markers?: boolean; legend?: boolean; y2?: boolean; dash?: boolean };
 export type LinesFig = { kind: "lines"; traces: Trace[]; xlabel: string; ylabel: string; ylabel2?: string; xlim?: number[] | null; ylim?: number[] | null; legend?: boolean; xdtick?: number; yPlain?: boolean };
 export type BarFig = { kind: "bar"; traces: Trace[]; xlabel: string; ylabel: string };
 export type DensityFig = { kind: "density"; x: ArrayLike<number>; y: ArrayLike<number>; z: Float32Array; rows: number; cols: number; xlabel: string; ylabel: string; colorscale: [number, string][] };
@@ -28,7 +28,7 @@ export function toPlotly(fig: Figure, dark: boolean): { data: any[]; layout: any
       y: t.y,
       name: t.name ?? undefined,
       showlegend: !!t.legend,
-      line: { color: seriesColor(t.color ?? undefined, dark), width: 1.6 },
+      line: { color: seriesColor(t.color ?? undefined, dark), width: 1.6, dash: t.dash ? "dash" : undefined },
       marker: { size: 6, color: seriesColor(t.color ?? undefined, dark) },
       yaxis: t.y2 ? "y2" : "y",
       hovertemplate: `%{x:.6g}, %{y:.6g}<extra>${t.name ?? ""}</extra>`,

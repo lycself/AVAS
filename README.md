@@ -33,18 +33,18 @@ Windows 安装版和便携版无需 Python、Git 或 GitHub 账户。请保留�
 
 ### 主要功能
 
-界面按工作流分为八页，支持浅色／深色主题、界面缩放和鼠标／触控板操作。
+侧栏按工作流排列：项目、束流、结构、模拟设置、文件、运行、结果，其下是扫描页（`Ctrl+1`…`Ctrl+8` 按此顺序切换）；侧栏可收成图标（`Ctrl+B` 或底部按钮）或完全隐藏（`Ctrl+Shift+B`）。界面支持浅色／深色主题、界面缩放和鼠标／触控板操作。
 
 | 页面 | 用途 |
 | --- | --- |
 | 项目 Project | 新建、打开项目，查看输入与上次运行摘要 |
-| 束流 Beam | 配置粒子、能量、分布、Twiss 参数，读取 `.dst` 粒子文件 |
+| 束流 Beam | 配置粒子、能量、分布、Twiss 参数；读取 `.dst` 粒子文件并显示其粒子分布；二次粒子开关与 SeParticle.txt |
 | 结构 Lattice | 文本与参数联动编辑、关键字检查、二维布局与三维束线视图 |
-| 设置 Settings | 配置模拟类型、步长、空间电荷、多线程与误差研究 |
-| 文件 Files | 查看和编辑输入文件，检查场图曲线、切片及粒子分布 |
+| 模拟设置 Simulation settings | 配置模拟类型、步长、空间电荷、多线程与误差研究；编辑损失边界 boundary.txt 与各腔入口相位 scanData.txt |
+| 文件 Files | InputFile 的文件浏览器：原始文本、场图曲线与切片、粒子文件，导入、复制、重命名 |
 | 运行 Run | 启动、暂停、停止模拟，查看实时包络、运行记录与回放 |
+| 结果 Results | 分析包络、发射度、损失、能量等，可叠加按该次运行输入计算的线性模型虚线，对比运行并导出 PNG／PDF／SVG |
 | 扫描 Scan | 扫描元件或束流／模拟参数，汇总指标、表格与曲线 |
-| 结果 Results | 分析包络、发射度、损失、能量等，对比运行并导出 PNG／PDF／SVG |
 
 #### 结构编辑与文件历史
 
@@ -193,18 +193,18 @@ Open **Help → User manual** for offline instructions, or read the [user guide]
 
 ### Features
 
-Eight pages follow the simulation workflow. The interface supports light/dark themes, UI scaling, and mouse/touchpad gestures.
+The sidebar follows the simulation workflow — Project, Beam, Lattice, Simulation settings, Files, Run, Results — followed by Scan (`Ctrl+1` … `Ctrl+8` follow this order); it collapses to icons (`Ctrl+B` or the button at its bottom) or hides completely (`Ctrl+Shift+B`). The interface supports light/dark themes, UI scaling, and mouse/touchpad gestures.
 
 | Page | Purpose |
 | --- | --- |
 | Project | Create and open projects; inspect inputs and the last run |
-| Beam | Configure particles, energy, distributions and Twiss parameters; load `.dst` files |
+| Beam | Configure particles, energy, distributions and Twiss parameters; read a `.dst` file and show its particles; the secondary beam switch and SeParticle.txt |
 | Lattice | Edit linked text and parameters; validate keywords; inspect 2D and 3D beamlines |
-| Settings | Configure simulation type, step size, space charge, threading and error studies |
-| Files | Inspect and edit inputs, field profiles and slices, and particle distributions |
+| Simulation settings | Configure simulation type, step size, space charge, threading and error studies; edit the loss boundary (boundary.txt) and cavity entry phases (scanData.txt) |
+| Files | Browser of InputFile: raw text, field-map profiles and slices, particle files; import, duplicate, rename |
 | Run | Start, pause and stop simulations; inspect live envelopes, records and replay |
+| Results | Analyze envelopes, emittance, losses and energy, optionally with the linear model of the run's own inputs dashed over them; compare runs and export PNG/PDF/SVG |
 | Scan | Sweep element, beam or simulation parameters; collect metrics, tables and curves |
-| Results | Analyze envelopes, emittance, losses and energy; compare runs and export PNG/PDF/SVG |
 
 #### Lattice editing and file history
 

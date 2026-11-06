@@ -14,7 +14,7 @@ Keep this manual open while working. Drag the title bar to move it or its edges 
 
 ini.ini defines the project inputs and outputs. InputFile holds beam, settings, lattice and field-map files; OutputFile holds the latest full run. The lattice/source setting selects the simulation lattice; its filename is not necessarily lattice_mulp.txt.
 
-Use the File menu or project switcher to open another project. Unsaved changes are checked before switching or closing. Files supports viewing, importing, duplicating, renaming and recycling input files.
+Use the File menu or project switcher to open another project. Unsaved changes are checked before switching or closing. Files is the browser of InputFile: raw text, field-map profiles and slices, particle files, and importing, duplicating, renaming and recycling. Everyday edits happen on their own pages: the initial particle distribution and secondary particles on Beam, boundary.txt and scanData.txt on Simulation settings.
 
 Inputs are read-only during a run. You can still inspect files and results.
 
@@ -22,7 +22,9 @@ Inputs are read-only during a run. You can still inspect files and results.
 
 Use Beam to configure energy, current, particle count and distribution. Saving updates beam.txt while retaining unmanaged keywords and comments. Ctrl+Z and Ctrl+Y undo and redo changes.
 
-The beam reference entries below provide keyword meanings, units and choices. Prepare any external distribution file before using it and check that the distribution and particle count suit the study.
+The beam reference entries below provide keyword meanings, units and choices. With “Read particles from a .dst file” checked and a file chosen, the page shows that file’s particles (x-x′, y-y′, φ-W; the red curve is the rms ellipse of the particles), and “Fill parameters from file” copies mass, current, energy and Twiss into the form.
+
+Checking “Secondary beam” writes secondarybeam 1 in input.txt and edits SeParticle.txt in the table below it (one particle per row); the synchronous particle still comes from the beam parameters. “History” lists the saved versions of beam.txt; restoring one fills the form as one undoable change, written to the file when you save.
 
 ## Lattice editing
 
@@ -36,7 +38,7 @@ The top-left controls in 2D and 3D zoom and fit the view. Double-click the 2D vi
 
 ## Simulation settings
 
-Settings manages simulation options in input.txt with undo and redo. See the input reference entries for individual fields.
+The Simulation settings page manages simulation options in input.txt with undo and redo. See the input reference entries for individual fields. With “Apply boundary (boundary.txt)” checked, the loss boundary table is edited below it; with phase scan “from scanData.txt”, the entry phase and time of each RF cavity are edited below it, one row per cavity in lattice order. The tables are saved with the page; an empty table does not create a file. “History” lists the saved versions of input.txt and restores them as on the Beam page.
 
 CPU multithreading writes multithreading 1 when enabled and removes the line when disabled. Do not manually write multithreading 0: the engine loses all particles at the start with that value.
 
@@ -68,7 +70,7 @@ Follow the table, curve and run status. Results live under Scans, with a run_NNN
 
 ## Results analysis
 
-Choose the latest output, a kept run, a segment result or another output directory in Results, then select plots or phase-space views. Interactive zoom and figure export are available.
+Choose the latest output, a kept run, a segment result or another output directory in Results, then select plots or phase-space views. Interactive zoom and figure export are available. Envelope, centroid, energy and emittance plots can overlay the linear model of the run's own inputs (dashed, Linear model) to show what the multi-particle simulation adds.
 
 Compare runs overlays the same quantity from multiple runs. Check units, inputs and coordinate ranges before comparing. Multithreaded simulations can differ slightly; output need not be byte-identical.
 
@@ -103,6 +105,6 @@ Packaged executables need rebuilding after source changes. Users of release pack
 
 ## Error studies
 
-Choose static, dynamic or combined errors and a seed in Settings. Configure err_step, amplitudes and enable commands in the lattice, then save and run. Results are stored in error_output.
+Choose static, dynamic or combined errors and a seed on the Simulation settings page. Configure err_step, amplitudes and enable commands in the lattice, then save and run. Results are stored in error_output.
 
 [Error tutorial](#cases-errors)

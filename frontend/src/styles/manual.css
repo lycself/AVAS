@@ -32,3 +32,8 @@
 
 /* field viewer: the plots take the whole body, the controls sit above them */
 .field-window-body { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 10px 12px 12px; gap: 8px; }
+.map-files { flex: none; max-height: 40%; overflow: auto; border-top: 1px solid var(--border); padding-top: 6px; }
+.map-files-toggle { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--fg-muted); cursor: pointer; padding: 2px 0; font: inherit; }
+.map-files-toggle:hover { color: var(--fg-strong); }
+.map-files-table th, .map-files-table td { white-space: nowrap; }
+.map-files-table td.ellipsis { max-width: 320px; text-align: left; }

@@ -1,5 +1,8 @@
-"""Settings page: tracking options in input.txt and run mode in ini.ini."""
+"""Simulation settings page: tracking options in input.txt, the run mode in ini.ini, and the two tables
+input.txt switches on (boundary.txt for ``boundary 1``, scanData.txt for ``scanphase 2``)."""
 import os
+import shutil
+import tempfile
 
 from avas.api.qt.api import create_from_file_input_ini, write_to_file_input_ini
 from avas.utils.iniconfig import IniConfig
@@ -7,6 +10,7 @@ from avas.gui import context
 from avas.gui.bridge import UserError, rpc
 from avas.gui.locks import require_unlocked
 from avas.gui.filehistory import capture
+from avas.gui.textio import normalized_write_text, read_text, write_text
 
 
 def safe_int(v, default):
@@ -52,11 +56,46 @@ def _triple(values):
     return [safe_str(vals[i], "") if i < len(vals) else "" for i in range(3)]
 
 
+COMPANIONS = {"boundary": "boundary.txt", "scanData": "scanData.txt"}
+
+
+def _companions(p):
+    out = {}
+    for key, name in COMPANIONS.items():
+        path = p.input_file(name)
+        exists = os.path.isfile(path)
+        out[key] = {"path": path, "name": name, "exists": exists, "text": read_text(path) if exists else ""}
+    return out
+
+
 @rpc("settings.load")
 def load():
     p = context.project().require()
     ensure_ini(p)
-    item = p.item()
+    data = _read(p.item(), p)
+    input_path = p.input_file("input.txt")
+    data["text"] = read_text(input_path) if os.path.isfile(input_path) else ""
+    data["companions"] = _companions(p)
+    return data
+
+
+@rpc("settings.parse")
+def parse(text):
+    """The page's form for an input.txt text (a version from the file history); ini.ini values stay as they are."""
+    p = context.project().require()
+    ensure_ini(p)
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, "InputFile"))
+        with open(os.path.join(tmp, "InputFile", "input.txt"), "w", encoding="utf-8") as fh:
+            fh.write(text)
+        shutil.copyfile(p.input_file("ini.ini"), os.path.join(tmp, "InputFile", "ini.ini"))
+        try:
+            return _read({"projectPath": tmp}, p)["form"]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise UserError(f"input.txt: {exc}") from exc
+
+
+def _read(item, p):
     d = create_from_file_input_ini(item)["data"]["inputiniParams"]
     scan = d.get("scanphase")
     form = {
@@ -106,7 +145,7 @@ def _read_triple(texts, cast):
 
 
 @rpc("settings.save")
-def save(form, meta):
+def save(form, meta, companions=None, restoredFrom=None):
     require_unlocked()
     p = context.project().require()
     item = p.item()
@@ -138,7 +177,7 @@ def save(form, meta):
     }
     ensure_ini(p)
     try:
-        with capture(p.input_file("input.txt"), "settings"):
+        with capture(p.input_file("input.txt"), "settings", restoredFrom or None):
             res = write_to_file_input_ini(item, values)
     except Exception as exc:  # noqa: BLE001 - range/type errors from the config classes
         raise UserError(str(exc)) from exc
@@ -153,4 +192,10 @@ def save(form, meta):
     res = ini.write_to_file(item)
     if isinstance(res, dict) and res.get("code", 0) != 0:
         raise UserError(res["data"]["msg"])
+    now = _companions(p)
+    for key, text in (companions or {}).items():
+        if key not in now or text is None or normalized_write_text(text) == normalized_write_text(now[key]["text"]):
+            continue                                        # unchanged, or only its line endings differ
+        if now[key]["exists"] or text.strip():           # an empty table does not create the file
+            write_text(now[key]["path"], text, source="settings")
     return load()

@@ -26,7 +26,46 @@ function InfoTable({ rows }: { rows: [string, React.ReactNode][] }) {
   );
 }
 
-export function ParticlesView({ path, onUseAsBeam }: { path: string; onUseAsBeam?: () => void }) {
+/** The rms ellipse of points (x, y) from their covariance: ⟨(u−ū)²⟩ etc., centred on the mean. */
+export function rmsEllipse(x: ArrayLike<number>, y: ArrayLike<number>, n = 160) {
+  const m = Math.min(x.length, y.length);
+  let mx = 0;
+  let my = 0;
+  for (let i = 0; i < m; i++) {
+    mx += x[i];
+    my += y[i];
+  }
+  mx /= m || 1;
+  my /= m || 1;
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (let i = 0; i < m; i++) {
+    const dx = x[i] - mx;
+    const dy = y[i] - my;
+    sxx += dx * dx;
+    syy += dy * dy;
+    sxy += dx * dy;
+  }
+  sxx /= m || 1;
+  syy /= m || 1;
+  sxy /= m || 1;
+  const ex: number[] = [];
+  const ey: number[] = [];
+  if (!(sxx > 0) || !(syy > 0)) return { x: ex, y: ey };
+  // points of Σ^½·(cos θ, sin θ): the Cholesky factor of the covariance maps the unit circle onto the ellipse
+  const a = Math.sqrt(sxx);
+  const b = sxy / a;
+  const c = Math.sqrt(Math.max(syy - b * b, 0));
+  for (let i = 0; i <= n; i++) {
+    const th = (2 * Math.PI * i) / n;
+    ex.push(mx + a * Math.cos(th));
+    ey.push(my + b * Math.cos(th) + c * Math.sin(th));
+  }
+  return { x: ex, y: ey };
+}
+
+export function ParticlesView({ path, onUseAsBeam, plotHeight, ellipses }: { path: string; onUseAsBeam?: () => void; plotHeight?: number; ellipses?: boolean }) {
   const t = useT();
   const dark = useApp((s) => s.resolvedTheme === "dark");
   const [data, setData] = useState<any>(null);
@@ -50,8 +89,13 @@ export function ParticlesView({ path, onUseAsBeam }: { path: string; onUseAsBeam
       marker: { size: 2, color, opacity: 0.5 },
       hoverinfo: "skip",
     });
-    return [mk(data.x, data.xp, ""), mk(data.y, data.yp, "2"), mk(data.phi, data.w, "3")] as any[];
-  }, [data, dark]);
+    const pairs: [ArrayLike<number>, ArrayLike<number>, string][] = [[data.x, data.xp, ""], [data.y, data.yp, "2"], [data.phi, data.w, "3"]];
+    const ring = seriesColor("r", dark);
+    const rings = ellipses
+      ? pairs.map(([x, y, ax]) => ({ ...rmsEllipse(x, y), type: "scatter", mode: "lines", xaxis: `x${ax}`, yaxis: `y${ax}`, line: { color: ring, width: 1.5 }, hoverinfo: "skip" }))
+      : [];
+    return [...pairs.map(([x, y, ax]) => mk(x, y, ax)), ...rings] as any[];
+  }, [data, dark, ellipses]);
   if (error) return <div className="danger-text">{error}</div>;
   if (!data) return <Spinner />;
   const twissRow = (pl: string) => {
@@ -88,6 +132,7 @@ export function ParticlesView({ path, onUseAsBeam }: { path: string; onUseAsBeam
         <span className="muted grow">
           {t("Particle distribution (TraceWin {fmt} format), read-only.", { fmt: data.extended ? ".edst" : ".dst" })}
           {data.shown < data.number ? "  " + t("Plots show {n} randomly chosen particles.", { n: data.shown.toLocaleString() }) : ""}
+          {ellipses ? "  " + t("The red curve is the rms ellipse of the particles shown.") : ""}
         </span>
         {!data.extended && onUseAsBeam && (
           <Button icon="arrow-right" onClick={onUseAsBeam} tip={t("Set this file as readparticledistribution on the Beam page")}>
@@ -96,7 +141,7 @@ export function ParticlesView({ path, onUseAsBeam }: { path: string; onUseAsBeam
         )}
       </div>
       <InfoTable rows={rows} />
-      <Plot data={traces} layout={layout} style={{ flex: 1, minHeight: 280 }} />
+      <Plot data={traces} layout={layout} style={plotHeight ? { height: plotHeight } : { flex: 1, minHeight: 280 }} />
     </div>
   );
 }

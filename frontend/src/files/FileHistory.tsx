@@ -14,7 +14,7 @@ type Props = { path: string; getText: () => string; onRestore: (text: string, re
 type Comparison = { path: string; project: string | undefined; before: string; after: string };
 const sources: Record<string, string> = {
   file: "Files page", lattice: "Text + structure", visual: "Visual editor", beam: "Beam page",
-  settings: "Settings page", assistant: "AI assistant", restore: "Restored version",
+  settings: "Simulation settings page", assistant: "AI assistant", restore: "Restored version",
   "before-save": "Before saving / external change", "before-restore": "Before restoring (editor snapshot)",
 };
 

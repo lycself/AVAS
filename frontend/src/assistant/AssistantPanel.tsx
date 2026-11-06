@@ -26,6 +26,7 @@ import {
   type Item,
 } from "./store";
 import { call } from "../bridge";
+import { layoutItems, type Step } from "./steps";
 
 const TOOL_LABELS: Record<string, [string, string]> = {
   project_overview: ["Reading the project overview", "info"],
@@ -55,6 +56,14 @@ const TOOL_LABELS: Record<string, [string, string]> = {
   show_element: ["Showing an element", "eye"],
 };
 
+/** What a tool call is about, for its card and the Thinking block header. */
+function toolTarget(item: Item): string {
+  const a = (item.args ?? {}) as Record<string, unknown>;
+  if (a.line) return `line ${a.line}`;
+  for (const k of ["name", "id", "query"]) if (typeof a[k] === "string" && a[k]) return a[k] as string;
+  return "";
+}
+
 const SUGGESTIONS = [
   "Summarize this project and the last run.",
   "Why did the last run fail or lose beam? Check the results and the log.",
@@ -68,7 +77,7 @@ function ToolCard({ item }: { item: Item }) {
   const tt = useT();
   const [open, setOpen] = useState(false);
   const [label, icon] = TOOL_LABELS[item.name ?? ""] ?? [item.name ?? "tool", "tools"];
-  const target = item.args && (item.args as any).line ? `line ${(item.args as any).line}` : (item.args as any)?.name ?? "";
+  const target = toolTarget(item);
   const running = item.status === "running";
   return (
     <div className={cx("as-tool", item.status === "error" && "error")}>
@@ -338,10 +347,55 @@ function ProposalCard({ item }: { item: Item }) {
   );
 }
 
-function AssistantMessage({ item, streaming }: { item: Item; streaming: boolean }) {
+/** The thinking, notes and quick tool calls before an answer, folded into one block (see steps.ts). */
+function StepsBlock({ steps, active }: { steps: Step[]; active: boolean }) {
+  const tt = useT();
+  const [open, setOpen] = useState(false);
+  const counts = new Map<string, number>();
+  for (const st of steps) {
+    if (st.kind !== "tool") continue;
+    const label = tt((TOOL_LABELS[st.item.name ?? ""] ?? [st.item.name ?? "tool"])[0]);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const summary = [...counts].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(" · ");
+  const last = steps[steps.length - 1];
+  const now = !active
+    ? ""
+    : last.kind === "tool"
+      ? [tt((TOOL_LABELS[last.item.name ?? ""] ?? [last.item.name ?? "tool"])[0]), toolTarget(last.item)].filter(Boolean).join(": ")
+      : tt("Thinking…");
+  const failed = steps.some((st) => st.kind === "tool" && st.item.status === "error");
+  return (
+    <div className={cx("as-steps", open && "open")}>
+      <div className="as-steps-head" onClick={() => setOpen(!open)} role="button" aria-expanded={open}>
+        <Icon name={open ? "chevron-down" : "chevron-right"} />
+        {active ? <Spinner size={12} /> : <Icon name={failed ? "warning" : "lightbulb"} />}
+        <span className="as-steps-title">{tt("Thinking")}</span>
+        <span className="soft ellipsis">{active ? now : summary}</span>
+      </div>
+      {open && (
+        <div className="as-steps-body">
+          {steps.map((st) =>
+            st.kind === "tool" ? (
+              <ToolCard key={st.id} item={st.item} />
+            ) : st.kind === "thinking" ? (
+              <div key={st.id} className="as-thinking-body">{st.text}</div>
+            ) : (
+              <div key={st.id} className="as-steps-note">
+                <Markdown text={st.text} />
+              </div>
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssistantMessage({ item, streaming, hideThinking }: { item: Item; streaming: boolean; hideThinking?: boolean }) {
   const tt = useT();
   const [showThinking, setShowThinking] = useState(false);
-  const thinking = !!item.reasoning?.trim();
+  const thinking = !hideThinking && !!item.reasoning?.trim();
   const openThinking = showThinking || (streaming && !item.text);
   return (
     <div className="as-assistant">
@@ -385,6 +439,7 @@ export function AssistantPanel() {
   const active = config?.providers.find((p) => p.id === config.active) ?? null;
   const items = current?.items ?? [];
   const lastAssistant = useMemo(() => [...items].reverse().find((i) => i.role === "assistant"), [items]);
+  const entries = useMemo(() => layoutItems(items), [items]);
 
   const submit = async () => {
     const msg = text.trim();
@@ -508,7 +563,9 @@ export function AssistantPanel() {
             </div>
           </div>
         )}
-        {items.map((item) => {
+        {entries.map((entry, index) => {
+          if (entry.kind === "steps") return <StepsBlock key={entry.key} steps={entry.steps} active={busy && index === entries.length - 1} />;
+          const item = entry.item;
           switch (item.role) {
             case "user":
               return (
@@ -517,7 +574,7 @@ export function AssistantPanel() {
                 </div>
               );
             case "assistant":
-              return <AssistantMessage key={item.id} item={item} streaming={busy && item === lastAssistant} />;
+              return <AssistantMessage key={item.id} item={item} streaming={busy && item === lastAssistant} hideThinking={entry.hideThinking} />;
             case "tool":
               return <ToolCard key={item.id} item={item} />;
             case "proposal":

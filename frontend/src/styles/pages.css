@@ -102,6 +102,10 @@
 .file-text { flex: 1 1 auto; min-height: 0; flex-direction: column; }
 .table-view { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .table-view .grid-scroll { outline: none; }
+/* a small file the form switches on (boundary.txt, scanData.txt, SeParticle.txt), edited under its switch */
+.companion-table { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; min-width: 0; }
+.companion-table .grid-scroll { max-height: 240px; min-height: 64px; }
+.companion-title { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: 12px; }
 .table-detail { min-height: 36px; font-size: 12px; white-space: pre-wrap; }
 .table-detail .strong { color: var(--fg-strong); }
 .data-grid td.cursor { box-shadow: inset 0 0 0 1px var(--accent); }

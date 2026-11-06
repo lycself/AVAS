@@ -19,6 +19,7 @@ DEFAULTS = {
     "ui/uiScale": 100,
     "ui/sidebarWidth": 248,
     "ui/sidebarCollapsed": False,
+    "ui/sidebarHidden": False,
     "ui/logHeight": 200,
     "ui/logCollapsed": False,
     "ui/window": None,

@@ -5,6 +5,12 @@ export function basename(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
 
+/** *name* inside the folder *dir*, with the separator *dir* already uses. */
+export function joinPath(dir: string, name: string): string {
+  const sep = dir.includes("\\") ? "\\" : "/";
+  return dir.replace(/[\\/]+$/, "") + sep + name;
+}
+
 /** A colour token ("--accent") as the browser resolved it, or *fallback* when unset. */
 export function cssColor(name: string, fallback = ""): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;

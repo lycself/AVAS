@@ -1,0 +1,1 @@
+function e(){let e=new Map,t=null;return{get:()=>t,change(n,r){r.isFlush?(e.clear(),t=null):(r.isUndoing||r.isRedoing)&&(t=e.get(n)??null),e.set(n,t)},restored(n,r){t={revision:r},e.set(n,t)},saved(n){if(n){for(let[t,r]of e)r===n&&e.delete(t);t===n&&(t=null)}}}}export{e as t};

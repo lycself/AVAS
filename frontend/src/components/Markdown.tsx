@@ -1,9 +1,12 @@
-// Small Markdown renderer for assistant answers.  It builds React elements
-// (no HTML injection), handles text that is still streaming in, and covers
-// what models write: headings, paragraphs, lists, tables, code blocks,
-// quotes, rules, inline code, bold / italic, links and $math$ (shown as code).
+// Small Markdown renderer for assistant answers and the manual.
+// It builds React elements (no HTML injection except temml's MathML), handles
+// text that is still streaming in, and covers what models write: headings,
+// paragraphs, lists, tables, code blocks, quotes, rules, inline code, bold /
+// italic, links and $math$ / $$math$$ (rendered as MathML, see MathView).
+// *fence* lets a page render its own fenced blocks.
 import type { ReactNode } from "react";
 import { openUrl } from "../host";
+import { MathView } from "./MathView";
 
 type Block =
   | { t: "code"; lang: string; text: string }
@@ -12,6 +15,7 @@ type Block =
   | { t: "list"; ordered: boolean; items: string[] }
   | { t: "table"; head: string[]; rows: string[][] }
   | { t: "quote"; text: string }
+  | { t: "math"; tex: string }
   | { t: "rule" };
 
 const FENCE = /^\s*(```|~~~)\s*([\w+-]*)\s*$/;
@@ -20,6 +24,7 @@ const BULLET = /^\s{0,3}[-*+]\s+(.*)$/;
 const ORDERED = /^\s{0,3}\d+[.)]\s+(.*)$/;
 const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
 const TABLE_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const MATH_OPEN = /^\s*\$\$/;
 
 function splitRow(line: string): string[] {
   let s = line.trim();
@@ -45,6 +50,26 @@ export function parseBlocks(src: string): Block[] {
     }
     if (!line.trim()) {
       i++;
+      continue;
+    }
+    if (MATH_OPEN.test(line)) {
+      // $$ … $$ on one line, or opening and closing $$ on lines of their own
+      const first = line.trim().slice(2);
+      const body: string[] = [];
+      if (first.endsWith("$$") && first.length >= 2) {
+        body.push(first.slice(0, -2));
+        i++;
+      } else {
+        if (first.trim()) body.push(first);
+        i++;
+        while (i < lines.length && !lines[i].trim().endsWith("$$")) body.push(lines[i++]);
+        if (i < lines.length) {
+          const last = lines[i].trim().slice(0, -2);
+          if (last.trim()) body.push(last);
+          i++;
+        }
+      }
+      blocks.push({ t: "math", tex: body.join("\n").trim() });
       continue;
     }
     const h = line.match(HEADING);
@@ -97,6 +122,7 @@ export function parseBlocks(src: string): Block[] {
       !BULLET.test(lines[i]) &&
       !ORDERED.test(lines[i]) &&
       !RULE.test(lines[i]) &&
+      !MATH_OPEN.test(lines[i]) &&
       !(lines[i].includes("|") && i + 1 < lines.length && TABLE_SEP.test(lines[i + 1]))
     )
       body.push(lines[i++]);
@@ -116,7 +142,7 @@ export function inline(text: string, keyPrefix = "i"): ReactNode[] {
     if (idx > last) out.push(...withBreaks(text.slice(last, idx), `${keyPrefix}t${k}`));
     const key = `${keyPrefix}${k++}`;
     if (m[1]) out.push(<code key={key}>{m[2]}</code>);
-    else if (m[3] || m[4]) out.push(<code key={key} className="md-math">{m[3] ?? m[4]}</code>);
+    else if (m[3] || m[4]) out.push(<MathView key={key} tex={m[3] ?? m[4]} />);
     else if (m[5] || m[6]) out.push(<strong key={key}>{inline(m[5] ?? m[6], key)}</strong>);
     else if (m[7] || m[8]) out.push(<em key={key}>{inline(m[7] ?? m[8], key)}</em>);
     else if (m[9]) {
@@ -138,19 +164,27 @@ function withBreaks(text: string, key: string): ReactNode[] {
   return parts.flatMap((p, i) => (i ? [<br key={`${key}b${i}`} />, p] : [p]));
 }
 
-export function Markdown({ text }: { text: string }) {
+/** Renders a fenced block of language *lang* itself, or returns undefined for the default code view. */
+export type FenceRenderer = (lang: string, body: string, key: number) => ReactNode | undefined;
+
+export function Markdown({ text, fence }: { text: string; fence?: FenceRenderer }) {
   const blocks = parseBlocks(text);
   return (
     <div className="md selectable">
       {blocks.map((b, i) => {
         switch (b.t) {
-          case "code":
+          case "code": {
+            const own = fence?.(b.lang, b.text, i);
+            if (own !== undefined) return own;
             return (
               <pre key={i} className="md-code">
                 {b.lang && <span className="md-lang">{b.lang}</span>}
                 <code>{b.text}</code>
               </pre>
             );
+          }
+          case "math":
+            return <MathView key={i} tex={b.tex} display />;
           case "heading": {
             const Tag = (`h${Math.min(6, b.level + 2)}` as unknown) as "h3";
             return <Tag key={i}>{inline(b.text, `h${i}`)}</Tag>;
@@ -195,7 +229,7 @@ export function Markdown({ text }: { text: string }) {
           case "quote":
             return (
               <blockquote key={i}>
-                <Markdown text={b.text} />
+                <Markdown text={b.text} fence={fence} />
               </blockquote>
             );
           case "rule":
